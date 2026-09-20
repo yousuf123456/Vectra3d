@@ -62,7 +62,13 @@ From bottom to top: `core` (pure vector math) → `state` (vectors, results, und
 - **One path for all changes:** both the panel and the gestures call the same functions in `state/actions.py`. This is what guarantees every gesture has a panel equivalent and that undo works everywhere.
 
 ### How it's implemented
-*To be filled in by the agent as the layers are built (G0–G5).*
+*Filled in as each layer is built. `state` was built in step G1.1; `core`, `gestures`, `tracking` and `render` will be added here as they arrive.*
+
+**`state` (G1.1).** `state/store.py` holds a `VectorStore`: the vectors, keyed by their letter, and which one is active. One store is created when the app starts and passed to the parts that need it. It reports every change to listeners that registered with `subscribe()` — plain Python callables, not Qt signals, so the whole layer can be tested without starting an application. The window wraps a listener around a Qt signal where it needs one.
+
+A change event carries no detail: it simply says "something changed, read me again". With at most ten vectors there is nothing to gain from describing the change, and a listener that re-reads the store cannot drift out of step with it.
+
+`state/actions.py` holds the changes themselves — creating, deleting, and clearing vectors, and choosing the active one. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
 
 ### Likely questions
 - **What does "single source of truth" solve?** If the 3D view and the panel each kept their own copy of the vectors, they could disagree. With one copy, they can't.
@@ -99,7 +105,14 @@ Most of the app is checked automatically by test programs with answers calculate
 - The app was built in small steps, each tested and reviewed before the next began.
 
 ### How it's implemented
-*To be filled in by the agent as tests are added (G1–G5).*
+*Filled in as tests are added (G1–G5).*
+
+Tests live in `tests/`, mirroring the layer they cover, and run with `uv run pytest`.
+
+- `tests/test_paths.py`, `tests/test_config.py`, `tests/test_model_asset.py` (G0) check that bundled files are found both from source and from inside the packaged `.exe`, that every tunable value is present, and that the MediaPipe model really loads.
+- `tests/state/` (G1.1) covers the vector rules: that names are handed out lowest-first and reused after a deletion, that the ten colors are all different and none of them reads as an axis color, that the eleventh vector is refused, that every new vector stores its tail at the origin, and that each action reports exactly one change.
+
+The state tests need no window and no camera, which is the point of keeping Qt out of that layer.
 
 ### Likely questions
 - **How do you know the math is right?** Every formula is tested against hand-calculated examples, and identities like cos²α + cos²β + cos²γ = 1 are checked.

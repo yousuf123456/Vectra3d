@@ -35,7 +35,13 @@ When components are shown, the app draws three arrows along the axes (x red, y g
 The data model also stores a tail position (always the origin for now), so "free vectors" placed anywhere can be added later.
 
 ### How it's implemented
-*To be filled in by the agent after steps G1.1 and G2.6.*
+*The data model was built in step G1.1. The drawing of components in 3D comes in step G2.6 and will be added here then.*
+
+A vector is a `Vector` in `src/vectra3d/state/models.py`: a name, its components, and its tail, each stored as a plain `(x, y, z)` tuple of floats. The tail defaults to `ORIGIN`, which is `(0.0, 0.0, 0.0)`. It is stored on every vector rather than assumed, so that free vectors can be added later without changing everything that reads a vector.
+
+`Vector` is a **frozen** dataclass, which means it cannot be edited in place. Changing a vector creates a replacement. That sounds inconvenient but buys two things: undo can save the whole scene by copying a dictionary of vectors rather than copying each one deeply, and no part of the app can change a vector without going through `state/actions.py`.
+
+Names and colors live in `src/vectra3d/state/naming.py`. Vectors are named A to J, and a new vector always takes the lowest free letter, so deleting B makes the next new vector B again. Each letter owns a fixed color from a palette of ten, so the color is worked out from the name rather than stored on the vector. A reused letter therefore comes back in the color the student already associates with that row. The palette deliberately avoids anything that reads as red, green, or blue, because those belong to the axes and to the component arrows, and it avoids the near-black reserved for operation results.
 
 ### Likely questions
 - **Why are all vectors fixed at the origin?** Position vectors keep the first version simple and match how they're first taught. Free vectors are planned as a later feature.
