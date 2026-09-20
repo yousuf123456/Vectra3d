@@ -6,7 +6,7 @@ Updated after every approved step. Read this at the start of every session to se
 
 ## Current status
 - **Current group:** G0 — Project setup
-- **Next step:** G0.3
+- **Next step:** G0.4
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -15,6 +15,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|---|---|
 | G0.1 | Initialize Git and uv project | 2026-09-20 | `G0.1: initialize git and uv project` | Python 3.12.14. Own repo rooted at the project folder, nested inside the Desktop-level repo; remote `github.com/yousuf123456/Vectra3d` (public). `uv sync` succeeds, 55 packages installed. |
 | G0.2 | `paths.py` (`resource_path()`) and `config.py` (all section 9 tunables + section 8 defaults) | 2026-09-20 | `G0.2: add resource_path helper and config values` | Added a hatchling build system so `src/vectra3d` installs editable and is importable. 8 pytest tests pass, including a monkeypatched `sys._MEIPASS` test of the PyInstaller branch. |
+| G0.3 | Bundle the MediaPipe gesture recognizer model | 2026-09-20 | `G0.3: bundle gesture recognizer model` | float16 bundle, 8,373,440 bytes, SHA256 recorded in `library-docs.md`. Test builds a real `GestureRecognizer` in VIDEO mode, not just a file-exists check. Suite now ~9 s. |
 
 ## Groups
 

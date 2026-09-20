@@ -18,6 +18,10 @@ from pathlib import Path
 # src/vectra3d/paths.py -> src/vectra3d -> src -> project root
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# The MediaPipe gesture recognizer model, bundled with the app so that hand
+# tracking works offline and nothing is ever downloaded at runtime.
+GESTURE_MODEL = "assets/models/gesture_recognizer.task"
+
 
 def resource_path(relative: str) -> Path:
     """Return the absolute path to a bundled asset.
