@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment (uv creates .venv/ here)
+.venv/
+
+# Packaging (PyInstaller output)
+build/
+dist/
+*.manifest
+
+# Tests and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# NOTE: assets/models/*.task is deliberately NOT ignored.
+# library-docs.md requires the MediaPipe gesture_recognizer.task model to be
+# committed to the repo (G0.3), so the app never downloads it at runtime.
