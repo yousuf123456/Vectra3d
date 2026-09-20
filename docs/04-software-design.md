@@ -68,6 +68,10 @@ From bottom to top: `core` (pure vector math) → `state` (vectors, results, und
 
 A change event carries no detail: it simply says "something changed, read me again". With at most ten vectors there is nothing to gain from describing the change, and a listener that re-reads the store cannot drift out of step with it.
 
+**`render` (G1.2).** `render/scene.py` draws the world the vectors live in — grid, axes, origin — and resizes it to fit them. It holds no vector data: the window subscribes it to the store, and it is handed the vectors to draw to. The camera's default angle and the **Reset view** toolbar button live here too.
+
+Two choices here came from measuring rather than from reading. PyVista's `add_point_labels` is the obvious way to put numbers on the axes and it cost more than half the frame rate, because it runs a pass to stop labels overlapping; `pv.Label` billboards draw the same thirty numbers for free. A wireframe plane is the obvious way to draw a grid and it was the most expensive thing in the scene, because a wireframe draws all four edges of each of its four hundred squares; the forty-two lines actually wanted cost a fraction of that. Both are recorded in `context/library-docs.md`.
+
 `state/actions.py` holds the changes themselves — creating, deleting, and clearing vectors, and choosing the active one. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
 
 ### Likely questions
@@ -112,7 +116,9 @@ Tests live in `tests/`, mirroring the layer they cover, and run with `uv run pyt
 - `tests/test_paths.py`, `tests/test_config.py`, `tests/test_model_asset.py` (G0) check that bundled files are found both from source and from inside the packaged `.exe`, that every tunable value is present, and that the MediaPipe model really loads.
 - `tests/state/` (G1.1) covers the vector rules: that names are handed out lowest-first and reused after a deletion, that the ten colors are all different and none of them reads as an axis color, that the eleventh vector is refused, that every new vector stores its tail at the origin, and that each action reports exactly one change.
 
-The state tests need no window and no camera, which is the point of keeping Qt out of that layer.
+- `tests/render/` (G1.2) covers the scene's sizing rules: the 1-2-5 sequence, that a value exactly on the boundary still fits, that the world never shrinks below 10, and that the largest component decides the size.
+
+The state tests need no window and no camera, which is the point of keeping Qt out of that layer. The scene tests cover its arithmetic only — whether a grid reads clearly is a question no test can answer, so that part is checked by eye.
 
 ### Likely questions
 - **How do you know the math is right?** Every formula is tested against hand-calculated examples, and identities like cos²α + cos²β + cos²γ = 1 are checked.

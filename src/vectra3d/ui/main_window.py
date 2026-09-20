@@ -14,7 +14,10 @@ window after Qt has gone, which shows up as a hang on exit.
 from __future__ import annotations
 
 from pyvistaqt import MainWindow, QtInteractor
-from PySide6.QtWidgets import QFrame, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QToolBar, QVBoxLayout
+
+from vectra3d.render.scene import Scene
+from vectra3d.state.store import VectorStore
 
 WINDOW_TITLE = "Vectra3D"
 WINDOW_WIDTH = 1200
@@ -36,10 +39,16 @@ LINE_SMOOTHING = True
 
 
 class VectraMainWindow(MainWindow):
-    """The application window. Currently just an empty, rotatable 3D view."""
+    """The application window: a toolbar and the 3D view.
 
-    def __init__(self) -> None:
+    The window is given the store rather than creating one, because `app.py`
+    is where the parts are wired together. The panels that will read and
+    change the store arrive in G1.3 and G1.4.
+    """
+
+    def __init__(self, store: VectorStore) -> None:
         super().__init__()
+        self._store = store
 
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -57,10 +66,30 @@ class VectraMainWindow(MainWindow):
         layout.addWidget(self.plotter.interactor)
         self.setCentralWidget(frame)
 
-        # The small xyz marker in the corner. It is a camera widget, not part
-        # of the scene, so it turns as the view turns and shows which way is
-        # which. The scene's own axes and grid arrive with the 3D scene (F-01).
+        # The small xyz marker in the corner. It is a camera widget rather
+        # than part of the scene, so it turns as the view turns and says
+        # which way is which even when the axes run off the edge of the view.
         self.plotter.add_axes()
+
+        # The scene draws the world the vectors live in, and resizes it to
+        # fit them. It redraws whenever the store changes, which is exactly
+        # when `interaction-spec.md` section 3 allows the scene to rescale.
+        self.scene = Scene(self.plotter)
+        self._store.subscribe(self._on_store_changed)
+
+        self._build_toolbar()
 
         # Shut the plotter down as the window closes, not after.
         self.signal_close.connect(self.plotter.close)
+
+    def _build_toolbar(self) -> None:
+        """The view controls. Vector actions get their own panel in G1.3."""
+        toolbar = QToolBar("View", self)
+        toolbar.setMovable(False)
+        reset = toolbar.addAction("Reset view")
+        reset.setToolTip("Return the camera to the default angle")
+        reset.triggered.connect(self.scene.reset_view)
+        self.addToolBar(toolbar)
+
+    def _on_store_changed(self) -> None:
+        self.scene.update_for(self._store.vectors)

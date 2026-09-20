@@ -14,7 +14,15 @@ Imagine the corner of a room. One edge of the floor is the **x axis** (red), the
 - The scene starts at −10 to 10 on each axis and grows in a 1-2-5 sequence (10, 20, 50, 100, …) when a vector goes beyond it, then shrinks back when it can. It only rescales after a movement ends, never during one, so a vector never seems to shrink under the student's hand.
 
 ### How it's implemented
-*To be filled in by the agent after step G1.2.*
+*Built in step G1.2.*
+
+`src/vectra3d/render/scene.py` draws the world. The floor is a grid of plain line segments on the XY plane, and the three axes run right through the origin from −extent to +extent, each with an arrowhead, a letter, tick marks and numbers at its positive and negative ends. A small dark sphere marks the origin. The x, y and z colors here are the same ones the component arrows use later, so a red arrow always means "along x" wherever it appears.
+
+**Scene extent** is the half-width of the world: how far the grid and axes reach. `extent_for()` returns the smallest step of the 1-2-5 sequence that fits the furthest component of any vector, never going below 10. Nothing remembers the extent from before, so shrinking needs no separate rule: delete the long vector and the answer is simply small again.
+
+The scene is redrawn whenever the vectors change. That is exactly when the spec allows rescaling, because a gesture in progress does not change the stored vectors — only releasing it does — so the world can never resize under the student's hand.
+
+Everything in the scene is sized as a fraction of the extent, including how far away the camera sits. The geometry and the camera therefore change in the **same frame**. An earlier version redrew the grid at once and slid the camera out over 300 ms to catch up, which meant the world really was ten times too big for that third of a second: the origin dot swelled to fill the view and the grid shot off the edges of the screen. Changed together, the grid keeps its ten divisions at a proportional distance, so its lines land in almost the same pixels and what visibly changes is the numbers on the axes — which is the part the student needs to notice.
 
 ### Likely questions
 - **Why is z up and not y?** Physics and engineering textbooks usually draw z up. Some computer graphics tools use y up, but matching the students' course matters more.

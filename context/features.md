@@ -61,9 +61,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-01 3D scene
 **Group:** G1 · **Depends on:** nothing
-- [ ] x, y, z axes are drawn and labeled, with a visible origin and a reference grid.
-- [ ] The view can be rotated, zoomed, and panned with the mouse or touchpad.
-- [ ] A **Reset view** button returns the camera to the default angle.
+- [x] x, y, z axes are drawn and labeled, with a visible origin and a reference grid.
+- [x] The view can be rotated, zoomed, and panned with the mouse or touchpad.
+- [x] A **Reset view** button returns the camera to the default angle.
 
 ### F-02 Camera preview and hand feedback
 **Group:** G4 · **Depends on:** F-01

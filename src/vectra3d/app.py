@@ -17,6 +17,7 @@ import sys  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vectra3d.paths import GESTURE_MODEL, resource_path  # noqa: E402
+from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 
@@ -84,7 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     # -platform offscreen when running without a display.
     app = QApplication(sys.argv)
 
-    window = VectraMainWindow()
+    # One store for the whole app: the single source of truth every panel and
+    # the 3D view read from (`architecture.md` section 2).
+    store = VectorStore()
+
+    window = VectraMainWindow(store)
     window.show()
 
     return app.exec()
