@@ -2,8 +2,9 @@
 
 A file-exists check is not enough: a truncated or corrupted download would pass
 it and then fail much later, when the camera is first switched on in G4. So
-this test builds a real GestureRecognizer from the file, which is the same call
-the tracker will make.
+these tests go through `app.check_model()`, the same code the packaged .exe
+runs, rather than loading the model a second way. If the loading options ever
+change, the test cannot drift away from what the app actually does.
 
 This is an asset test, not a gesture-logic test. The `gestures` layer never
 imports MediaPipe (`code-standards.md` section 2); this test is not part of
@@ -12,14 +13,10 @@ that layer.
 
 from __future__ import annotations
 
-import mediapipe as mp
+import pytest
 
+from vectra3d.app import check_model, main
 from vectra3d.paths import GESTURE_MODEL, resource_path
-
-BaseOptions = mp.tasks.BaseOptions
-GestureRecognizer = mp.tasks.vision.GestureRecognizer
-GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
 
 
 def test_model_file_is_bundled() -> None:
@@ -31,13 +28,26 @@ def test_model_file_is_bundled() -> None:
     assert model.stat().st_size > 1_000_000
 
 
-def test_model_loads_in_video_mode() -> None:
-    # VIDEO mode is what the tracker thread uses (`architecture.md` 4.3), so
-    # the test exercises the configuration the app actually runs.
-    options = GestureRecognizerOptions(
-        base_options=BaseOptions(model_asset_path=str(resource_path(GESTURE_MODEL))),
-        running_mode=VisionRunningMode.VIDEO,
-    )
+def test_model_loads(capsys: pytest.CaptureFixture[str]) -> None:
+    assert check_model() == 0
 
-    with GestureRecognizer.create_from_options(options) as recognizer:
-        assert recognizer is not None
+    out = capsys.readouterr().out
+    assert "OK:" in out
+    # The resolved path is printed so that a packaged run shows whether it
+    # used PyInstaller's unpack folder or the project folder.
+    assert "gesture_recognizer.task" in out
+
+
+def test_unrecognised_arguments_are_reported(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A mistyped option must not fall through to opening the window.
+    assert main(["--check-modl"]) == 2
+
+    assert "unrecognised arguments" in capsys.readouterr().err
+
+
+def test_check_model_option_is_accepted(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--check-model"]) == 0
+
+    assert "OK:" in capsys.readouterr().out
