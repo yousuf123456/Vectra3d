@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G0 — Project setup
-- **Next step:** G0.5
+- **Current group:** G0 — Project setup (all steps done; group checkpoint next)
+- **Next step:** G0 checkpoint — run `/review` on G0, then start a new session for G1
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -17,12 +17,13 @@ Updated after every approved step. Read this at the start of every session to se
 | G0.2 | `paths.py` (`resource_path()`) and `config.py` (all section 9 tunables + section 8 defaults) | 2026-09-20 | `G0.2: add resource_path helper and config values` | Added a hatchling build system so `src/vectra3d` installs editable and is importable. 8 pytest tests pass, including a monkeypatched `sys._MEIPASS` test of the PyInstaller branch. |
 | G0.3 | Bundle the MediaPipe gesture recognizer model | 2026-09-20 | `G0.3: bundle gesture recognizer model` | float16 bundle, 8,373,440 bytes, SHA256 recorded in `library-docs.md`. Test builds a real `GestureRecognizer` in VIDEO mode, not just a file-exists check. Suite now ~9 s. |
 | G0.4 | Window and 3D view smoke test | 2026-09-20 | `G0.4: window with embedded 3D view` | Opens, rotates, closes cleanly (exit 0). PySide6 6.11.2 works; the section 2 fallback pin is not needed. Anti-aliasing changed from 8x MSAA to FXAA after measuring, roughly doubling the frame rate. User's verdict on rotation: "not super smooth but acceptable". |
+| G0.5 | Packaging smoke test | 2026-09-20 | `G0.5: package as a one-folder exe` | One-folder build, 972 files / 0.66 GB. `vectra3d.exe --check-model` loads the model from `_internal`, proving the `sys._MEIPASS` branch on a real build. Anti-aliasing raised to 2x MSAA + FXAA + line smoothing after the axes looked jagged; measured as free. |
 
 ## Groups
 
 | Group | Name | Status |
 |---|---|---|
-| G0 | Project setup | In progress |
+| G0 | Project setup | Complete (pending `/review`) |
 | G1 | Foundation | Not started |
 | G2 | Vector math and display | Not started |
 | G3 | Operations | Not started |
@@ -52,7 +53,8 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-20 | Added a hatchling `[build-system]` in G0.2 rather than a pytest `pythonpath` setting | An editable install fixes imports once for tests, `python -m vectra3d` (G0.4), and PyInstaller (G0.5), instead of needing a separate path workaround in each. |
 | 2026-09-20 | `config.py` also holds the section 8 user-setting defaults, in a separate block | `code-standards.md` section 3 bans magic numbers, and the sensitivity default and range are exactly that. The live values still belong to `Settings` in `state/`. |
 | 2026-09-20 | `test_config.py` asserts relationships between tunables, not their exact literals | The spec allows re-tuning after real hand testing. Tests repeating each literal would have to be edited on every legitimate change, which is the habit `code-standards.md` section 4 forbids. |
-| 2026-09-20 | The 3D view uses FXAA with `multi_samples=0` instead of PyVista's default 8x MSAA | Measured on the target hardware (Intel HD Graphics 620): 8x MSAA 33 fps against 60 fps with FXAA, which cost nothing. F-02 requires hand tracking not to slow the 3D view, so the headroom matters. |
+| 2026-09-20 | The 3D view uses `multi_samples=2` + FXAA + line smoothing, rather than PyVista's default 8x MSAA | Measured on the target hardware (Intel HD Graphics 620) against a scene of thin lines: 8x MSAA 37 fps, this combination 60 fps. An earlier attempt at `multi_samples=0` + FXAA hit the same 60 fps but left the axes visibly jagged, so 2x was added back at no measurable cost. F-02 requires hand tracking not to slow the 3D view, so the headroom matters. |
+| 2026-09-20 | `app.py` has a `--check-model` option | The app had no camera code when packaging was first proven, so nothing loaded the model. This verifies the bundled model from the .exe without adding code the app does not otherwise need, and G6.2 reuses it on a machine with no Python and no internet. |
 
 ---
 

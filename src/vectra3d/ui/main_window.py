@@ -20,12 +20,19 @@ WINDOW_TITLE = "Vectra3D"
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 
-# PyVista defaults to 8x multisampling, which costs about half the frame rate
-# on the integrated graphics this app targets (measured: 33 fps against 60 on
-# Intel HD Graphics 620). FXAA smooths edges as a single screen-space pass
-# instead, which measured as free, so the view stays at the display's 60 fps
-# and thin lines and arrows still look clean.
-MULTI_SAMPLES = 0
+# Anti-aliasing settings, chosen by measuring on the integrated graphics this
+# app targets (Intel HD Graphics 620) against a scene of thin lines, which is
+# what the app mostly draws: axes, grid, and dashed projection lines.
+#
+# PyVista's default of 8x multisampling runs at 37 fps. Dropping to 2x and
+# adding FXAA and line smoothing runs at 60 fps, the display's limit, and
+# still keeps lines clean. 4x was the next step up in quality but cost a third
+# of the frame rate (47 fps) for a difference that is hard to see.
+#
+# The frame rate matters beyond looks: F-02 requires hand tracking not to slow
+# the 3D view, and MediaPipe will be competing for this same modest chip.
+MULTI_SAMPLES = 2
+LINE_SMOOTHING = True
 
 
 class VectraMainWindow(MainWindow):
@@ -41,7 +48,11 @@ class VectraMainWindow(MainWindow):
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.plotter = QtInteractor(frame, multi_samples=MULTI_SAMPLES)
+        self.plotter = QtInteractor(
+            frame,
+            multi_samples=MULTI_SAMPLES,
+            line_smoothing=LINE_SMOOTHING,
+        )
         self.plotter.enable_anti_aliasing("fxaa")
         layout.addWidget(self.plotter.interactor)
         self.setCentralWidget(frame)

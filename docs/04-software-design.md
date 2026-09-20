@@ -117,7 +117,51 @@ Students download a zip, unzip it, and double-click the program. They don't need
 - The final build is tested on a Windows machine without Python, with the internet disconnected.
 
 ### How it's implemented
-*To be filled in by the agent after steps G0.5 and G6.1.*
+*Packaging was set up and proven in step G0.5, before any feature existed, so that packaging problems would surface while the app was still small enough to debug easily. The G6.1 notes will be added when the final build is made.*
+
+The build is described by `packaging/vectra3d.spec` and run with:
+
+```
+uv run pyinstaller packaging/vectra3d.spec --noconfirm
+```
+
+The result is `dist/vectra3d/`, containing `vectra3d.exe` alongside its
+libraries and data. At the G0.5 stage it was 972 files and 0.66 GB, which will
+grow as the app gains features.
+
+Two parts of that file are doing real work:
+
+- **`collect_all("mediapipe")`.** PyInstaller works out what to include by
+  following `import` statements, which finds Python code but not data. MediaPipe
+  ships machine-learning models and graph definitions (`.tflite`, `.binarypb`)
+  that no import mentions, so without this they are silently left out and the
+  app fails only when hand tracking first runs. `collect_all` returns MediaPipe's
+  data files, its compiled libraries, and its submodules, and all three are
+  passed to the build.
+- **The model's destination path.** The gesture recognizer model is added as
+  `("../assets/models/gesture_recognizer.task", "assets/models")`, so inside the
+  packaged app it sits at the same relative path it has in the project. That is
+  what allows `paths.resource_path()` to work without knowing which mode it is
+  in: it swaps the project folder for PyInstaller's unpack folder and everything
+  below that point is identical.
+
+**How the packaged app was checked.** At this stage the app had no camera code,
+so nothing in it loaded the model yet. Rather than adding code the app did not
+need, `app.py` gained a `--check-model` option: running
+`vectra3d.exe --check-model` resolves the model path, builds a real MediaPipe
+gesture recognizer from it, prints what happened, and exits. It reported the
+path as `dist/vectra3d/_internal/assets/models/gesture_recognizer.task` —
+PyInstaller's own unpack folder, confirming the packaged path was being used
+rather than the project folder — and created the recognizer successfully. The
+same option is used again in G6.2 to verify the app on a computer with no
+Python and no internet connection.
+
+The bundled model was also compared against the original by checksum, since a
+file that is copied but truncated would pass a simple "is it there?" check.
+
+**One setting is temporary.** `console=True` keeps a terminal window open behind
+the app, so that a failure at startup prints an error instead of the window
+silently never appearing. G6.1 turns this off for the version students receive.
 
 ### Likely questions
 - **Why is the download fairly large?** It contains a complete Python runtime, the 3D graphics library, and the machine-learning model.
