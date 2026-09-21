@@ -1,8 +1,8 @@
 """Drawing the vectors themselves: one arrow each, with its letter.
 
-The active vector is drawn thicker (`interaction-spec.md` section 10), so the
-student can see at a glance which one the panel and, later, their hands are
-acting on.
+The active vector is wrapped in a translucent copy of itself, a glow
+(`interaction-spec.md` section 10), so the student can see at a glance which
+one the panel and, later, their hands are acting on.
 
 Arrow proportions are fractions of the vector's own length rather than of the
 scene extent, so a short vector is a small arrow instead of a stubby barrel in
@@ -37,6 +37,23 @@ HALO_OPACITY = 0.22
 LETTER_FONT_SIZE = 15
 # How far past the head the letter sits, as a fraction of the arrow's length.
 LETTER_OFFSET = 0.08
+
+
+def letter_position(vector: Vector) -> tuple[float, float, float]:
+    """Where a vector's letter sits: just past its head, along its own line.
+
+    Offset from the head in the vector's own direction rather than scaled
+    outward from the origin. The two are the same while every tail is at the
+    origin, which is all the MVP has, but only this one stays correct for
+    free vectors, whose tails move away from it (`project-overview.md`).
+    """
+    tail = np.array(vector.tail, dtype=float)
+    head = tail + np.array(vector.components, dtype=float)
+    along = head - tail
+    length = float(np.linalg.norm(along))
+    if length == 0.0:
+        return tuple(float(v) for v in head)
+    return tuple(float(v) for v in head + along * LETTER_OFFSET)
 
 
 class VectorActors:
@@ -115,7 +132,7 @@ class VectorActors:
 
         label = pv.Label(
             text=vector.name,
-            position=tuple(float(v) for v in head * (1.0 + LETTER_OFFSET)),
+            position=letter_position(vector),
             size=LETTER_FONT_SIZE,
         )
         label.prop.color = color

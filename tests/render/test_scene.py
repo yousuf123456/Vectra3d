@@ -81,3 +81,12 @@ def test_removing_a_long_vector_lets_the_world_shrink_again() -> None:
     small = Vector(name="B", components=(1.0, 2.0, 3.0))
     assert extent_for_vectors([big, small]) == 500
     assert extent_for_vectors([small]) == 10
+
+
+def test_a_value_that_is_not_finite_is_refused_rather_than_searched_for() -> None:
+    # No extent fits infinity, and nan compares false against every step, so
+    # searching would walk the sequence forever. Typed input is stopped in
+    # the panel; this is the backstop for any other route in.
+    for bad in (float("inf"), float("-inf"), float("nan")):
+        with pytest.raises(ValueError):
+            extent_for(bad)

@@ -15,6 +15,7 @@ widgets, so they can be tested without building a window.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
@@ -47,14 +48,29 @@ class Parsed:
 
 
 def parse_number(text: str, name: str) -> tuple[float | None, str | None]:
-    """Read one typed field, or say what is wrong with it."""
+    """Read one typed field, or say what is wrong with it.
+
+    `float()` accepts more than it looks like it does: "nan", "inf", "-inf",
+    and anything large enough to overflow, such as "1e400", all parse
+    happily. None of them is a length a vector can have, and letting one
+    through reaches the scene sizing, which has no extent that fits it.
+    They are turned away here, at the only place typed numbers enter.
+    """
     text = text.strip()
     if not text:
         return None, f"Enter a value for {name}."
+
     try:
-        return float(text), None
+        value = float(text)
     except ValueError:
         return None, f"{name} must be a number. Use a dot for decimals, like 3.5."
+
+    if math.isnan(value):
+        return None, f"{name} must be a number. Use a dot for decimals, like 3.5."
+    if math.isinf(value):
+        return None, f"{name} is too large to use."
+
+    return value, None
 
 
 def parse_components(x: str, y: str, z: str) -> Parsed:
@@ -112,10 +128,7 @@ class ActionPanel(QWidget):
         layout.addWidget(self._clear)
         layout.addStretch()
 
-        # The button follows the store, so it is never offered for an empty
-        # scene and the prompt can never be raised with nothing to remove.
-        self._store.subscribe(self._sync_clear_button)
-        self._sync_clear_button()
+        self.refresh()
 
     def _build_form(self) -> QWidget:
         box = QGroupBox("New vector")
@@ -152,7 +165,16 @@ class ActionPanel(QWidget):
 
         return box
 
-    def _sync_clear_button(self) -> None:
+    def refresh(self) -> None:
+        """Bring the panel back in step with the store.
+
+        Called by the window when anything changes, the same way the info
+        panel and the 3D view are. Every part of the window is told by the
+        one place that listens, rather than each subscribing for itself.
+
+        Clear all is disabled while the scene is empty, so the prompt can
+        never be raised with nothing to remove.
+        """
         self._clear.setEnabled(self._store.count > 0)
 
     def _on_clear_all(self) -> None:

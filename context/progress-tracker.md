@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G1 — Foundation, all steps built. Group checkpoint next: `/review`, then `/remember save`, then a fresh session for G2
-- **Next step:** G1 group checkpoint (`build-plan.md` section 3), then G2.1 — F-12 direction angles and unit vector
+- **Current group:** G1 — Foundation complete: `/review` run, all five findings fixed. Next: `/remember save`, then a fresh session for G2
+- **Next step:** G2.1 — F-12 direction angles and unit vector (start a new session first, `build-plan.md` section 3)
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -23,13 +23,14 @@ Updated after every approved step. Read this at the start of every session to se
 | G1.3 | F-04 create by typing: `core/spherical.py`, `render/vector_actor.py`, `ui/action_panel.py`, splitter layout | 2026-09-21 | `G1.3: create a vector by typing` | All four F-04 criteria pass, the limit message verified through the real panel offscreen. Vectors are drawn in this step, since F-04 cannot be judged without seeing the arrow. Palette and arrow proportions took three rounds of visual feedback. 36 new tests; suite now 103 passing. |
 | G1.4 | F-11 info panel (basic): `ui/info_panel.py`, `core/formatting.py` | 2026-09-21 | `G1.4: info panel listing every vector` | One card per vector rather than a table, because F-11 full needs about twelve values per vector in a 300px column. `core/formatting.py` built here rather than at G2.3, since showing components means the section 2.5 display rules apply now. 21 new tests; suite now 124 passing. |
 | G1.5 | F-10 delete and clear: `ui/dialogs.py`, delete buttons on cards | 2026-09-21 | `G1.5: delete a vector and clear the scene` | Delete is a button per card, so it acts on the vector being looked at and works before click-to-activate (G2.2). The Clear all prompt states the locked rule now, unconditionally, and defaults to Cancel. 8 new tests; suite now 132 passing. |
+| G1 review | `/review` over the whole group, five findings fixed | 2026-09-21 | `G1 review: refuse values that are not numbers, and fix the letter offset` | One critical: `float()` accepts "nan", "inf" and overflowing literals like "1e400", and a nan made the extent search walk the 1-2-5 sequence forever, freezing the window with no error. Refused in the panel now, with the scene sizing raising rather than hanging as a backstop. Also: the letter offset assumed a tail at the origin; the window is now the only thing that listens to the store; two stale comments. 14 new tests; suite now 146 passing. |
 
 ## Groups
 
 | Group | Name | Status |
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
-| G1 | Foundation | All steps built — group checkpoint pending |
+| G1 | Foundation | Complete — `/review` run, findings fixed |
 | G2 | Vector math and display | Not started |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
@@ -60,6 +61,8 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-20 | `test_config.py` asserts relationships between tunables, not their exact literals | The spec allows re-tuning after real hand testing. Tests repeating each literal would have to be edited on every legitimate change, which is the habit `code-standards.md` section 4 forbids. |
 | 2026-09-20 | The 3D view uses `multi_samples=2` + FXAA + line smoothing, rather than PyVista's default 8x MSAA | Measured on the target hardware (Intel HD Graphics 620) against a scene of thin lines: 8x MSAA 37 fps, this combination 60 fps. An earlier attempt at `multi_samples=0` + FXAA hit the same 60 fps but left the axes visibly jagged, so 2x was added back at no measurable cost. F-02 requires hand tracking not to slow the 3D view, so the headroom matters. |
 | 2026-09-20 | `app.py` has a `--check-model` option | The app had no camera code when packaging was first proven, so nothing loaded the model. This verifies the bundled model from the .exe without adding code the app does not otherwise need, and G6.2 reuses it on a machine with no Python and no internet. |
+| 2026-09-21 | Values that are not finite are refused in `parse_number`, and `extent_for` raises on them rather than searching | Found by `/review`. `float()` accepts "nan", "inf", "-inf" and overflow such as "1e400". A nan freezes the app outright, because every comparison against it is false and the extent search never terminates; an inf returns an infinite extent that then reaches VTK. Stopping them at the one place typed numbers enter satisfies F-04's rule about invalid input, and the check in `extent_for` makes any other route fail loudly instead of hanging. |
+| 2026-09-21 | The window is the only thing that subscribes to the store; panels expose a `refresh()` it calls | Found by `/review`: the action panel subscribed for itself while the info panel was driven by the window, leaving two patterns for one job just as G2 adds more panel pieces. One listener also means one order of events. |
 | 2026-09-21 | Delete is a button on each card, not a dropdown in the action panel | It acts on the vector the student is looking at, with no selection step, and it works before clicking a vector to make it active arrives in G2.2. The cost is that the info panel is no longer purely a display, which is why it now takes the store. |
 | 2026-09-21 | Deleting one vector asks for no confirmation; only Clear all does | F-10 requires a prompt for Clear all alone. One vector is quick to retype, and undo arrives at G2.8. |
 | 2026-09-21 | The Clear all prompt states the locked-vector rule now, before locking exists | F-10 requires the prompt to say it, and the wording will still be right when locking lands at G2.5. The alternative was leaving the criterion unmet for four steps. |
@@ -102,6 +105,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-20 | `app.py`'s `check_model()` constructs a MediaPipe `GestureRecognizer` directly, but `architecture.md` section 2 puts MediaPipe in the `tracking` layer. Nothing is inverted (`app` sits above `tracking`), and the duplication was removed by having the tests call `check_model()` rather than repeat the loading code. **Decide in G4**, when `tracking/tracker_thread.py` exists, whether `check_model()` should delegate to it. | Open — decide at G4 |
 | 2026-09-20 | 3D view performance is adequate but not generous on Intel HD Graphics 620: ~56 fps with one sphere, and the user describes rotation as "not super smooth but acceptable". Worth re-checking when the camera thread is added, because F-02 requires hand tracking not to slow the 3D view. | Open — monitor at G4 |
 | 2026-09-20 | ~~The ten vector colors have not been seen against anything.~~ Checked at G1.3 with all ten drawn at once; the palette was rebuilt twice and approved. | Closed — 2026-09-21 |
+| 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
 | 2026-09-21 | The Clear all prompt says "It cannot be undone", which stops being true when undo arrives at G2.8. Revise the sentence in that step; `tests/ui/test_dialogs.py` asserts it, so the test will not let it be forgotten silently. | Open — revise at G2.8 |
 | 2026-09-20 | The scene renders at ~50 fps at 1200x800 on Intel HD Graphics 620, against 60 fps for the single sphere in G0.5. Measured again at G1.3: ten vectors cost almost nothing (47.7 fps empty against 47.2 with all ten), so the cost is the scene itself, not what is drawn in it. Components and projections still have to go on top, and MediaPipe competes for the same chip at G4, where F-02 requires tracking not to slow the view. | Open — monitor at G2.6 and G4 |
 | 2026-09-20 | `git push` to the remote fails with HTTP 408 / "Stream error in the HTTP/2 framing layer". Diagnosed as git's HTTP/2 transport on this network; the fix is `git config http.version HTTP/1.1`, not yet applied. Commits are intact locally. | Open — pushing deferred by the user |

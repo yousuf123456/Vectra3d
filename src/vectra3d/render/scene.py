@@ -19,6 +19,7 @@ has to be recorded. Changing the grid spacing is not.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
 
 import numpy as np
@@ -75,7 +76,17 @@ def extent_for(max_abs: float) -> float:
 
     Never smaller than 10. A value exactly on the boundary fits, so a vector
     reaching exactly 10 does not make the world grow.
+
+    A value that is not finite is refused rather than searched for. There is
+    no extent that fits infinity, and every comparison against a nan is
+    false, so looking for one would walk the sequence forever and freeze the
+    window with nothing to show for it. Typed input is already turned away
+    in the panel; this is the backstop for values that arrive by any other
+    route, and it fails loudly instead of hanging.
     """
+    if not math.isfinite(max_abs):
+        raise ValueError(f"the scene cannot be sized to fit {max_abs}")
+
     for step in extent_steps():
         if step >= max_abs:
             return step

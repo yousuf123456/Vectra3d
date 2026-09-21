@@ -107,7 +107,7 @@ class VectraMainWindow(MainWindow):
         self.signal_close.connect(self.plotter.close)
 
     def _build_toolbar(self) -> None:
-        """The view controls. Vector actions get their own panel in G1.3."""
+        """The view controls. Everything that changes vectors is in the panels."""
         toolbar = QToolBar("View", self)
         toolbar.setMovable(False)
         reset = toolbar.addAction("Reset view")
@@ -116,6 +116,12 @@ class VectraMainWindow(MainWindow):
         self.addToolBar(toolbar)
 
     def _on_store_changed(self) -> None:
+        """Bring everything back in step after a change to the vectors.
+
+        This is the only place that listens to the store. The panels and the
+        3D view are told from here rather than subscribing for themselves,
+        so there is one order of events and one place to look for it.
+        """
         # The world is resized first, then the vectors are drawn into it, so
         # a vector that made the scene grow is never drawn against the old
         # grid even for one frame.
@@ -124,3 +130,4 @@ class VectraMainWindow(MainWindow):
         self.scene.update_for(vectors)
         self.vectors.draw(vectors, active)
         self.info_panel.refresh(vectors, active)
+        self.action_panel.refresh()

@@ -111,3 +111,42 @@ def test_phi_outside_one_turn_is_accepted_and_normalized() -> None:
 
 def test_an_empty_angle_field_says_which_one() -> None:
     assert parse_angles("2", "", "30").error == "Enter a value for θ."
+
+
+# --- Numbers that float() accepts but a vector cannot have ---
+
+
+@pytest.mark.parametrize("text", ["nan", "NaN", "-nan"])
+def test_nan_is_refused(text: str) -> None:
+    # float() parses these happily. Left alone, they reach the scene sizing,
+    # where every comparison against a nan is false and the search for a
+    # fitting extent never ends.
+    value, error = parse_number(text, "x")
+    assert value is None
+    assert "must be a number" in error
+
+
+@pytest.mark.parametrize("text", ["inf", "-inf", "Infinity", "1e400"])
+def test_infinity_is_refused(text: str) -> None:
+    # "1e400" is the one a student could type by accident: it is an ordinary
+    # looking number that overflows to infinity.
+    value, error = parse_number(text, "x")
+    assert value is None
+    assert "too large" in error
+
+
+def test_a_component_form_with_infinity_creates_nothing() -> None:
+    parsed = parse_components("1e400", "1", "1")
+    assert parsed.components is None
+    assert parsed.error is not None
+
+
+def test_an_angle_form_with_nan_creates_nothing() -> None:
+    parsed = parse_angles("nan", "60", "30")
+    assert parsed.components is None
+    assert parsed.error is not None
+
+
+def test_very_large_but_finite_numbers_are_still_allowed() -> None:
+    # The rule is about values that are not numbers, not about big vectors.
+    assert parse_components("1e300", "0", "0").components == (1e300, 0.0, 0.0)
