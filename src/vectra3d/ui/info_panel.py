@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QScrollArea,
     QToolButton,
@@ -37,7 +38,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vectra3d.core.formatting import format_number
+from vectra3d.core.formatting import (
+    UNDEFINED_NOTE,
+    format_angle,
+    format_number,
+    format_triple,
+)
+from vectra3d.core.vector_math import direction_angles, magnitude, unit_vector
 from vectra3d.state import actions, naming
 from vectra3d.state.models import Vector
 from vectra3d.state.store import VectorStore
@@ -47,18 +54,54 @@ EMPTY_TEXT = "No vectors yet — create one above."
 
 SWATCH_SIZE = 12
 AXIS_LABELS = ("x", "y", "z")
+ANGLE_LABELS = ("α", "β", "γ")
+
+LOCK_INDICATOR = "🔒"
 
 
-def card_values(vector: Vector) -> list[tuple[str, str]]:
-    """The labelled numbers shown on one card, in display form.
+def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """The labelled numbers on one card, in display form, as two columns.
+
+    The left column is what the vector *is* - its components and how long it
+    is. The right column is which way it points - its three direction angles
+    and its unit vector. Splitting them is what lets about a dozen values sit
+    in a 300px panel without a card becoming a column of twelve rows.
+
+    Everything undefined for the zero vector comes back as an em dash, which
+    `core/formatting.py` decides; the maths hands back `None` and this never
+    has to ask whether a vector is zero.
 
     Separate from the widgets so what a card says can be tested without
     opening a window.
     """
-    return [
-        (axis, format_number(value))
-        for axis, value in zip(AXIS_LABELS, vector.components)
+    components = vector.components
+    angles = direction_angles(components)
+    unit = unit_vector(components)
+
+    left = [
+        (axis, format_number(value)) for axis, value in zip(AXIS_LABELS, components)
     ]
+    left.append(("|v|", format_number(magnitude(components))))
+
+    right = [
+        (label, format_angle(None if angles is None else angles[index]))
+        for index, label in enumerate(ANGLE_LABELS)
+    ]
+    right.append(("û", format_triple(unit)))
+
+    return left, right
+
+
+def card_note(vector: Vector) -> str | None:
+    """The line explaining why a card has dashes on it, or None.
+
+    On the card rather than once for the panel, because a card is meant to
+    be read on its own and a panel-level note could not say which of ten
+    vectors it was about.
+    """
+    if magnitude(vector.components) == 0.0:
+        return UNDEFINED_NOTE
+    return None
 
 
 class InfoPanel(QWidget):
@@ -172,9 +215,16 @@ def _build_card(
         f" border-radius: {theme.CARD_RADIUS}px; background: {background}; }}"
     )
 
-    layout = QGridLayout(card)
-    layout.setContentsMargins(theme.GAP, theme.GAP_SMALL, theme.GAP, theme.GAP_SMALL)
-    layout.setHorizontalSpacing(theme.GAP_SMALL)
+    # The header and the numbers are laid out separately. They used to share
+    # one grid, which meant the stretch that pushes the delete button to the
+    # right edge was also stretching a column of the table below it, opening
+    # a gap between each angle and its value.
+    outer = QVBoxLayout(card)
+    outer.setContentsMargins(theme.GAP, theme.GAP_SMALL, theme.GAP, theme.GAP_SMALL)
+    outer.setSpacing(theme.GAP_SMALL)
+
+    header = QHBoxLayout()
+    header.setSpacing(theme.GAP_SMALL)
 
     # The tick box comes first, so the ticks form a column that can be read
     # down the panel at a glance when picking vectors for an operation.
@@ -182,17 +232,25 @@ def _build_card(
     tick.setChecked(is_selected)
     tick.setToolTip(f"Include vector {vector.name} in an operation")
     tick.clicked.connect(lambda: on_toggle(vector.name))
-    layout.addWidget(tick, 0, 0)
+    header.addWidget(tick)
 
     swatch = QLabel()
     swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
     swatch.setStyleSheet(f"background: {color}; border: none; border-radius: 3px;")
-    layout.addWidget(swatch, 0, 1)
+    header.addWidget(swatch)
 
     name = QLabel(vector.name)
     name.setStyleSheet("font-weight: 600; border: none;")
-    layout.addWidget(name, 0, 2)
-    layout.setColumnStretch(2, 1)
+    header.addWidget(name)
+    header.addStretch(1)
+
+    if vector.locked:
+        # Only ever drawn when locked, so an unlocked card spends no room
+        # saying so. Nothing can set this until F-09a arrives in G2.5.
+        lock = QLabel(LOCK_INDICATOR)
+        lock.setToolTip(f"Vector {vector.name} is locked")
+        lock.setStyleSheet("border: none;")
+        header.addWidget(lock)
 
     # The name is bound into the call rather than read back from the widget,
     # so a card can only ever delete the vector it is showing.
@@ -202,15 +260,59 @@ def _build_card(
     delete.setAutoRaise(True)
     delete.setStyleSheet(f"border: none; color: {theme.MUTED_TEXT};")
     delete.clicked.connect(lambda: on_delete(vector.name))
-    layout.addWidget(delete, 0, 3)
+    header.addWidget(delete)
 
-    for row, (axis, text) in enumerate(card_values(vector), start=1):
-        label = QLabel(axis)
-        label.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
-        value = QLabel(text)
-        value.setStyleSheet("border: none;")
-        value.setAlignment(Qt.AlignmentFlag.AlignRight)
-        layout.addWidget(label, row, 0, 1, 3)
-        layout.addWidget(value, row, 3)
+    outer.addLayout(header)
+
+    # Two pairs of columns: what the vector is on the left, which way it
+    # points on the right. Each value sits directly against its own name, and
+    # the space left over goes between the two pairs rather than inside them.
+    values = QGridLayout()
+    values.setHorizontalSpacing(theme.GAP_SMALL)
+    values.setVerticalSpacing(2)
+    values.setColumnStretch(2, 1)
+
+    left, right = card_values(vector)
+    for row, (name_text, value_text) in enumerate(left):
+        values.addWidget(_key(name_text), row, 0)
+        values.addWidget(_value(value_text), row, 1)
+    for row, (name_text, value_text) in enumerate(right):
+        values.addWidget(_key(name_text), row, 3)
+        # Left-aligned, unlike the left column. The unit vector is far wider
+        # than an angle, so right-aligning would size this column to the unit
+        # vector and leave each angle stranded away from its own name. The
+        # angles are all the same width, so they line up either way.
+        values.addWidget(_value(value_text, align_right=False), row, 4)
+
+    outer.addLayout(values)
+
+    note = card_note(vector)
+    if note is not None:
+        text = QLabel(note)
+        text.setWordWrap(True)
+        text.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
+        outer.addWidget(text)
 
     return card
+
+
+def _key(text: str) -> QLabel:
+    """The name of a value: the quieter half of the pair."""
+    label = QLabel(text)
+    label.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
+    return label
+
+
+def _value(text: str, *, align_right: bool = True) -> QLabel:
+    """The value itself.
+
+    Right-aligned by default, so numbers of different widths line up down a
+    column by their last digit. The right-hand column asks for left instead,
+    for the reason given where it is built.
+    """
+    label = QLabel(text)
+    label.setStyleSheet("border: none;")
+    label.setAlignment(
+        Qt.AlignmentFlag.AlignRight if align_right else Qt.AlignmentFlag.AlignLeft
+    )
+    return label

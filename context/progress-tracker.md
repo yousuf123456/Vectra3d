@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. G2.1 and G2.2 complete; a user-requested UI and rendering pass done on top
-- **Next step:** G2.3 — F-11 info panel (full): magnitude, α, β, γ, unit vector, lock status
+- **Current group:** G2 — Vector math and display. G2.1, G2.2 and G2.3 complete, plus a user-requested UI and rendering pass
+- **Next step:** G2.4 — F-08 edit exact values
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -27,6 +27,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2.1 | F-12 direction angles and unit vector: `core/vector_math.py` | 2026-09-21 | `G2.1: direction angles and unit vector` | Pure maths, no visible surface until G2.3. Magnitude built here too, since the angles divide by it. 42 new tests; suite now 188 passing. |
 | G2.2 | F-05a active vector and selection: click-to-activate, multi-select in `state/store.py` | 2026-09-21 | `G2.2: active vector and multi-select` | Ticks live in the store, not the panel, because the cards are rebuilt on every change. Pruned in `store.remove`/`clear`, so a reused letter cannot inherit a tick. No Qt tests: the panel has no logic of its own, and no existing test opens a window. 18 new tests; suite now 206 passing. |
 | UI pass | Theme, preset views, camera framing and label placement (user-requested, not a `build-plan.md` step) | 2026-09-21 | `G2 UI: theme, preset views and camera-aware labels` | Raised by the user after G2.2. Four complaints: dated look, hard to view from other angles, jagged lines, first-vector delay. Three addressed; sharpness deliberately deferred to after G5 at the user's choice. The delay was not reproduced. 24 new tests; suite now 244 passing. |
+| G2.3 | F-11 info panel (full): `core/formatting.py` angles and em dash, two-column cards, `locked` on `Vector` | 2026-09-21 | `G2.3: the full info panel` | Twelve values per card in a 300px column, measured at 182px of content. `locked` brought forward from G2.5 so F-11's lock criterion is genuinely met; nothing can set it yet. Card layout reworked after the user found the angles stranded from their values. 21 new tests; suite now 265 passing. |
 
 
 ## Groups
@@ -35,7 +36,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | In progress — G2.1, G2.2 done |
+| G2 | Vector math and display | In progress — G2.1, G2.2, G2.3 done |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -103,6 +104,11 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-21 | Preset views place the camera directly rather than using PyVista's `view_xy` and friends | Those helpers frame the scene's bounds, so the zoom would lurch as vectors were created and deleted, and they choose their own up direction. Placing it keeps all three views at one distance with z up, so switching between them feels like walking around a fixed object. Measured: each lands exactly down its axis at the same distance. |
 | 2026-09-21 | Axis numbers are placed per view, and a head-on axis is hidden | They were pushed off their axis in a fixed world direction, right for the default viewpoint and wrong for every other: from behind they landed across the vector, edge-on they piled up, and looking down an axis every number on it stacked on the origin. Now each axis uses `cross(axis, view)` - perpendicular to itself and in the plane of the screen - signed so numbers hang below the line, and an axis within 12° of the camera hides entirely. Recomputed on VTK's interaction event so it follows a drag. The geometry is a plain function, `label_offset_direction`, tested without a plotter. |
 | 2026-09-21 | The first-vector "warm-up" was built, measured, and removed | It drew a throwaway arrow at startup to absorb VTK's one-off setup. It never worked: the first version did not render, so nothing was actually warmed, and the version that did render measured 143.0 ms against 143.0 ms without it. The 62 ms it was built on was an off-screen measurement that does not reflect the real window. Deleted rather than kept, per `code-standards.md` section 1. |
+| 2026-09-21 | `locked` added to `Vector` at G2.3, reversing the G1.1 decision to leave it off | F-11 asks the info panel to show lock status at this step, and the criterion cannot honestly be ticked without the field. The card draws the indicator only when it is true, so until G2.5 gives it a toggle it costs nothing and shows nothing. G2.5 then adds only the toggle and the rules - ignoring edits, refusing deletion - rather than a field and its rules at once. |
+| 2026-09-21 | Cards show every value at once, in two pairs of columns | `project-overview.md` says the maths is always visible, and comparing two vectors means reading both at the same time, which an expand-only-the-active-card layout would prevent. This is the case the G1.4 cards-not-a-table decision was made for: measured at 182px of content against 282px available. |
+| 2026-09-21 | The unit vector is one bracketed value, not three rows | It is read as a direction rather than three separate quantities, and three more rows would undo what the two columns buy. |
+| 2026-09-21 | The card header is laid out apart from the table of numbers | Found by the user: the angles sat far from their values. Both shared one grid, so the stretch that pushes the delete button to the right edge was also stretching what had become the right-hand label column. The header is now its own row above the grid, and the slack sits in a spacer between the two column pairs rather than inside either. |
+| 2026-09-21 | The right column's values are left-aligned while the left column's are right-aligned | Not an oversight. The unit vector is about three times the width of an angle, so right-aligning that column would size it to the unit vector and strand every angle away from its own name - the same fault in miniature. Angles are all the same width and line up either way; the left column's values are not, so they keep their decimal points aligned. |
 
 
 ---

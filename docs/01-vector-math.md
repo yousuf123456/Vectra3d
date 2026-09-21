@@ -269,11 +269,16 @@ The app calculates with full precision and only rounds the numbers when showing 
 - The zero vector is handled explicitly: its magnitude is 0 and its direction values are shown as "—".
 
 ### How it's implemented
-*Built across steps G1.3 and G1.4. The em dash shown for values the zero vector does not have comes with the full info panel in G2.3.*
+*Built across steps G1.3, G1.4 and G2.3.*
 
 Nothing is rounded or snapped when a vector is stored. A vector typed as r = 1, θ = 90°, φ = 90° keeps an x of 6.1e-17 rather than a tidy zero, because that genuinely is cos(90°) in floating point. Rounding it at the point of storage would be a small lie that later calculations would inherit; rounding it only when it is shown gives "0.00" on screen with the true value still underneath.
 
 `core/formatting.py` is where that rounding happens, and it is the only place it happens. `format_number()` gives two decimals and turns anything that rounds to zero into "0.00", so a component like that 6.1e-17, or a −0.001, never appears as "−0.00". Values that survive rounding keep their sign as normal: −0.006 still shows as −0.01.
 
+`format_angle()` does the same for angles, adding the degree sign, and `format_triple()` writes the unit vector as one bracketed value. Both take the *absence* of a value as well as a value: the maths hands back nothing at all for a zero vector's direction, and these turn that into the em dash. Doing it here rather than in the panel means the rule lives in one place and no display code has to ask whether a vector happens to be zero.
+
+That the maths returns nothing, rather than a number meaning "nothing", is what makes this safe. A special numeric value would look like a real number to every piece of code it passed through and would surface much later somewhere unrelated — which is exactly what happened earlier in this project, when a typed "nan" reached the code that sizes the scene and locked the window up.
+
 ### Likely questions
+- **Why does the zero vector show "0.00" for its length but a dash for everything else?** Its length genuinely is zero, which is a number. Its direction does not exist at all — an arrow with no length points nowhere — so there is nothing to round and nothing to print.
 - **Why might a value show 4.99 when I expect 5?** Converting angles to components involves sin and cos, which produce tiny floating-point errors. Full precision is kept internally, so this only affects display, and rounding to 2 decimals usually hides it.

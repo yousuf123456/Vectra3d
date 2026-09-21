@@ -132,9 +132,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 - [x] Lists every vector with: name, color swatch, and components `(x, y, z)`.
 
 **Full — Group:** G2 · **Depends on:** F-11 basic, F-12
-- [ ] Adds magnitude, direction angles `(α, β, γ)`, unit vector, and lock status for every vector.
+- [x] Adds magnitude, direction angles `(α, β, γ)`, unit vector, and lock status for every vector.
 - [ ] Also lists the current temporary result, if any (from G3 onward).
-- [ ] Every value updates live whenever a vector changes (by panel now; by hand from G5 onward).
+- [x] Every value updates live whenever a vector changes (by panel now; by hand from G5 onward).
 
 ### F-12 Direction angles and unit vector
 **Group:** G2 · **Depends on:** F-04
