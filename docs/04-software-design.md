@@ -68,7 +68,7 @@ From bottom to top: `core` (pure vector math) → `state` (vectors, results, und
 
 A change event carries no detail: it simply says "something changed, read me again". With at most ten vectors there is nothing to gain from describing the change, and a listener that re-reads the store cannot drift out of step with it.
 
-**`ui` (G1.3–G1.5).** The window is a 3D view on the left and two panels on the right, in splitters so either can be given more room. `ui/action_panel.py` is where vectors are typed and where **Clear all** lives; `ui/info_panel.py` lists what exists, one card per vector; `ui/dialogs.py` holds the prompts that ask before something irreversible.
+**`ui` (G1.3–G1.5).** The window is a 3D view on the left and two panels on the right, with a splitter between the view and the panels so either can be given more room. `ui/action_panel.py` is where vectors are typed and where **Clear all** lives; `ui/info_panel.py` lists what exists, one card per vector; `ui/dialogs.py` holds the prompts that ask before something irreversible.
 
 Each card shows about a dozen values in a 300px column, which is why the panel is a list of cards rather than a table: a table would have to scroll sideways to reach them. A card is two pairs of columns — what the vector *is* on the left, its components and length; which way it *points* on the right, its three direction angles and unit vector. The header, with the tick box and the delete button, is laid out separately from that table. It used to share one grid with it, and the stretch that pushes the delete button to the right edge was stretching a column of the numbers underneath too, which left every angle stranded away from its value.
 
@@ -86,7 +86,19 @@ Two choices here came from measuring rather than from reading. PyVista's `add_po
 
 The ticks are kept in the store rather than in the checkboxes, which looks roundabout until you notice that the card list is rebuilt from scratch every time anything changes. A tick living in a checkbox would vanish the moment an unrelated vector was created. They are also cleared the instant a vector leaves the store, because letters are reused: without that, deleting a ticked B and creating a new one would hand the newcomer a tick it never earned.
 
-`state/actions.py` holds the changes themselves — creating, deleting, and clearing vectors, choosing the active one, and ticking and unticking. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
+**Editing a vector (G2.4).** Below **New vector** sits a second form, **Edit vector A**, which changes the active vector rather than making another one. Two separate boxes rather than one form with a mode: the same filled-in fields meaning two different things is how a student ends up creating an eleventh vector when they meant to change one.
+
+Both boxes are the same widget, `VectorForm`, so the toggle between components and magnitude + angles, and the rules for reading the fields, exist once. The edit fields are filled from the active vector at two decimals, matching the card beside them, and pressing **Apply** — or Enter in any field — replaces that vector's components. It keeps its letter, its colour, its tail and its lock state; only what it points at changes.
+
+The fields are refilled only when the vector they are showing actually changes, never on every store event. This matters more than it sounds: any change at all notifies every listener, so refilling unconditionally would wipe a half-typed number the moment an unrelated card was ticked. From G5 the same rule keeps a vector steered by hand from leaving stale numbers in the form that **Apply** would quietly put back.
+
+A locked vector is refused in two places — the form is greyed out, and `actions.edit_vector` refuses it regardless. The second is the one that counts: in G5 the gesture engine reaches the same function, and a rule kept only in the widget would have to be written again there.
+
+**Room for the vectors (G2.4 UI fix).** Two stacked forms took 498px of an 800px window, leaving room for two of the ten cards. Three fixes: each form's three fields share one row instead of three, the error line is hidden until there is an error, and either box can be folded away by clicking its title. Open, the list now gets three cards; fold one form and it gets four, both and it gets six.
+
+The panels used to share a splitter, which had to go for the folding to do anything. A splitter hands out the sizes it was last given and does not ask again when a child shrinks — so folding a form freed nothing, the box just shrank and left the gap behind as padding. A plain layout re-reads what each side needs, which gives the action panel exactly the height of its forms and the vector list everything that remains.
+
+`state/actions.py` holds the changes themselves — creating, editing, deleting, and clearing vectors, choosing the active one, and ticking and unticking. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
 
 ### Likely questions
 - **What does "single source of truth" solve?** If the 3D view and the panel each kept their own copy of the vectors, they could disagree. With one copy, they can't.

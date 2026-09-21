@@ -167,13 +167,17 @@ x = r sin θ cos φ,  y = r sin θ sin φ,  z = r cos θ
 When the vector lies on the z axis (θ = 0° or 180°), φ is undefined and shown as "—".
 
 ### How it's implemented
-*The conversion into components was built in step G1.3. Going the other way, showing an existing vector's r, θ and φ, comes with the full info panel in G2.3.*
+*The conversion into components was built in step G1.3; the inverse, reading an existing vector's r, θ and φ, in step G2.4.*
 
 `src/vectra3d/core/spherical.py` holds `to_components(r, θ, φ)`, which is the three formulas above and nothing else. `normalize_phi()` brings any φ into 0–360° first, so typing 370 gives the same vector as 10, and −90 the same as 270.
 
 The two angles are treated differently on purpose. **φ is normalized silently**, because every value of it means something once wrapped into a turn. **θ is rejected outside 0–180°**, because outside that range it is not defined at all — the form says so rather than quietly wrapping it and creating a vector pointing somewhere the student did not ask for.
 
 Typing is checked when **Create** is pressed rather than keystroke by keystroke, so a student who writes `3,5` is told to use a dot instead of having the comma silently refused. Those checks are plain functions in `ui/action_panel.py`, separate from the widgets, which is how they are tested without opening a window.
+
+`to_spherical(x, y, z)` (G2.4) goes the other way, and is what fills the **Edit vector** form when it shows an existing vector in "magnitude + angles" mode. It does not compute θ itself: the angle from the +z axis *is* the direction angle γ from section 4, so it asks `vector_math.direction_angles` for it. That is not only tidiness — that function already clamps the ratio before `arccos` sees it, and without the clamp a vector lying exactly on the z axis can crash the app (section 4 explains why).
+
+φ raises a small problem the info panel does not have. On the z axis it is undefined, and a card can simply print "—"; an input box cannot, because whatever it holds has to be read back when **Apply** is pressed. So the box shows `0.00` and a line underneath says *"φ has no effect while the vector points along z."* That is honest: section 2.3 of the spec treats a typed φ as irrelevant there, so any value would do, and zero is the least surprising one.
 
 ### Likely questions
 - **Why does my textbook use different symbols?** Mathematics courses often swap θ and φ. The app uses the physics convention, which is also the international standard (ISO 80000-2).

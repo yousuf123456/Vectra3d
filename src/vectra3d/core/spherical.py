@@ -15,7 +15,11 @@ phi in that case; it simply has no effect on the answer.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
+
+from vectra3d.core.vector_math import direction_angles, magnitude
 
 THETA_MIN = 0.0
 THETA_MAX = 180.0
@@ -51,3 +55,35 @@ def to_components(
         float(r * np.sin(theta) * np.sin(phi)),
         float(r * np.cos(theta)),
     )
+
+
+def to_spherical(components: tuple[float, float, float]) -> tuple[float, float, float] | None:
+    """Convert (x, y, z) back into magnitude and angles: the inverse of `to_components`.
+
+        r     = sqrt(x^2 + y^2 + z^2)
+        theta = arccos(z / r)
+        phi   = atan2(y, x), brought into 0 to 360 degrees
+
+    Returns `None` for the zero vector, which has no direction at all, the
+    same answer `vector_math.direction_angles` gives and for the same reason:
+    a caller has to deal with it before it can display anything.
+
+    Theta is not computed here. The angle from the +z axis *is* the direction
+    angle gamma, so it comes from `vector_math.direction_angles`, which
+    already clamps the ratio before `acos` sees it - without that, a vector
+    lying on the z axis can raise `ValueError` one floating-point step outside
+    the domain.
+
+    Along the z axis phi is undefined, since there is no direction left in the
+    XY plane to measure. `atan2(0.0, 0.0)` is defined as 0.0 rather than an
+    error, so that is what comes back; section 2.3 says a typed phi is
+    irrelevant there, and the panel says so next to the field.
+    """
+    r = magnitude(components)
+    angles = direction_angles(components)
+    if angles is None:
+        return None
+
+    x, y, _ = components
+    phi = normalize_phi(math.degrees(math.atan2(y, x)))
+    return (r, angles[2], phi)

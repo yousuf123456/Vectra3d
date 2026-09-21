@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from pyvistaqt import MainWindow, QtInteractor
-from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout, QWidget
 
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
@@ -83,14 +83,22 @@ class VectraMainWindow(MainWindow):
         # The 3D view on the left, the panels on the right. A splitter lets
         # the student widen either side but never lose the panel, which
         # matters because everything must stay doable without gestures.
-        # The panels share the right column, split so the list of vectors can
-        # be given more room as they accumulate.
+        #
+        # The two panels share the right column through a plain layout rather
+        # than a second splitter. A splitter hands out the sizes it was last
+        # given and does not ask again when a child shrinks, so folding a form
+        # away freed nothing: the box shrank and left the gap behind as
+        # padding. A layout re-reads what each side needs, so the action panel
+        # takes exactly the height of its forms and the vector list takes
+        # everything that is left - which is all the old splitter handle was
+        # ever dragged to do.
         self.action_panel = ActionPanel(self._store)
         self.info_panel = InfoPanel(self._store)
-        panels = QSplitter(Qt.Orientation.Vertical, self)
-        panels.addWidget(self.action_panel)
-        panels.addWidget(self.info_panel)
-        panels.setStretchFactor(1, 1)
+        panels = QWidget(self)
+        panels_layout = QVBoxLayout(panels)
+        panels_layout.setContentsMargins(0, 0, 0, 0)
+        panels_layout.addWidget(self.action_panel)
+        panels_layout.addWidget(self.info_panel, 1)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.addWidget(frame)

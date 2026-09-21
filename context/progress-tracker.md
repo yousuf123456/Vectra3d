@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. G2.1, G2.2 and G2.3 complete, plus a user-requested UI and rendering pass
-- **Next step:** G2.4 — F-08 edit exact values
+- **Current group:** G2 — Vector math and display. G2.1 to G2.4 complete, plus two user-requested UI passes
+- **Next step:** G2.5 — F-09a lock / unlock (panel)
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -29,6 +29,9 @@ Updated after every approved step. Read this at the start of every session to se
 | UI pass | Theme, preset views, camera framing and label placement (user-requested, not a `build-plan.md` step) | 2026-09-21 | `G2 UI: theme, preset views and camera-aware labels` | Raised by the user after G2.2. Four complaints: dated look, hard to view from other angles, jagged lines, first-vector delay. Three addressed; sharpness deliberately deferred to after G5 at the user's choice. The delay was not reproduced. 24 new tests; suite now 244 passing. |
 | G2.3 | F-11 info panel (full): `core/formatting.py` angles and em dash, two-column cards, `locked` on `Vector` | 2026-09-21 | `G2.3: the full info panel` | Twelve values per card in a 300px column, measured at 182px of content. `locked` brought forward from G2.5 so F-11's lock criterion is genuinely met; nothing can set it yet. Card layout reworked after the user found the angles stranded from their values. 21 new tests; suite now 265 passing. |
 
+| G2.4 | F-08 edit exact values: `core/spherical.py` `to_spherical`, `actions.edit_vector`, the Edit box in `ui/action_panel.py` | 2026-09-21 | `G2.4: edit a vector's exact values` | All three F-08 criteria pass. A second box rather than a mode on the create form, so filled fields never mean two things. `VectorForm` extracted so both boxes share one toggle and one set of parse rules. The locked refusal is in the action as well as the greyed form, because G5's gestures reach the same function. 53 new tests; suite now 318 passing. |
+| Panel space | One-row fields, foldable boxes, layout instead of the panel splitter (user-requested, not a `build-plan.md` step) | 2026-09-21 | `G2.4: edit a vector's exact values` (same commit as G2.4; the two changes touch the same files) | Raised by the user at the G2.4 review: the two forms took 498px of an 800px window, leaving two of ten cards visible. Now 424px with both open (3 cards), 292 with one folded (4), 160 with both (6). The panel splitter had to go: it hands out the sizes it was last given, so folding freed nothing. Radios deliberately left stacked - measured, and only "x, y, z / r, θ, φ" fits one row, which would erode F-04's wording. |
+
 
 ## Groups
 
@@ -36,7 +39,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | In progress — G2.1, G2.2, G2.3 done |
+| G2 | Vector math and display | In progress — G2.1 to G2.4 done |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -110,6 +113,17 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-21 | The card header is laid out apart from the table of numbers | Found by the user: the angles sat far from their values. Both shared one grid, so the stretch that pushes the delete button to the right edge was also stretching what had become the right-hand label column. The header is now its own row above the grid, and the slack sits in a spacer between the two column pairs rather than inside either. |
 | 2026-09-21 | The right column's values are left-aligned while the left column's are right-aligned | Not an oversight. The unit vector is about three times the width of an angle, so right-aligning that column would size it to the unit vector and strand every angle away from its own name - the same fault in miniature. Angles are all the same width and line up either way; the left column's values are not, so they keep their decimal points aligned. |
 
+| 2026-09-21 | The edit form commits on **Apply** or Enter, not on every keystroke | F-08 says changes apply "immediately", which is read as "the instant Apply is pressed, with no confirmation step" rather than per character. Per-keystroke editing makes every intermediate state a real change - typing "-3" moves the vector twice - and would give G2.8 one undo step per character. It also keeps G1.3's rule that a half-typed `-` or `3.` is never an error. |
+| 2026-09-21 | Editing lives in its own box, not as a mode on the create form | The same filled-in fields meaning two different things depending on a control the student may not be looking at is how an eleventh vector gets created by someone who meant to change one. The cost, a second set of fields, was paid off by extracting `VectorForm`, so the toggle and the parse dispatch exist once. |
+| 2026-09-21 | The edit fields hold two decimals, the same as the info panel, and so Apply can round the stored value | The form sits beside a card showing the same vector, and a field reading `6.123233995736766e-17` says nothing a student can use. This is the one place displayed text feeds back into the maths, against `interaction-spec.md` section 2.2; what it rounds away is dust from the angle conversion, never a value anyone typed. Raised with the user before building and accepted. |
+| 2026-09-21 | φ shows `0.00` with a note on the z axis, rather than the em dash the info panel uses | Section 2.3 calls φ undefined there and section 2.5 says to print an em dash, but an em dash cannot be read back when Apply is pressed, and an empty field would make the form arrive already failing its own validation. A typed φ is genuinely irrelevant on the z axis, so zero changes nothing. |
+| 2026-09-21 | The edit fields are refilled only when the vector they show has changed | Every action notifies every listener, so refilling on each event would wipe half-typed text whenever an unrelated card was ticked. The form remembers the name and components it was filled from and compares. Refilling only on a change of *letter* was rejected: from G5 a hand-steered vector would leave stale numbers that Apply would silently put back. |
+| 2026-09-21 | `to_spherical` takes θ from `direction_angles` instead of computing it | θ measured from +z and the direction angle γ are the same angle. Reusing it avoids a second copy of the clamp that stops `acos` raising `ValueError` for a vector lying on an axis - the exact duplication the G2.1 clamp decision warned about. |
+| 2026-09-21 | A locked vector is refused in `actions.edit_vector`, not only by the greyed form | F-08 asks only for the disabled form, but `architecture.md` section 2 puts every change through the actions, and in G5 the gesture engine calls this same function. A rule kept in the widget would have to be written a second time there, and could be forgotten. |
+| 2026-09-21 | The vertical splitter between the two panels was replaced by a layout | Necessary for the foldable boxes, not cosmetic: a `QSplitter` hands out the sizes it was last given and never re-reads a child's needs, so folding a form freed nothing - the box shrank and left the gap as padding. A layout gives the action panel the height of its forms and the vector list all the rest, which is the only thing the splitter handle was ever dragged to do. |
+| 2026-09-21 | The mode radios stay stacked, against the compacting done everywhere else | Measured: two radios fit one 300px row only as "x, y, z" and "r, θ, φ" (230px against 260px usable); every wording that keeps "Components (x, y, z)" and "Magnitude + angles" needs 326-518px. F-04's criterion names those two modes, and shortening them to buy 24px would have quietly weakened a ticked criterion. |
+| 2026-09-21 | Conversion between the two modes on toggling was **not** built | A G1.3 comment promised it for G2.4, but F-08's criteria do not ask for it and it was not in the approved plan. In the edit box it costs nothing, because both sets of fields are filled from the vector whenever it changes. The stale comment was corrected rather than left as a false promise. Open: offered to the user, not yet chosen. |
+
 
 ---
 
@@ -134,6 +148,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-20 | 3D view performance is adequate but not generous on Intel HD Graphics 620: ~56 fps with one sphere, and the user describes rotation as "not super smooth but acceptable". Worth re-checking when the camera thread is added, because F-02 requires hand tracking not to slow the 3D view. | Open — monitor at G4 |
 | 2026-09-20 | ~~The ten vector colors have not been seen against anything.~~ Checked at G1.3 with all ten drawn at once; the palette was rebuilt twice and approved. | Closed — 2026-09-21 |
 | 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
+| 2026-09-21 | Conversion between components and magnitude+angles when the toggle is switched. A G1.3 comment promised this for G2.4; it is not in F-08's criteria and was not built. Harmless in the edit box, where both field sets are refilled from the vector; visible in the create box, where typing in one mode and switching shows the other mode's old text. | Open — offered to the user at the G2.4 review, not chosen |
 | 2026-09-21 | The Clear all prompt says "It cannot be undone", which stops being true when undo arrives at G2.8. Revise the sentence in that step; `tests/ui/test_dialogs.py` asserts it, so the test will not let it be forgotten silently. | Open — revise at G2.8 |
 | 2026-09-20 | The scene renders at ~50 fps at 1200x800 on Intel HD Graphics 620, against 60 fps for the single sphere in G0.5. Measured again at G1.3: ten vectors cost almost nothing (47.7 fps empty against 47.2 with all ten), so the cost is the scene itself, not what is drawn in it. Components and projections still have to go on top, and MediaPipe competes for the same chip at G4, where F-02 requires tracking not to slow the view. | Open — monitor at G2.6 and G4 |
 | 2026-09-20 | `git push` to the remote fails with HTTP 408 / "Stream error in the HTTP/2 framing layer". Diagnosed as git's HTTP/2 transport on this network; the fix is `git config http.version HTTP/1.1`, not yet applied. Commits are intact locally. | Open — pushing deferred by the user |

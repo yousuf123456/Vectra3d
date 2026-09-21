@@ -108,9 +108,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-08 Edit exact values
 **Group:** G2 · **Depends on:** F-04, F-05a
-- [ ] The action panel can edit the active vector using the same two-mode toggle as F-04.
-- [ ] Changes apply immediately and update the 3D view and info panel.
-- [ ] Locked vectors cannot be edited; the form is disabled for them.
+- [x] The action panel can edit the active vector using the same two-mode toggle as F-04.
+- [x] Changes apply immediately and update the 3D view and info panel.
+- [x] Locked vectors cannot be edited; the form is disabled for them.
 
 ### F-09 Lock / unlock
 **F-09a (panel) — Group:** G2 · **Depends on:** F-05a

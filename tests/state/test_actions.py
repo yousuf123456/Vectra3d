@@ -145,6 +145,87 @@ def test_an_absent_vector_cannot_be_made_active() -> None:
         actions.set_active(store, "B")
 
 
+# --- Editing ---
+
+
+def test_editing_replaces_the_components() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    assert actions.edit_vector(store, "A", (-4.0, 0.5, 7.0)) is True
+    assert store.get("A").components == (-4.0, 0.5, 7.0)
+
+
+def test_an_edited_vector_keeps_its_name_tail_and_lock() -> None:
+    store = VectorStore()
+    store.put(Vector(name="B", components=(1.0, 0.0, 0.0), tail=ORIGIN))
+    before = store.get("B")
+
+    actions.edit_vector(store, "B", (0.0, 5.0, 0.0))
+
+    after = store.get("B")
+    assert (after.name, after.tail, after.locked) == (
+        before.name,
+        before.tail,
+        before.locked,
+    )
+
+
+def test_editing_does_not_add_or_remove_vectors() -> None:
+    store = VectorStore()
+    fill(store, 3)
+
+    actions.edit_vector(store, "B", (0.0, 0.0, 9.0))
+
+    assert store.names == ("A", "B", "C")
+
+
+def test_a_locked_vector_refuses_to_be_edited() -> None:
+    store = VectorStore()
+    store.put(Vector(name="A", components=(1.0, 0.0, 0.0), locked=True))
+
+    assert actions.edit_vector(store, "A", (9.0, 9.0, 9.0)) is False
+    assert store.get("A").components == (1.0, 0.0, 0.0)
+
+
+def test_an_absent_vector_cannot_be_edited() -> None:
+    store = VectorStore()
+
+    assert actions.edit_vector(store, "A", (1.0, 1.0, 1.0)) is False
+
+
+def test_editing_leaves_the_active_vector_and_the_ticks_alone() -> None:
+    store = VectorStore()
+    fill(store, 3)
+    actions.set_active(store, "C")
+    actions.toggle_selected(store, "A")
+
+    actions.edit_vector(store, "A", (0.0, 0.0, 1.0))
+
+    assert store.active_name == "C"
+    assert store.selected == ("A",)
+
+
+def test_a_refused_edit_notifies_nothing() -> None:
+    store = VectorStore()
+    store.put(Vector(name="A", components=(1.0, 0.0, 0.0), locked=True))
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.edit_vector(store, "A", (2.0, 0.0, 0.0))
+
+    assert calls == []
+
+
+def test_a_vector_can_be_edited_to_zero() -> None:
+    # The store takes it; the typed form is what refuses a zero vector (F-04),
+    # because an operation result in G3 can legitimately be zero.
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+
+    assert actions.edit_vector(store, "A", (0.0, 0.0, 0.0)) is True
+
+
 # --- Change events ---
 
 
@@ -155,6 +236,7 @@ def test_an_absent_vector_cannot_be_made_active() -> None:
         lambda s: actions.delete_vector(s, "A"),
         lambda s: actions.clear_all(s),
         lambda s: actions.set_active(s, "A"),
+        lambda s: actions.edit_vector(s, "A", (9.0, 9.0, 9.0)),
     ],
 )
 def test_every_action_notifies_once(act) -> None:

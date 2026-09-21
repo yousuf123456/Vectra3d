@@ -1,8 +1,9 @@
-"""Reading and checking what is typed into the create form (F-04).
+"""The rules behind the action panel: creating (F-04) and editing (F-08).
 
-Only the parsing is tested here, not the widgets: these are the rules that
-decide whether a vector is created, and they are what F-04's criteria are
-about. No window is opened.
+Only the rules are tested here, not the widgets: what a typed form means,
+what text the edit fields should hold for a given vector, and when those
+fields may be rewritten. Those are what the criteria are about. No window is
+opened; the widgets are checked by hand, following the step's report.
 """
 
 from __future__ import annotations
@@ -11,7 +12,16 @@ import math
 
 import pytest
 
-from vectra3d.ui.action_panel import parse_angles, parse_components, parse_number
+from vectra3d.state.models import Vector
+from vectra3d.ui.action_panel import (
+    angle_fields,
+    component_fields,
+    parse_angles,
+    parse_components,
+    parse_number,
+    phi_is_undefined,
+    should_refill,
+)
 
 
 # --- One field at a time ---
@@ -150,3 +160,104 @@ def test_an_angle_form_with_nan_creates_nothing() -> None:
 def test_very_large_but_finite_numbers_are_still_allowed() -> None:
     # The rule is about values that are not numbers, not about big vectors.
     assert parse_components("1e300", "0", "0").components == (1e300, 0.0, 0.0)
+
+
+# --- What the edit fields show (F-08) ---
+
+
+def test_components_fill_the_fields_at_two_decimals() -> None:
+    assert component_fields((1.0, -2.5, 3.14159)) == ("1.00", "-2.50", "3.14")
+
+
+def test_a_field_never_shows_negative_zero() -> None:
+    # Section 2.5, the same rule the info panel follows.
+    assert component_fields((-0.001, 0.0, 1.0))[0] == "0.00"
+
+
+def test_angles_fill_the_fields_at_two_decimals() -> None:
+    # (0, 4, 3): r = 5, theta = arccos(3/5) = 53.13 degrees, phi = 90.
+    assert angle_fields((0.0, 4.0, 3.0)) == ("5.00", "53.13", "90.00")
+
+
+def test_a_vector_on_the_z_axis_fills_phi_with_zero() -> None:
+    # Undefined there, but the field has to hold something Apply can read.
+    assert angle_fields((0.0, 0.0, 6.0)) == ("6.00", "0.00", "0.00")
+
+
+def test_the_zero_vector_fills_every_angle_field_with_zero() -> None:
+    assert angle_fields((0.0, 0.0, 0.0)) == ("0.00", "0.00", "0.00")
+
+
+def test_the_angle_fields_can_be_read_back_by_the_parser() -> None:
+    # The round trip the student makes without noticing: the fields are
+    # filled from a vector, and Apply parses that same text back.
+    components = (1.0, -2.0, 2.0)
+    parsed = parse_angles(*angle_fields(components))
+    assert parsed.error is None
+    assert parsed.components == pytest.approx(components, abs=5e-3)
+
+
+def test_the_component_fields_can_be_read_back_by_the_parser() -> None:
+    parsed = parse_components(*component_fields((3.0, 0.0, -4.0)))
+    assert parsed.components == (3.0, 0.0, -4.0)
+
+
+@pytest.mark.parametrize(
+    ("components", "undefined"),
+    [
+        ((0.0, 0.0, 5.0), True),  # up the z axis
+        ((0.0, 0.0, -5.0), True),  # down it
+        ((1.0, 0.0, 5.0), False),  # leaning, so phi means something
+        ((0.0, 1.0, 5.0), False),
+        ((1.0, 1.0, 0.0), False),  # flat in the XY plane
+    ],
+)
+def test_phi_is_undefined_only_along_the_z_axis(
+    components: tuple[float, float, float], undefined: bool
+) -> None:
+    assert phi_is_undefined(components) is undefined
+
+
+# --- When the edit fields are rewritten (F-08) ---
+
+
+def vector(name: str, components: tuple[float, float, float]) -> Vector:
+    return Vector(name=name, components=components)
+
+
+def test_the_fields_are_filled_when_nothing_has_been_shown_yet() -> None:
+    assert should_refill(None, vector("A", (1.0, 0.0, 0.0))) is True
+
+
+def test_the_fields_are_left_alone_when_the_same_vector_is_unchanged() -> None:
+    # This is the case that protects half-typed text: ticking another card
+    # or deleting a different vector notifies, but changes nothing here.
+    shown = ("A", (1.0, 0.0, 0.0))
+    assert should_refill(shown, vector("A", (1.0, 0.0, 0.0))) is False
+
+
+def test_the_fields_are_refilled_when_another_vector_becomes_active() -> None:
+    shown = ("A", (1.0, 0.0, 0.0))
+    assert should_refill(shown, vector("B", (1.0, 0.0, 0.0))) is True
+
+
+def test_the_fields_are_refilled_when_the_same_vector_moved() -> None:
+    # What matters from G5: a vector steered by hand must not leave stale
+    # numbers here for Apply to put back.
+    shown = ("A", (1.0, 0.0, 0.0))
+    assert should_refill(shown, vector("A", (1.0, 2.0, 0.0))) is True
+
+
+def test_the_fields_are_cleared_when_the_last_vector_goes() -> None:
+    assert should_refill(("A", (1.0, 0.0, 0.0)), None) is True
+
+
+def test_nothing_happens_while_the_scene_stays_empty() -> None:
+    assert should_refill(None, None) is False
+
+
+def test_a_reused_letter_with_different_components_refills() -> None:
+    # A is deleted and a new vector takes the letter back; same name, and
+    # the fields must not keep showing the vector that is gone.
+    shown = ("A", (1.0, 0.0, 0.0))
+    assert should_refill(shown, vector("A", (0.0, 0.0, 9.0))) is True

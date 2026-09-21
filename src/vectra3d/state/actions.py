@@ -12,6 +12,8 @@ once, so the info panel and the 3D view never redraw a half-finished change.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from vectra3d.state import naming
 from vectra3d.state.models import ORIGIN, Point, Vector
 from vectra3d.state.store import VectorStore
@@ -39,6 +41,31 @@ def create_vector(
     store.set_active(name)
     store.notify()
     return vector
+
+
+def edit_vector(store: VectorStore, name: str, components: Point) -> bool:
+    """Give an existing vector new components (F-08).
+
+    The vector keeps its name, and so its colour, and keeps its tail and its
+    lock state. Only what it points at changes. Returns False if there is no
+    such vector, or if it is locked.
+
+    A locked vector is refused here rather than only in the panel, which
+    disables the form for one. F-09a says a locked vector ignores all edits,
+    and in G5 the gesture engine reaches this same function through its
+    intents; a rule kept in the widget would have to be written a second time
+    there, and could be forgotten.
+
+    Which vector is active and which are ticked are left alone: editing a
+    vector says nothing about what the student wants to do with it next.
+    """
+    vector = store.get(name)
+    if vector is None or vector.locked:
+        return False
+
+    store.put(replace(vector, components=components))
+    store.notify()
+    return True
 
 
 def delete_vector(store: VectorStore, name: str) -> bool:
