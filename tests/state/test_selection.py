@@ -153,3 +153,136 @@ class TestTheSelectionCannotBeChangedFromOutside:
         # action, which is what `architecture.md` section 2 forbids.
         actions.toggle_selected(store, "A")
         assert isinstance(store.selected, tuple)
+
+
+# --- Showing components (F-13a) ---
+
+
+def test_components_start_hidden() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    assert store.is_components_shown("A") is False
+    assert store.components_shown is None
+
+
+def test_components_can_be_shown_and_hidden() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    assert actions.toggle_components(store, "A") is True
+    assert store.components_shown == "A"
+    assert actions.toggle_components(store, "A") is False
+    assert store.components_shown is None
+
+
+def test_only_one_vector_shows_its_components_at_a_time() -> None:
+    # Every vector resolves onto the same three axes, so two at once means
+    # two arrows of the same colour on the same line. Switching one on
+    # switches off whichever had it.
+    store = VectorStore()
+    for _ in range(3):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+    actions.toggle_components(store, "C")
+
+    assert store.components_shown == "C"
+    assert store.is_components_shown("A") is False
+
+
+def test_switching_the_shown_vector_off_leaves_nothing_shown() -> None:
+    # Rather than falling back to whichever had it before.
+    store = VectorStore()
+    for _ in range(2):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+    actions.toggle_components(store, "B")
+    actions.toggle_components(store, "B")
+
+    assert store.components_shown is None
+
+
+def test_hiding_a_vector_that_is_not_showing_changes_nothing() -> None:
+    store = VectorStore()
+    for _ in range(2):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+
+    # B was already off; turning it "off" must not take A's overlay away.
+    store.set_components_shown("B", False)
+
+    assert store.components_shown == "A"
+
+
+def test_showing_components_is_independent_of_ticking_and_activating() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.create_vector(store, (0.0, 1.0, 0.0))
+    actions.set_active(store, "A")
+
+    actions.toggle_components(store, "B")
+
+    assert store.active_name == "A"
+    assert store.selected == ()
+    assert store.components_shown == "B"
+
+
+def test_a_locked_vector_can_still_show_its_components() -> None:
+    # F-09a: locking stops it changing, not it being looked at.
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_locked(store, "A")
+
+    assert actions.toggle_components(store, "A") is True
+
+
+def test_an_absent_vector_cannot_show_components() -> None:
+    store = VectorStore()
+    with pytest.raises(KeyError):
+        actions.toggle_components(store, "A")
+
+
+def test_deleting_forgets_that_components_were_shown() -> None:
+    # Letters are reused, so a stale name would hand the next vector to take
+    # that letter an overlay it never asked for.
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+
+    actions.delete_vector(store, "A")
+    actions.create_vector(store, (9.0, 9.0, 9.0))
+
+    assert store.names == ("A",)
+    assert store.is_components_shown("A") is False
+
+
+def test_clearing_forgets_the_shown_component() -> None:
+    store = VectorStore()
+    for _ in range(3):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "B")
+
+    actions.clear_all(store)
+
+    assert store.components_shown is None
+
+
+def test_deleting_another_vector_leaves_the_overlay_alone() -> None:
+    store = VectorStore()
+    for _ in range(3):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "C")
+
+    actions.delete_vector(store, "A")
+
+    assert store.components_shown == "C"
+
+
+def test_toggling_components_notifies_once() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.toggle_components(store, "A")
+
+    assert len(calls) == 1

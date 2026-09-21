@@ -75,6 +75,17 @@ UNLOCKED_TEXT = "Lock"
 # this was trimmed.
 HEADER_BUTTON_STYLE = "border: none; padding: 0px 2px; margin: 0px;"
 
+# The display toggles sit on their own row under the numbers rather than in
+# the header, which already carries five controls in a 300px column. The row
+# costs about 24px per card - roughly three quarters of a card across a full
+# list - and buys the thing the action panel could not: which vectors have an
+# overlay on is a column that can be read down without activating each one.
+# G2.7's projections toggle joins this row.
+#
+# Only one vector shows its components at a time, so switching it on here
+# switches it off wherever it was; `VectorStore` explains why.
+COMPONENTS_TEXT = "Components"
+
 
 def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """The labelled numbers on one card, in display form, as two columns.
@@ -142,6 +153,25 @@ def delete_tooltip(name: str, locked: bool) -> str:
     return f"Delete vector {name}"
 
 
+def toggle_style(on: bool) -> str:
+    """How a display toggle looks in each state.
+
+    On is the accent colour and bold, the same treatment "Locked" uses, so
+    one glance down the list answers "what is switched on here?" whatever the
+    switch is. Off is muted, an offer rather than a state.
+    """
+    if on:
+        return f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER}; font-weight: 600;"
+    return f"{HEADER_BUTTON_STYLE} color: {theme.MUTED_TEXT};"
+
+
+def components_tooltip(name: str, shown: bool) -> str:
+    """What the components toggle offers to do next."""
+    if shown:
+        return f"Hide vector {name}'s x, y and z parts"
+    return f"Show vector {name} resolved into its x, y and z parts"
+
+
 def card_note(vector: Vector) -> str | None:
     """The line explaining why a card has dashes on it, or None.
 
@@ -186,6 +216,7 @@ class InfoPanel(QWidget):
         vectors: Sequence[Vector],
         active_name: str | None,
         selected: Sequence[str] = (),
+        components_shown: str | None = None,
     ) -> None:
         """Rebuild the list to match the store."""
         while self._cards_layout.count():
@@ -212,6 +243,8 @@ class InfoPanel(QWidget):
                     on_activate=self._activate,
                     on_toggle=self._toggle,
                     on_toggle_lock=self._toggle_lock,
+                    on_toggle_components=self._toggle_components,
+                    shows_components=vector.name == components_shown,
                 )
             )
 
@@ -226,6 +259,9 @@ class InfoPanel(QWidget):
 
     def _toggle_lock(self, name: str) -> None:
         actions.toggle_locked(self._store, name)
+
+    def _toggle_components(self, name: str) -> None:
+        actions.toggle_components(self._store, name)
 
 
 class _Card(QFrame):
@@ -258,6 +294,8 @@ def _build_card(
     on_activate: Callable[[str], None],
     on_toggle: Callable[[str], None],
     on_toggle_lock: Callable[[str], None],
+    on_toggle_components: Callable[[str], None],
+    shows_components: bool,
 ) -> QWidget:
     """One vector's card: a tick box, its name and colour, then its components."""
     color = naming.color_for(vector.name)
@@ -308,11 +346,7 @@ def _build_card(
     # "Lock" is muted and light: an offer, not a state worth noticing.
     # "Locked" is the card's accent colour and bold, because it is the
     # reason the card's other controls have stopped working.
-    lock.setStyleSheet(
-        f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER}; font-weight: 600;"
-        if vector.locked
-        else f"{HEADER_BUTTON_STYLE} color: {theme.MUTED_TEXT};"
-    )
+    lock.setStyleSheet(toggle_style(vector.locked))
     lock.clicked.connect(lambda: on_toggle_lock(vector.name))
     header.addWidget(lock)
 
@@ -350,6 +384,23 @@ def _build_card(
         values.addWidget(_value(value_text, align_right=False), row, 4)
 
     outer.addLayout(values)
+
+    # The display toggles. A row of its own, so the header stays readable and
+    # so G2.7 can add projections beside this without redesigning the card.
+    toggles = QHBoxLayout()
+    toggles.setContentsMargins(0, 0, 0, 0)
+    toggles.setSpacing(theme.GAP_SMALL)
+
+    components = QToolButton()
+    components.setText(COMPONENTS_TEXT)
+    components.setToolTip(components_tooltip(vector.name, shows_components))
+    components.setAutoRaise(True)
+    components.setStyleSheet(toggle_style(shows_components))
+    components.clicked.connect(lambda: on_toggle_components(vector.name))
+    toggles.addWidget(components)
+    toggles.addStretch(1)
+
+    outer.addLayout(toggles)
 
     note = card_note(vector)
     if note is not None:

@@ -12,14 +12,17 @@ from __future__ import annotations
 
 from vectra3d.core.formatting import EM_DASH, UNDEFINED_NOTE
 from vectra3d.state.models import Vector
+from vectra3d.ui import theme
 from vectra3d.ui.info_panel import (
     LOCKED_TEXT,
     UNLOCKED_TEXT,
     card_note,
     card_values,
+    components_tooltip,
     delete_tooltip,
     lock_label,
     lock_tooltip,
+    toggle_style,
 )
 
 
@@ -179,3 +182,24 @@ def test_a_locked_vector_still_shows_every_value() -> None:
     locked = Vector(name="A", components=(3.0, 4.0, 0.0), locked=True)
     unlocked = Vector(name="A", components=(3.0, 4.0, 0.0))
     assert card_values(locked) == card_values(unlocked)
+
+
+# --- The display toggles (F-13a) ---
+
+
+def test_a_toggle_that_is_on_looks_like_a_state() -> None:
+    # Bold and accented, the same treatment "Locked" uses, so one glance
+    # down the list answers "what is switched on here?".
+    assert "font-weight: 600" in toggle_style(True)
+
+
+def test_a_toggle_that_is_off_looks_like_an_offer() -> None:
+    assert "font-weight: 600" not in toggle_style(False)
+    assert theme.MUTED_TEXT in toggle_style(False)
+
+
+def test_the_components_toggle_offers_the_opposite_of_the_state() -> None:
+    assert components_tooltip("A", shown=False) == (
+        "Show vector A resolved into its x, y and z parts"
+    )
+    assert components_tooltip("A", shown=True) == "Hide vector A's x, y and z parts"

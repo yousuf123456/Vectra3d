@@ -50,12 +50,12 @@ A vector is an arrow with a length and a direction. In Vectra3D every arrow star
 ### Technically
 A position vector **v** = (x, y, z) = x**i** + y**j** + z**k**, where **i**, **j**, **k** are the unit vectors along the axes. Its tail is at the origin and its head at the point (x, y, z).
 
-When components are shown, the app draws three arrows along the axes (x red, y green, z blue), dashed projection lines, and a box outline whose opposite corner is the vector's head. This shows visually that the vector is the diagonal of a box with side lengths x, y, and z.
+When components are shown, the app draws three arrows along the axes (x red, y green, z blue), dashed projection lines, and a box outline whose opposite corner is the vector's head. This shows visually that the vector is the diagonal of a box with side lengths x, y, and z. **One vector shows its components at a time** — switching it on for one turns it off for whichever had it.
 
 The data model also stores a tail position (always the origin for now), so "free vectors" placed anywhere can be added later.
 
 ### How it's implemented
-*The data model was built in step G1.1. The drawing of components in 3D comes in step G2.6 and will be added here then.*
+*The data model was built in step G1.1; the drawing of components in 3D in step G2.6.*
 
 A vector is a `Vector` in `src/vectra3d/state/models.py`: a name, its components, and its tail, each stored as a plain `(x, y, z)` tuple of floats. The tail defaults to `ORIGIN`, which is `(0.0, 0.0, 0.0)`. It is stored on every vector rather than assumed, so that free vectors can be added later without changing everything that reads a vector.
 
@@ -64,6 +64,14 @@ A vector is a `Vector` in `src/vectra3d/state/models.py`: a name, its components
 Each vector is drawn in the 3D view by `src/vectra3d/render/vector_actor.py` as an arrow from its tail, with its letter at the head in its own color. The **active** vector — the one the panel and, later, the student's hands act on — is wrapped in a translucent copy of itself, which reads as a glow around it. Drawing it thicker was tried first and dropped: thickness would then mean two things at once, and it matters more once the component arrows arrive.
 
 A zero vector has no arrow, because it has no direction to point in. It still exists, still has its name and its row in the info panel. This is not a hypothetical: from G3 a student can save `A − B` as a vector, and that can be zero.
+
+`src/vectra3d/render/overlays.py` draws the components. The box is the cuboid with the vector as its space diagonal, and only **nine** of its twelve edges are drawn dashed: the other three run along the axes from the tail, and those are the component arrows. A vector lying in a coordinate plane flattens the cuboid to a rectangle, where opposite faces coincide and the duplicates are dropped; a vector lying along an axis collapses it to a line, and no box is drawn at all. PyVista has no dashed-line style, so each dash is real geometry — about 72 short segments per box, batched into one mesh so the whole box stays a single actor.
+
+Only one vector shows its components at a time, and the store holds *which* vector rather than a set of them, so there is no state in which two are shown. The reason is that every vector resolves onto the same three axes: two at once means two arrows of the same colour lying on the same line, with their value labels crowding the same corner.
+
+Making the component arrows readable took three attempts, all judged by rendering the scene and looking at it. They were invisible at first, because their thickness was scaled to each component's own length — a component is shorter than its vector, so its shaft came out thinner than the axis line it sits on, and it read as part of the axis. Thickness is now worked out from the vector's magnitude, so all three match each other. Made thick enough to see, they then looked more important than the vector itself; they are now held back by being flat-shaded and partly transparent instead of thin, so they read as workings drawn onto the scene rather than objects in it. Below about 0.9 thickness and 0.45 opacity they vanish into the axes again.
+
+The value labels sit four fifths of the way along their own arrow, away from the tail where all four arrows converge. The x and y values are lifted in z, because the axis tick numbers hang below their axis lines, and the z value is pushed out sideways, away from whichever quadrant the vector leans into. Offsetting into two negative axes at once was tried first and reads as no offset at all from many angles, because the two displacements cancel in projection and the label lands back on the origin.
 
 Names and colors live in `src/vectra3d/state/naming.py`. Vectors are named A to J, and a new vector always takes the lowest free letter, so deleting B makes the next new vector B again. Each letter owns a fixed color from a palette of ten, so the color is worked out from the name rather than stored on the vector. A reused letter therefore comes back in the color the student already associates with that row.
 

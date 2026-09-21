@@ -1,7 +1,8 @@
 """Where the vectors live, and how the rest of the app hears about changes.
 
-The store holds the vectors, remembers which one is active, and remembers
-which ones are ticked for an operation. The ticks live here rather than in the
+The store holds the vectors, remembers which one is active, remembers which
+ones are ticked for an operation, and remembers which one is showing its
+components. The ticks live here rather than in the
 info panel for a practical reason: the panel rebuilds its cards from scratch
 on every change, so a tick kept in a checkbox would be wiped by any unrelated
 edit. Keeping them here also means G3's Resultant button reads them from the
@@ -34,6 +35,7 @@ class VectorStore:
         self._vectors: dict[str, Vector] = {}
         self._active: str | None = None
         self._selected: set[str] = set()
+        self._components_shown: str | None = None
         self._listeners: list[Callable[[], None]] = []
 
     # --- Reading ---
@@ -84,6 +86,29 @@ class VectorStore:
     def is_selected(self, name: str) -> bool:
         return name in self._selected
 
+    @property
+    def components_shown(self) -> str | None:
+        """The one vector whose x, y, z parts are drawn, or None (F-13a).
+
+        One at a time, not a set. Every vector resolves onto the same three
+        axes, so two vectors showing components put two arrows of the same
+        colour on the same line, and their value labels crowd the same
+        corner near the origin. Showing one is what makes it readable.
+
+        Holding the name rather than a set of them is what makes that a fact
+        rather than a promise: there is no state in which two are shown.
+
+        A display setting rather than anything about the vector itself, which
+        is why it lives here rather than on `Vector`, and why F-19 leaves it
+        out of undo. Kept in the store for the same reason the ticks are: the
+        info panel rebuilds every card on every change, so a state held in a
+        button would not survive an unrelated edit.
+        """
+        return self._components_shown
+
+    def is_components_shown(self, name: str) -> bool:
+        return self._components_shown == name
+
     # --- Listening ---
 
     def subscribe(self, listener: Callable[[], None]) -> None:
@@ -107,19 +132,36 @@ class VectorStore:
 
     def remove(self, name: str) -> None:
         del self._vectors[name]
-        # Pruned here rather than in `actions.py` so no route can leave a tick
+        # Pruned here rather than in `actions.py` so no route can leave a mark
         # behind. Letters are reused, so a stale name is not merely untidy: it
-        # would make the next vector to take that letter appear ticked.
+        # would make the next vector to take that letter appear ticked, or
+        # arrive with someone else's components already drawn.
         self._selected.discard(name)
+        if self._components_shown == name:
+            self._components_shown = None
 
     def clear(self) -> None:
         self._vectors.clear()
         self._selected.clear()
+        self._components_shown = None
 
     def set_active(self, name: str | None) -> None:
         if name is not None and name not in self._vectors:
             raise KeyError(f"no vector named {name!r}")
         self._active = name
+
+    def set_components_shown(self, name: str, shown: bool) -> None:
+        """Show this vector's components, or hide them.
+
+        Showing one replaces whichever was showing before, so nothing else
+        has to remember to turn the previous one off.
+        """
+        if name not in self._vectors:
+            raise KeyError(f"no vector named {name!r}")
+        if shown:
+            self._components_shown = name
+        elif self._components_shown == name:
+            self._components_shown = None
 
     def set_selected(self, name: str, selected: bool) -> None:
         if name not in self._vectors:

@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 from pyvistaqt import MainWindow, QtInteractor
 from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout, QWidget
 
+from vectra3d.render.overlays import ComponentOverlays
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
@@ -117,6 +118,10 @@ class VectraMainWindow(MainWindow):
         # when `interaction-spec.md` section 3 allows the scene to rescale.
         self.scene = Scene(self.plotter)
         self.vectors = VectorActors(self.plotter)
+        # What a vector is made of, drawn only for the vectors that asked
+        # for it (F-13a). Separate from the arrows, because the two answer
+        # different questions and are switched on and off independently.
+        self.overlays = ComponentOverlays(self.plotter)
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
@@ -163,5 +168,8 @@ class VectraMainWindow(MainWindow):
         active = self._store.active_name
         self.scene.update_for(vectors)
         self.vectors.draw(vectors, active)
-        self.info_panel.refresh(vectors, active, self._store.selected)
+        self.overlays.draw(vectors, self._store.components_shown)
+        self.info_panel.refresh(
+            vectors, active, self._store.selected, self._store.components_shown
+        )
         self.action_panel.refresh()

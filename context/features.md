@@ -143,11 +143,11 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-13 Resolve into components
 **F-13a (panel) — Group:** G2 · **Depends on:** F-01, F-05a
-- [ ] Can be toggled per vector from the panel.
-- [ ] When on, shows the x, y, and z component vectors as arrows along the axes, dashed projection lines, and an outline box showing how the components build the vector.
-- [ ] Components always use fixed colors: **x = red, y = green, z = blue**, matching the axis colors.
-- [ ] Component values are labeled in the 3D view.
-- [ ] Components update whenever the vector changes.
+- [x] Can be toggled per vector from the panel.
+- [x] When on, shows the x, y, and z component vectors as arrows along the axes, dashed projection lines, and an outline box showing how the components build the vector.
+- [x] Components always use fixed colors: **x = red, y = green, z = blue**, matching the axis colors.
+- [x] Component values are labeled in the 3D view.
+- [x] Components update whenever the vector changes.
 
 **F-13b (gesture) — Group:** G5 · **Depends on:** F-13a, F-02
 - [ ] The components gesture toggles components on the active vector.

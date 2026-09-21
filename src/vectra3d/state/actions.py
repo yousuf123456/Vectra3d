@@ -149,6 +149,29 @@ def toggle_selected(store: VectorStore, name: str) -> bool:
     return now_selected
 
 
+def toggle_components(store: VectorStore, name: str) -> bool:
+    """Show or hide a vector's x, y and z parts in the 3D view. Returns the
+    new state.
+
+    Only one vector shows its components at a time: switching it on for one
+    turns it off for whichever had it. Every vector resolves onto the same
+    three axes, so two at once means two arrows of the same colour lying on
+    the same line, with their labels in the same place.
+
+    A display setting, not a change to the vector: F-19 keeps undo for things
+    that change the vectors themselves and explicitly leaves out toggling
+    components. It still goes through an action because everything that
+    changes what the app is showing does, and because G5's `Victory` hold
+    gesture (F-13b) will call this same function.
+
+    Raises KeyError if there is no such vector.
+    """
+    now_shown = not store.is_components_shown(name)
+    store.set_components_shown(name, now_shown)
+    store.notify()
+    return now_shown
+
+
 def clear_selection(store: VectorStore) -> None:
     """Untick every vector, leaving the vectors themselves alone."""
     store.clear_selection()
