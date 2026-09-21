@@ -49,7 +49,13 @@ A vector is a `Vector` in `src/vectra3d/state/models.py`: a name, its components
 
 `Vector` is a **frozen** dataclass, which means it cannot be edited in place. Changing a vector creates a replacement. That sounds inconvenient but buys two things: undo can save the whole scene by copying a dictionary of vectors rather than copying each one deeply, and no part of the app can change a vector without going through `state/actions.py`.
 
-Names and colors live in `src/vectra3d/state/naming.py`. Vectors are named A to J, and a new vector always takes the lowest free letter, so deleting B makes the next new vector B again. Each letter owns a fixed color from a palette of ten, so the color is worked out from the name rather than stored on the vector. A reused letter therefore comes back in the color the student already associates with that row. The palette deliberately avoids anything that reads as red, green, or blue, because those belong to the axes and to the component arrows, and it avoids the near-black reserved for operation results.
+Each vector is drawn in the 3D view by `src/vectra3d/render/vector_actor.py` as an arrow from its tail, with its letter at the head in its own color. The **active** vector — the one the panel and, later, the student's hands act on — is wrapped in a translucent copy of itself, which reads as a glow around it. Drawing it thicker was tried first and dropped: thickness would then mean two things at once, and it matters more once the component arrows arrive.
+
+A zero vector has no arrow, because it has no direction to point in. It still exists, still has its name and its row in the info panel. This is not a hypothetical: from G3 a student can save `A − B` as a vector, and that can be zero.
+
+Names and colors live in `src/vectra3d/state/naming.py`. Vectors are named A to J, and a new vector always takes the lowest free letter, so deleting B makes the next new vector B again. Each letter owns a fixed color from a palette of ten, so the color is worked out from the name rather than stored on the vector. A reused letter therefore comes back in the color the student already associates with that row.
+
+Choosing those ten took three attempts, because red, green and blue are all reserved for the axes and the component arrows, and that leaves a narrow band to fit ten distinguishable colors into. Separating them by hue alone produced two olives and two teals; separating same-family pairs by lightness was still hard to read at a glance. The palette in use now takes colors from a set designed for maximum contrast with each other and keeps only those safely clear of the three axis colors, so no two vectors share a color family.
 
 ### Likely questions
 - **Why are all vectors fixed at the origin?** Position vectors keep the first version simple and match how they're first taught. Free vectors are planned as a later feature.
@@ -134,7 +140,13 @@ x = r sin θ cos φ,  y = r sin θ sin φ,  z = r cos θ
 When the vector lies on the z axis (θ = 0° or 180°), φ is undefined and shown as "—".
 
 ### How it's implemented
-*To be filled in by the agent after step G1.3.*
+*The conversion into components was built in step G1.3. Going the other way, showing an existing vector's r, θ and φ, comes with the full info panel in G2.3.*
+
+`src/vectra3d/core/spherical.py` holds `to_components(r, θ, φ)`, which is the three formulas above and nothing else. `normalize_phi()` brings any φ into 0–360° first, so typing 370 gives the same vector as 10, and −90 the same as 270.
+
+The two angles are treated differently on purpose. **φ is normalized silently**, because every value of it means something once wrapped into a turn. **θ is rejected outside 0–180°**, because outside that range it is not defined at all — the form says so rather than quietly wrapping it and creating a vector pointing somewhere the student did not ask for.
+
+Typing is checked when **Create** is pressed rather than keystroke by keystroke, so a student who writes `3,5` is told to use a dot instead of having the comma silently refused. Those checks are plain functions in `ui/action_panel.py`, separate from the widgets, which is how they are tested without opening a window.
 
 ### Likely questions
 - **Why does my textbook use different symbols?** Mathematics courses often swap θ and φ. The app uses the physics convention, which is also the international standard (ISO 80000-2).
@@ -230,7 +242,9 @@ The app calculates with full precision and only rounds the numbers when showing 
 - The zero vector is handled explicitly: its magnitude is 0 and its direction values are shown as "—".
 
 ### How it's implemented
-*To be filled in by the agent after step G1.3.*
+*The "keep full precision" half was settled in step G1.3. The display rounding itself is `core/formatting.py`, built in G2.3, and will be described here then.*
+
+Nothing is rounded or snapped when a vector is stored. A vector typed as r = 1, θ = 90°, φ = 90° keeps an x of 6.1e-17 rather than a tidy zero, because that genuinely is cos(90°) in floating point. Rounding it at the point of storage would be a small lie that later calculations would inherit; rounding it only when it is shown gives "0.00" on screen with the true value still underneath.
 
 ### Likely questions
 - **Why might a value show 4.99 when I expect 5?** Converting angles to components involves sin and cos, which produce tiny floating-point errors. Full precision is kept internally, so this only affects display, and rounding to 2 decimals usually hides it.

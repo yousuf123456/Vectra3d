@@ -13,15 +13,19 @@ window after Qt has gone, which shows up as a hang on exit.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from pyvistaqt import MainWindow, QtInteractor
-from PySide6.QtWidgets import QFrame, QToolBar, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout
 
 from vectra3d.render.scene import Scene
+from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
+from vectra3d.ui.action_panel import ActionPanel
 
 WINDOW_TITLE = "Vectra3D"
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
+PANEL_WIDTH = 300
 
 # Anti-aliasing settings, chosen by measuring on the integrated graphics this
 # app targets (Intel HD Graphics 620) against a scene of thin lines, which is
@@ -64,7 +68,17 @@ class VectraMainWindow(MainWindow):
         )
         self.plotter.enable_anti_aliasing("fxaa")
         layout.addWidget(self.plotter.interactor)
-        self.setCentralWidget(frame)
+
+        # The 3D view on the left, the panels on the right. A splitter lets
+        # the student widen either side but never lose the panel, which
+        # matters because everything must stay doable without gestures.
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.addWidget(frame)
+        self.action_panel = ActionPanel(self._store)
+        splitter.addWidget(self.action_panel)
+        splitter.setStretchFactor(0, 1)
+        splitter.setSizes([WINDOW_WIDTH - PANEL_WIDTH, PANEL_WIDTH])
+        self.setCentralWidget(splitter)
 
         # The small xyz marker in the corner. It is a camera widget rather
         # than part of the scene, so it turns as the view turns and says
@@ -75,6 +89,7 @@ class VectraMainWindow(MainWindow):
         # fit them. It redraws whenever the store changes, which is exactly
         # when `interaction-spec.md` section 3 allows the scene to rescale.
         self.scene = Scene(self.plotter)
+        self.vectors = VectorActors(self.plotter)
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
@@ -92,4 +107,9 @@ class VectraMainWindow(MainWindow):
         self.addToolBar(toolbar)
 
     def _on_store_changed(self) -> None:
-        self.scene.update_for(self._store.vectors)
+        # The world is resized first, then the vectors are drawn into it, so
+        # a vector that made the scene grow is never drawn against the old
+        # grid even for one frame.
+        vectors = self._store.vectors
+        self.scene.update_for(vectors)
+        self.vectors.draw(vectors, self._store.active_name)

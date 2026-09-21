@@ -23,19 +23,29 @@ NAMES: tuple[str, ...] = tuple("ABCDEFGHIJ")
 #
 # The axes and the component vectors own red, green and blue
 # (`interaction-spec.md` section 2.1), so no vector may look like any of them.
-# These ten hues stay clear of those three and of each other, and are dark
-# enough to read against the white background the 3D view currently uses.
+# That leaves a narrow band of hues for ten colors, and an earlier version
+# packed them all in by hue alone, which produced pairs nobody could tell
+# apart: two olives, two teals, and three oranges.
+#
+# These ten are drawn from a set chosen for maximum contrast against each
+# other, keeping only what is safely away from the three axis colors. They
+# spread across lightness and saturation as well as hue, so no two sit in the
+# same family: a second attempt that separated orange from brown and teal
+# from cyan by lightness alone was still hard to read at a glance.
+#
+# They are ordered so the first few letters, which is all most scenes use,
+# are the furthest apart of the ten.
 VECTOR_COLORS: tuple[str, ...] = (
-    "#E67E22",  # A  orange
-    "#B8860B",  # B  dark gold
-    "#808000",  # C  olive
-    "#6B8E23",  # D  olive drab
-    "#009B77",  # E  jade
-    "#008B8B",  # F  teal
-    "#0077B6",  # G  ocean
-    "#7D3C98",  # H  violet
-    "#C2185B",  # I  raspberry
-    "#8B4513",  # J  brown
+    "#F38400",  # A  orange
+    "#875692",  # B  purple
+    "#00A1A7",  # C  teal
+    "#B3446C",  # D  raspberry
+    "#F3C300",  # E  yellow
+    "#8DB600",  # F  yellow-green
+    "#E68FAC",  # G  pink
+    "#654522",  # H  brown
+    "#848482",  # I  grey
+    "#5B7C99",  # J  steel
 )
 
 # The color reserved for a temporary operation result (`features.md`, global

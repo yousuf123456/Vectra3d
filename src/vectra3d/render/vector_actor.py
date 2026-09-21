@@ -1,0 +1,127 @@
+"""Drawing the vectors themselves: one arrow each, with its letter.
+
+The active vector is drawn thicker (`interaction-spec.md` section 10), so the
+student can see at a glance which one the panel and, later, their hands are
+acting on.
+
+Arrow proportions are fractions of the vector's own length rather than of the
+scene extent, so a short vector is a small arrow instead of a stubby barrel in
+a large world.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import numpy as np
+import pyvista as pv
+
+from vectra3d.state import naming
+from vectra3d.state.models import Vector
+
+# Arrow proportions, as fractions of the vector's own length. Much slimmer
+# than PyVista's defaults (a shaft of 0.05 and a tip of 0.1), which next to
+# one-pixel axis lines and a light grid look like pipes rather than arrows.
+SHAFT_RADIUS = 0.007
+TIP_RADIUS = 0.018
+TIP_LENGTH = 0.060
+
+# The active vector is wrapped in a translucent copy of itself, which reads as
+# a glow around it (`interaction-spec.md` section 10). Drawing it thicker was
+# the first attempt and was worse: thickness then means two things at once,
+# and the active vector looked like a different kind of object rather than the
+# same one, singled out.
+HALO_SCALE = 3.4
+HALO_OPACITY = 0.22
+
+LETTER_FONT_SIZE = 15
+# How far past the head the letter sits, as a fraction of the arrow's length.
+LETTER_OFFSET = 0.08
+
+
+class VectorActors:
+    """Keeps the arrows in the 3D view matching the vectors in the store."""
+
+    def __init__(self, plotter: pv.Plotter) -> None:
+        self._plotter = plotter
+        self._drawn: set[str] = set()
+
+    def draw(self, vectors: Sequence[Vector], active_name: str | None) -> None:
+        """Redraw every vector, and remove the ones that are gone.
+
+        Actors are named after the vector, so PyVista replaces them in place.
+        Nothing renders until the whole set is done: rendering per actor is
+        what made the scene blink in G1.2.
+        """
+        wanted = {vector.name for vector in vectors}
+        for name in self._drawn - wanted:
+            self._plotter.remove_actor(f"vector-{name}", render=False)
+            self._plotter.remove_actor(f"letter-{name}", render=False)
+
+        # Only one vector is active at a time, so every halo goes and at most
+        # one comes back. Cheaper than working out which one moved, and it
+        # covers the vector that was both active and just deleted.
+        for name in self._drawn | wanted:
+            self._plotter.remove_actor(f"halo-{name}", render=False)
+
+        self._drawn = wanted
+
+        for vector in vectors:
+            self._draw_one(vector, vector.name == active_name)
+
+        self._plotter.render()
+
+    def _draw_one(self, vector: Vector, is_active: bool) -> None:
+        tail = np.array(vector.tail, dtype=float)
+        head = tail + np.array(vector.components, dtype=float)
+        length = float(np.linalg.norm(head - tail))
+        color = naming.color_for(vector.name)
+
+        if length == 0.0:
+            # A zero vector has no direction to draw (`interaction-spec.md`
+            # 2.4). It still exists, still has a name and a row in the info
+            # panel; there is simply no arrow. A result of A - A can be saved
+            # as a vector, so this is a real case, not a defensive one.
+            self._plotter.remove_actor(f"vector-{vector.name}", render=False)
+            self._plotter.remove_actor(f"letter-{vector.name}", render=False)
+            return
+
+        def arrow(weight: float) -> pv.PolyData:
+            return pv.Arrow(
+                start=tail,
+                direction=head - tail,
+                scale=length,
+                shaft_radius=SHAFT_RADIUS * weight,
+                tip_radius=TIP_RADIUS * weight,
+                tip_length=TIP_LENGTH,
+            )
+
+        if is_active:
+            self._plotter.add_mesh(
+                arrow(HALO_SCALE),
+                color=color,
+                opacity=HALO_OPACITY,
+                lighting=False,
+                name=f"halo-{vector.name}",
+                render=False,
+            )
+
+        self._plotter.add_mesh(
+            arrow(1.0),
+            color=color,
+            name=f"vector-{vector.name}",
+            render=False,
+        )
+
+        label = pv.Label(
+            text=vector.name,
+            position=tuple(float(v) for v in head * (1.0 + LETTER_OFFSET)),
+            size=LETTER_FONT_SIZE,
+        )
+        label.prop.color = color
+        self._plotter.add_actor(
+            label,
+            name=f"letter-{vector.name}",
+            reset_camera=False,
+            render=False,
+        )

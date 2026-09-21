@@ -81,10 +81,10 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-04 Create a vector by typing
 **Group:** G1 · **Depends on:** F-01
-- [ ] The action panel has an input form with a **toggle** between two modes: components `(x, y, z)` and magnitude + angles.
-- [ ] Invalid input (empty fields, non-numbers, zero vector) shows an error and creates nothing.
-- [ ] A valid entry creates a vector exactly matching the typed values, which becomes the active vector.
-- [ ] If 10 vectors already exist, creation is blocked with a message explaining the limit.
+- [x] The action panel has an input form with a **toggle** between two modes: components `(x, y, z)` and magnitude + angles.
+- [x] Invalid input (empty fields, non-numbers, zero vector) shows an error and creates nothing.
+- [x] A valid entry creates a vector exactly matching the typed values, which becomes the active vector.
+- [x] If 10 vectors already exist, creation is blocked with a message explaining the limit.
 
 ### F-05 Active vector and selection
 **F-05a (panel) — Group:** G2 · **Depends on:** F-11
