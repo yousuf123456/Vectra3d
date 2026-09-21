@@ -68,6 +68,12 @@ From bottom to top: `core` (pure vector math) → `state` (vectors, results, und
 
 A change event carries no detail: it simply says "something changed, read me again". With at most ten vectors there is nothing to gain from describing the change, and a listener that re-reads the store cannot drift out of step with it.
 
+**`ui` (G1.3–G1.5).** The window is a 3D view on the left and two panels on the right, in splitters so either can be given more room. `ui/action_panel.py` is where vectors are typed and where **Clear all** lives; `ui/info_panel.py` lists what exists, one card per vector; `ui/dialogs.py` holds the prompts that ask before something irreversible.
+
+The panels never touch vector data directly. They call `state/actions.py` and then wait to be told the store changed, exactly as the gesture engine will from G5. That is what keeps the two ways of working in step: there is no path through the panel that gestures cannot also take, and no order of events where the 3D view and the panel disagree.
+
+Deleting a vector is the one change the info panel makes, and it is a button on the card rather than a list to pick from, so the thing being removed is the thing being looked at. **Clear all** asks first, warns that locked vectors go too, and defaults to Cancel, so a stray press of Enter keeps the student's work. There is deliberately no delete gesture at all (see `03-gestures-and-interaction.md`).
+
 **`render` (G1.2).** `render/scene.py` draws the world the vectors live in — grid, axes, origin — and resizes it to fit them. It holds no vector data: the window subscribes it to the store, and it is handed the vectors to draw to. The camera's default angle and the **Reset view** toolbar button live here too.
 
 Two choices here came from measuring rather than from reading. PyVista's `add_point_labels` is the obvious way to put numbers on the axes and it cost more than half the frame rate, because it runs a pass to stop labels overlapping; `pv.Label` billboards draw the same thirty numbers for free. A wireframe plane is the obvious way to draw a grid and it was the most expensive thing in the scene, because a wireframe draws all four edges of each of its four hundred squares; the forty-two lines actually wanted cost a fraction of that. Both are recorded in `context/library-docs.md`.

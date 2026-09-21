@@ -124,8 +124,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-10 Delete and clear
 **Group:** G1 · **Depends on:** F-04
-- [ ] Delete removes one vector. Panel only; there is no delete gesture.
-- [ ] **Clear all** removes every vector, after a confirmation prompt that states locked vectors will also be removed.
+- [x] Delete removes one vector. Panel only; there is no delete gesture.
+- [x] **Clear all** removes every vector, after a confirmation prompt that states locked vectors will also be removed.
 
 ### F-11 Information panel
 **Basic — Group:** G1 · **Depends on:** F-04

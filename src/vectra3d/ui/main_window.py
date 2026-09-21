@@ -76,7 +76,7 @@ class VectraMainWindow(MainWindow):
         # The panels share the right column, split so the list of vectors can
         # be given more room as they accumulate.
         self.action_panel = ActionPanel(self._store)
-        self.info_panel = InfoPanel()
+        self.info_panel = InfoPanel(self._store)
         panels = QSplitter(Qt.Orientation.Vertical, self)
         panels.addWidget(self.action_panel)
         panels.addWidget(self.info_panel)

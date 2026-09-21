@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from vectra3d.core.spherical import THETA_MAX, THETA_MIN, to_components
 from vectra3d.state import actions, naming
 from vectra3d.state.store import VectorStore
+from vectra3d.ui.dialogs import confirm_clear_all
 
 ERROR_STYLE = "color: #C2185B;"
 
@@ -104,7 +105,17 @@ class ActionPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_form())
+
+        self._clear = QPushButton("Clear all")
+        self._clear.setToolTip("Remove every vector from the scene")
+        self._clear.clicked.connect(self._on_clear_all)
+        layout.addWidget(self._clear)
         layout.addStretch()
+
+        # The button follows the store, so it is never offered for an empty
+        # scene and the prompt can never be raised with nothing to remove.
+        self._store.subscribe(self._sync_clear_button)
+        self._sync_clear_button()
 
     def _build_form(self) -> QWidget:
         box = QGroupBox("New vector")
@@ -140,6 +151,14 @@ class ActionPanel(QWidget):
         layout.addWidget(self._message)
 
         return box
+
+    def _sync_clear_button(self) -> None:
+        self._clear.setEnabled(self._store.count > 0)
+
+    def _on_clear_all(self) -> None:
+        if confirm_clear_all(self, self._store.count):
+            actions.clear_all(self._store)
+            self._message.clear()
 
     def _on_mode_changed(self, index: int, checked: bool) -> None:
         if checked:

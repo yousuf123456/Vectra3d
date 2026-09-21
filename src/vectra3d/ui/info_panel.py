@@ -1,8 +1,9 @@
 """The info panel: every vector, with its colour and its numbers (F-11).
 
-Display only. It reads the store and never changes it; clicking a vector to
-make it active is F-05a in G2.2, and the checkboxes for the resultant arrive
-with it.
+Almost display only. The one thing it changes is deleting a vector (F-10),
+which lives here because the card is the thing the student is looking at when
+they decide to remove it, and because it works before clicking a vector to
+make it active arrives with F-05a in G2.2.
 
 Each vector is a card rather than a row in a table. The panel is a narrow
 column, and by G2.3 every vector shows a magnitude, three direction angles, a
@@ -16,7 +17,7 @@ and it cannot drift out of step with the store.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -24,13 +25,15 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from vectra3d.core.formatting import format_number
-from vectra3d.state import naming
+from vectra3d.state import actions, naming
 from vectra3d.state.models import Vector
+from vectra3d.state.store import VectorStore
 
 EMPTY_TEXT = "No vectors yet — create one above."
 
@@ -58,8 +61,9 @@ def card_values(vector: Vector) -> list[tuple[str, str]]:
 class InfoPanel(QWidget):
     """The list of vectors currently in the scene."""
 
-    def __init__(self) -> None:
+    def __init__(self, store: VectorStore) -> None:
         super().__init__()
+        self._store = store
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -98,11 +102,16 @@ class InfoPanel(QWidget):
 
         for vector in vectors:
             self._cards_layout.addWidget(
-                _build_card(vector, vector.name == active_name)
+                _build_card(vector, vector.name == active_name, self._delete)
             )
 
+    def _delete(self, name: str) -> None:
+        actions.delete_vector(self._store, name)
 
-def _build_card(vector: Vector, is_active: bool) -> QWidget:
+
+def _build_card(
+    vector: Vector, is_active: bool, on_delete: Callable[[str], None]
+) -> QWidget:
     """One vector's card: its name and colour, then its components."""
     color = naming.color_for(vector.name)
 
@@ -125,7 +134,17 @@ def _build_card(vector: Vector, is_active: bool) -> QWidget:
     name = QLabel(vector.name)
     name.setStyleSheet("font-weight: bold; border: none;")
     layout.addWidget(name, 0, 1)
-    layout.setColumnStretch(2, 1)
+    layout.setColumnStretch(1, 1)
+
+    # The name is bound into the call rather than read back from the widget,
+    # so a card can only ever delete the vector it is showing.
+    delete = QToolButton()
+    delete.setText("✕")
+    delete.setToolTip(f"Delete vector {vector.name}")
+    delete.setAutoRaise(True)
+    delete.setStyleSheet("border: none; color: #666666;")
+    delete.clicked.connect(lambda: on_delete(vector.name))
+    layout.addWidget(delete, 0, 2)
 
     for row, (axis, text) in enumerate(card_values(vector), start=1):
         label = QLabel(axis)
