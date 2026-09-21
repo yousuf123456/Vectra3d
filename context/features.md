@@ -138,8 +138,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-12 Direction angles and unit vector
 **Group:** G2 · **Depends on:** F-04
-- [ ] α, β, γ (angles with the x, y, and z axes) and the unit vector are computed for every vector and result.
-- [ ] Automated tests pass against hand-calculated examples, including vectors lying along each axis.
+- [x] α, β, γ (angles with the x, y, and z axes) and the unit vector are computed for every vector and result.
+- [x] Automated tests pass against hand-calculated examples, including vectors lying along each axis.
 
 ### F-13 Resolve into components
 **F-13a (panel) — Group:** G2 · **Depends on:** F-01, F-05a

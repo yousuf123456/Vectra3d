@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G1 — Foundation complete: `/review` run, all five findings fixed. Next: `/remember save`, then a fresh session for G2
-- **Next step:** G2.1 — F-12 direction angles and unit vector (start a new session first, `build-plan.md` section 3)
+- **Current group:** G2 — Vector math and display. G2.1 complete and committed
+- **Next step:** G2.2 — F-05a active vector and selection (click to activate; multi-select checkboxes)
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -24,6 +24,8 @@ Updated after every approved step. Read this at the start of every session to se
 | G1.4 | F-11 info panel (basic): `ui/info_panel.py`, `core/formatting.py` | 2026-09-21 | `G1.4: info panel listing every vector` | One card per vector rather than a table, because F-11 full needs about twelve values per vector in a 300px column. `core/formatting.py` built here rather than at G2.3, since showing components means the section 2.5 display rules apply now. 21 new tests; suite now 124 passing. |
 | G1.5 | F-10 delete and clear: `ui/dialogs.py`, delete buttons on cards | 2026-09-21 | `G1.5: delete a vector and clear the scene` | Delete is a button per card, so it acts on the vector being looked at and works before click-to-activate (G2.2). The Clear all prompt states the locked rule now, unconditionally, and defaults to Cancel. 8 new tests; suite now 132 passing. |
 | G1 review | `/review` over the whole group, five findings fixed | 2026-09-21 | `G1 review: refuse values that are not numbers, and fix the letter offset` | One critical: `float()` accepts "nan", "inf" and overflowing literals like "1e400", and a nan made the extent search walk the 1-2-5 sequence forever, freezing the window with no error. Refused in the panel now, with the scene sizing raising rather than hanging as a backstop. Also: the letter offset assumed a tail at the origin; the window is now the only thing that listens to the store; two stale comments. 14 new tests; suite now 146 passing. |
+| G2.1 | F-12 direction angles and unit vector: `core/vector_math.py` | 2026-09-21 | `G2.1: direction angles and unit vector` | Pure maths, no visible surface until G2.3. Magnitude built here too, since the angles divide by it. 42 new tests; suite now 188 passing. |
+
 
 ## Groups
 
@@ -31,7 +33,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | Not started |
+| G2 | Vector math and display | In progress — G2.1 done |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -86,6 +88,10 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-20 | `locked` was not added to `Vector` in G1.1 | `code-standards.md` section 1 says build only what the step needs. F-09a (G2.5) adds the field and the "locked vectors cannot be deleted" guard together, where both can be tested. |
 | 2026-09-20 | The model-loading test calls `app.check_model()` instead of loading the model itself | `/review` found the same MediaPipe setup written twice, which would let the test drift from what the app actually does once G4 changes the options. The test now exercises the shipped code path. |
 | 2026-09-20 | `main()` takes an optional `argv` and rejects unrecognised arguments with exit code 2 | `/review` found that a mistyped option opened the window instead of reporting an error - the wrong feedback when verifying a packaged build, which is exactly what G6.2 uses `--check-model` for. The parameter also makes the behaviour testable without opening a window. |
+| 2026-09-21 | `core/vector_math.py` uses `math.hypot`, `math.acos` and `math.degrees` rather than NumPy | `architecture.md` section 1 gives NumPy all the vector maths, and this step departs from it deliberately. These are three scalars, not an array. `np.linalg.norm` computes `x.dot(x)` and takes a root, so it overflows to infinity for components above roughly 1e154 and underflows to zero below roughly 1e-200, both from finite input the app accepts; `math.hypot` does neither and is correctly rounded, so `hypot(3, 4, 0)` is exactly 5.0 and the hand-calculated tests assert equality rather than approximation. The angles follow it into `math` rather than mixing the two libraries for the same three numbers. NumPy remains the rule wherever the data is genuinely array-shaped, as in `render/scene.py`. |
+| 2026-09-21 | The zero vector returns `None` from `direction_angles` and `unit_vector`, not `nan` | `interaction-spec.md` section 2.4 calls the angles and unit vector undefined for the zero vector, and the type `tuple[...] \| None` makes the caller handle that before it can display anything. A `nan` is the other natural answer and was rejected: it looks like a number to everything downstream and surfaces far from its origin, which is exactly the G1 review bug where a typed "nan" reached `extent_for` and hung the window. Raising was rejected too, because the zero vector is an expected state that F-16 produces from `A − B`. |
+| 2026-09-21 | The ratio passed to `acos` is clamped into [-1, 1] | A vector on an axis has a true cosine of exactly ±1, the edge of the domain, and floating-point division is not guaranteed to land exactly on it. `math.acos` raises `ValueError` one step outside rather than returning `nan` as `np.arccos` does, so the failure would be a crash on the most ordinary vector a student can type. The clamp cannot mask a real error, since a component over its own magnitude can never legitimately exceed 1. Insurance rather than an observed bug: 500,000 near-axis samples did not produce a ratio above 1. |
+
 
 ---
 

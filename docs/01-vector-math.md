@@ -74,11 +74,16 @@ The magnitude is the arrow's length: how far the tip is from the corner of the r
 This is Pythagoras applied twice: √(x² + y²) is the diagonal across the floor, and combining that with z gives the diagonal through the box.
 
 ### How it's implemented
-*To be filled in by the agent after step G2.1.*
+`magnitude()` in `core/vector_math.py` takes the three components and returns the length.
+
+It calls Python's `math.hypot(x, y, z)` rather than writing out `sqrt(x*x + y*y + z*z)`, and rather than NumPy's `linalg.norm`, which is what the rest of the project uses for vector maths. The reason is that the obvious formula squares each component before adding them, and squaring is where the arithmetic falls apart at the extremes. A vector with components around 10²⁰⁰ squares to infinity, so the answer comes back as infinity even though the real length is a perfectly ordinary number. At the other end, components around 10⁻²⁰⁰ square to zero, so a real vector is reported as having no length at all. `math.hypot` is built to avoid both, and it is also *correctly rounded*, meaning it gives the closest possible answer every time: `hypot(3, 4, 0)` is exactly `5.0`, not `4.999999999999999`.
+
+That exactness is why the tests in `tests/core/test_vector_math.py` use examples whose arithmetic closes: (3, 4, 0) has magnitude 5, (1, 2, 2) has 3, and (2, 3, 6) has 7. The magnitudes can then be checked as exact equality rather than "close enough".
 
 ### Likely questions
 - **Why is it Pythagoras twice?** The floor diagonal forms a right triangle with the vertical side z, so the 2D theorem applies a second time.
 - **What are the units?** Unitless. The app is about the geometry, so "units" can stand for metres, newtons, or anything else.
+- **Would a student ever type a vector big enough to overflow?** Almost certainly not — it takes components above about 10¹⁵⁴. The guard is there because it costs nothing and because the same function will later be handed the output of operations like scalar multiplication, where a large vector times a large number can reach those sizes without anyone typing them.
 
 ---
 
@@ -97,10 +102,15 @@ cos²α + cos²β + cos²γ = 1
 Each angle is between 0° and 180°. The app displays angles in degrees with 2 decimals.
 
 ### How it's implemented
-*To be filled in by the agent after step G2.1.*
+`direction_angles()` in `core/vector_math.py` returns the three angles in degrees, as a tuple in the order α, β, γ. For the zero vector it returns `None` instead — see the unit vector section below, which does the same thing for the same reason.
+
+Each angle is worked out by the small helper `_angle_with_axis()`, which divides one component by the magnitude and takes `math.acos` of the result, converting from radians to degrees with `math.degrees`. Because `acos` naturally returns an angle between 0 and 180°, the range the maths requires comes for free; nothing has to fold or correct it.
+
+The one subtlety is the line that clamps the ratio into the range −1 to 1 before `acos` sees it. Arc cosine is only defined on that range, and Python's `math.acos` does not return a nonsense value outside it — it raises `ValueError: math domain error`, which would crash the app. A vector lying exactly on an axis, such as (5, 0, 0), has a true ratio of exactly 1, which sits right on the boundary. Floating-point division does not always land exactly where the algebra says it will, and a result one step past 1 would be enough. The clamp costs one comparison and removes the possibility entirely. It cannot hide a genuine error either, because a ratio of a component to its own vector's magnitude can never legitimately exceed 1.
 
 ### Likely questions
 - **Why do the squared cosines always add to 1?** Substitute the formulas: (x² + y² + z²) / |**v**|² = |**v**|² / |**v**|² = 1.
+- **Is that identity actually checked?** Yes. `tests/core/test_vector_math.py` asserts it for a spread of vectors, including one on an axis and one at the extreme end of the number range. It is a useful test because it would catch a mistake in any one of the three angles.
 - **If I know two angles, do I know the third?** Almost: the identity gives cos²γ, which fixes γ up to a choice between two angles (above or below the XY plane). That's why all three are shown.
 
 ---
@@ -116,10 +126,15 @@ The unit vector is the same arrow shrunk (or stretched) to length exactly 1. It 
 The components of the unit vector are exactly the direction cosines.
 
 ### How it's implemented
-*To be filled in by the agent after step G2.1.*
+`unit_vector()` in `core/vector_math.py` divides each component by the magnitude and returns the three results as a tuple. For the zero vector it returns `None`.
+
+That `None` is the main design decision in this step. The alternative was to return the special floating-point value `nan` ("not a number"), which is what the arithmetic itself would produce from dividing zero by zero. `None` was chosen because it forces the rest of the app to notice. A `nan` looks like a number to every piece of code that receives it, passes silently through additions and comparisons, and only surfaces much later somewhere unrelated — which is exactly what happened earlier in this project, when a typed "nan" reached the code that sizes the scene and locked the window up with no error message. `None` cannot do that: the code that displays a unit vector has to handle the empty case before it can show anything, and that is where the "—" described above comes from.
+
+The same applies to `direction_angles()`, and both functions decide it the same way, by checking whether the magnitude is exactly zero before dividing by it.
 
 ### Likely questions
 - **Why does the zero vector have no unit vector?** Dividing by a magnitude of 0 is undefined; a zero-length arrow points nowhere. The app shows "—" and a note instead of a number.
+- **Does scaling a vector change its direction angles?** No, and the tests check it: the angles of a vector and the angles of its unit vector come out the same. That is the point of a unit vector — it keeps the direction and discards the length.
 
 ---
 
