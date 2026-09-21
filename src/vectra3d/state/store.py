@@ -1,6 +1,11 @@
 """Where the vectors live, and how the rest of the app hears about changes.
 
-The store holds the vectors and remembers which one is active. It does not
+The store holds the vectors, remembers which one is active, and remembers
+which ones are ticked for an operation. The ticks live here rather than in the
+info panel for a practical reason: the panel rebuilds its cards from scratch
+on every change, so a tick kept in a checkbox would be wiped by any unrelated
+edit. Keeping them here also means G3's Resultant button reads them from the
+same place everything else reads state from. It does not
 decide what is allowed: the rules (the ten-vector limit, which letter comes
 next, what happens to the active vector after a deletion) live in
 `actions.py`, which is the only place that should call the methods here that
@@ -28,6 +33,7 @@ class VectorStore:
     def __init__(self) -> None:
         self._vectors: dict[str, Vector] = {}
         self._active: str | None = None
+        self._selected: set[str] = set()
         self._listeners: list[Callable[[], None]] = []
 
     # --- Reading ---
@@ -64,6 +70,20 @@ class VectorStore:
     def get(self, name: str) -> Vector | None:
         return self._vectors.get(name)
 
+    @property
+    def selected(self) -> tuple[str, ...]:
+        """The names ticked for an operation, in name order.
+
+        Separate from the active vector (F-05a). A student can tick A and B
+        for a resultant while C stays active to be steered. Returned as a
+        tuple so no caller can change the selection except through
+        `actions.py`.
+        """
+        return tuple(sorted(self._selected))
+
+    def is_selected(self, name: str) -> bool:
+        return name in self._selected
+
     # --- Listening ---
 
     def subscribe(self, listener: Callable[[], None]) -> None:
@@ -87,11 +107,27 @@ class VectorStore:
 
     def remove(self, name: str) -> None:
         del self._vectors[name]
+        # Pruned here rather than in `actions.py` so no route can leave a tick
+        # behind. Letters are reused, so a stale name is not merely untidy: it
+        # would make the next vector to take that letter appear ticked.
+        self._selected.discard(name)
 
     def clear(self) -> None:
         self._vectors.clear()
+        self._selected.clear()
 
     def set_active(self, name: str | None) -> None:
         if name is not None and name not in self._vectors:
             raise KeyError(f"no vector named {name!r}")
         self._active = name
+
+    def set_selected(self, name: str, selected: bool) -> None:
+        if name not in self._vectors:
+            raise KeyError(f"no vector named {name!r}")
+        if selected:
+            self._selected.add(name)
+        else:
+            self._selected.discard(name)
+
+    def clear_selection(self) -> None:
+        self._selected.clear()

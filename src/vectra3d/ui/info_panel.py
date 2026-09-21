@@ -1,9 +1,14 @@
 """The info panel: every vector, with its colour and its numbers (F-11).
 
-Almost display only. The one thing it changes is deleting a vector (F-10),
-which lives here because the card is the thing the student is looking at when
-they decide to remove it, and because it works before clicking a vector to
-make it active arrives with F-05a in G2.2.
+The cards are also where a vector is picked. Clicking one makes that vector
+active; its tick box marks it for an operation, and the two are independent
+(F-05a). Deleting lives here too (F-10), because the card is the thing the
+student is looking at when they decide to remove it.
+
+None of that state is kept here. Each card binds its vector's name into a
+callback that calls `state/actions.py`, and the panel is told what to show
+through `refresh()`. That matters because the cards are rebuilt from scratch
+on every change, so anything remembered in a widget would not survive.
 
 Each vector is a card rather than a row in a table. The panel is a narrow
 column, and by G2.3 every vector shows a magnitude, three direction angles, a
@@ -20,7 +25,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QGridLayout,
     QLabel,
@@ -85,7 +92,12 @@ class InfoPanel(QWidget):
 
         self.refresh((), None)
 
-    def refresh(self, vectors: Sequence[Vector], active_name: str | None) -> None:
+    def refresh(
+        self,
+        vectors: Sequence[Vector],
+        active_name: str | None,
+        selected: Sequence[str] = (),
+    ) -> None:
         """Rebuild the list to match the store."""
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
@@ -100,22 +112,63 @@ class InfoPanel(QWidget):
             self._cards_layout.addWidget(empty)
             return
 
+        ticked = set(selected)
         for vector in vectors:
             self._cards_layout.addWidget(
-                _build_card(vector, vector.name == active_name, self._delete)
+                _build_card(
+                    vector,
+                    is_active=vector.name == active_name,
+                    is_selected=vector.name in ticked,
+                    on_delete=self._delete,
+                    on_activate=self._activate,
+                    on_toggle=self._toggle,
+                )
             )
 
     def _delete(self, name: str) -> None:
         actions.delete_vector(self._store, name)
 
+    def _activate(self, name: str) -> None:
+        actions.set_active(self._store, name)
+
+    def _toggle(self, name: str) -> None:
+        actions.toggle_selected(self._store, name)
+
+
+class _Card(QFrame):
+    """A vector's card, which activates that vector when clicked.
+
+    Activation is handled here rather than with a button behind the contents
+    so that the checkbox and the delete button keep their own clicks: a child
+    widget consumes the press before it ever reaches this handler. That is
+    what keeps ticking and activating independent (F-05a).
+    """
+
+    def __init__(self, name: str, on_activate: Callable[[str], None]) -> None:
+        super().__init__()
+        self._name = name
+        self._on_activate = on_activate
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._on_activate(self._name)
+        super().mousePressEvent(event)
+
 
 def _build_card(
-    vector: Vector, is_active: bool, on_delete: Callable[[str], None]
+    vector: Vector,
+    *,
+    is_active: bool,
+    is_selected: bool,
+    on_delete: Callable[[str], None],
+    on_activate: Callable[[str], None],
+    on_toggle: Callable[[str], None],
 ) -> QWidget:
-    """One vector's card: its name and colour, then its components."""
+    """One vector's card: a tick box, its name and colour, then its components."""
     color = naming.color_for(vector.name)
 
-    card = QFrame()
+    card = _Card(vector.name, on_activate)
     border = ACTIVE_BORDER if is_active else CARD_BORDER
     background = ACTIVE_BACKGROUND if is_active else "transparent"
     card.setStyleSheet(
@@ -126,15 +179,23 @@ def _build_card(
     layout = QGridLayout(card)
     layout.setContentsMargins(8, 6, 8, 6)
 
+    # The tick box comes first, so the ticks form a column that can be read
+    # down the panel at a glance when picking vectors for an operation.
+    tick = QCheckBox()
+    tick.setChecked(is_selected)
+    tick.setToolTip(f"Include vector {vector.name} in an operation")
+    tick.clicked.connect(lambda: on_toggle(vector.name))
+    layout.addWidget(tick, 0, 0)
+
     swatch = QLabel()
     swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
     swatch.setStyleSheet(f"background: {color}; border: none; border-radius: 2px;")
-    layout.addWidget(swatch, 0, 0)
+    layout.addWidget(swatch, 0, 1)
 
     name = QLabel(vector.name)
     name.setStyleSheet("font-weight: bold; border: none;")
-    layout.addWidget(name, 0, 1)
-    layout.setColumnStretch(1, 1)
+    layout.addWidget(name, 0, 2)
+    layout.setColumnStretch(2, 1)
 
     # The name is bound into the call rather than read back from the widget,
     # so a card can only ever delete the vector it is showing.
@@ -144,7 +205,7 @@ def _build_card(
     delete.setAutoRaise(True)
     delete.setStyleSheet("border: none; color: #666666;")
     delete.clicked.connect(lambda: on_delete(vector.name))
-    layout.addWidget(delete, 0, 2)
+    layout.addWidget(delete, 0, 3)
 
     for row, (axis, text) in enumerate(card_values(vector), start=1):
         label = QLabel(axis)
@@ -152,7 +213,7 @@ def _build_card(
         value = QLabel(text)
         value.setStyleSheet("border: none;")
         value.setAlignment(Qt.AlignmentFlag.AlignRight)
-        layout.addWidget(label, row, 0, 1, 2)
-        layout.addWidget(value, row, 2)
+        layout.addWidget(label, row, 0, 1, 3)
+        layout.addWidget(value, row, 3)
 
     return card

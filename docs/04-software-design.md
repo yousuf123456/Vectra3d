@@ -78,10 +78,15 @@ Deleting a vector is the one change the info panel makes, and it is a button on 
 
 Two choices here came from measuring rather than from reading. PyVista's `add_point_labels` is the obvious way to put numbers on the axes and it cost more than half the frame rate, because it runs a pass to stop labels overlapping; `pv.Label` billboards draw the same thirty numbers for free. A wireframe plane is the obvious way to draw a grid and it was the most expensive thing in the scene, because a wireframe draws all four edges of each of its four hundred squares; the forty-two lines actually wanted cost a fraction of that. Both are recorded in `context/library-docs.md`.
 
-`state/actions.py` holds the changes themselves — creating, deleting, and clearing vectors, and choosing the active one. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
+**Picking vectors (G2.2).** The store remembers two different marks, and keeping them apart matters. The **active** vector is the single one that edits and hand gestures act on; it is tinted in the panel and haloed in the 3D view. The **ticked** vectors are a separate set, possibly empty, marking which ones an operation such as the resultant should use. Clicking a card's body sets the active one; clicking its tick box changes the other. Neither affects the other, so a student can tick A and B to add them while keeping C active to steer by hand.
+
+The ticks are kept in the store rather than in the checkboxes, which looks roundabout until you notice that the card list is rebuilt from scratch every time anything changes. A tick living in a checkbox would vanish the moment an unrelated vector was created. They are also cleared the instant a vector leaves the store, because letters are reused: without that, deleting a ticked B and creating a new one would hand the newcomer a tick it never earned.
+
+`state/actions.py` holds the changes themselves — creating, deleting, and clearing vectors, choosing the active one, and ticking and unticking. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
 
 ### Likely questions
 - **What does "single source of truth" solve?** If the 3D view and the panel each kept their own copy of the vectors, they could disagree. With one copy, they can't.
+- **Why is the ticked set not the same as the active vector?** They answer different questions. "Which vector am I shaping right now?" has exactly one answer; "which vectors go into this sum?" has any number. Merging them would make it impossible to add two vectors while working on a third.
 
 ---
 

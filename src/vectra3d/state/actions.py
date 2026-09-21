@@ -70,3 +70,25 @@ def set_active(store: VectorStore, name: str) -> None:
     """Make `name` the active vector. Raises KeyError if it does not exist."""
     store.set_active(name)
     store.notify()
+
+
+def toggle_selected(store: VectorStore, name: str) -> bool:
+    """Tick or untick a vector for an operation. Returns its new state.
+
+    Independent of the active vector (F-05a): ticking a vector does not make
+    it active, and making a vector active does not tick it. Raises KeyError if
+    there is no such vector.
+
+    Ticks are deliberately left out of undo (F-19, G2.8), which covers changes
+    to the vectors themselves rather than what is currently marked.
+    """
+    now_selected = not store.is_selected(name)
+    store.set_selected(name, now_selected)
+    store.notify()
+    return now_selected
+
+
+def clear_selection(store: VectorStore) -> None:
+    """Untick every vector, leaving the vectors themselves alone."""
+    store.clear_selection()
+    store.notify()

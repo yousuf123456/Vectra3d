@@ -88,9 +88,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-05 Active vector and selection
 **F-05a (panel) — Group:** G2 · **Depends on:** F-11
-- [ ] Exactly one vector is active at a time (or none, if no vectors exist).
-- [ ] The active vector can be changed by clicking it in the info panel.
-- [ ] Separately from the active vector, the info panel has a checkbox per vector for **multi-select**, used by the resultant.
+- [x] Exactly one vector is active at a time (or none, if no vectors exist).
+- [x] The active vector can be changed by clicking it in the info panel.
+- [x] Separately from the active vector, the info panel has a checkbox per vector for **multi-select**, used by the resultant.
 
 **F-05b (gesture) — Group:** G5 · **Depends on:** F-05a, F-02
 - [ ] The cycle gesture moves the active vector to the next one, skipping locked vectors.

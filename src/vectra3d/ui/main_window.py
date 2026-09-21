@@ -129,5 +129,5 @@ class VectraMainWindow(MainWindow):
         active = self._store.active_name
         self.scene.update_for(vectors)
         self.vectors.draw(vectors, active)
-        self.info_panel.refresh(vectors, active)
+        self.info_panel.refresh(vectors, active, self._store.selected)
         self.action_panel.refresh()
