@@ -41,13 +41,9 @@ from vectra3d.core.formatting import format_number
 from vectra3d.state import actions, naming
 from vectra3d.state.models import Vector
 from vectra3d.state.store import VectorStore
+from vectra3d.ui import theme
 
 EMPTY_TEXT = "No vectors yet — create one above."
-
-# The tint behind the active vector's card, matching the halo on its arrow.
-ACTIVE_BACKGROUND = "#EEF3F8"
-ACTIVE_BORDER = "#8FA9C2"
-CARD_BORDER = "#DDDDDD"
 
 SWATCH_SIZE = 12
 AXIS_LABELS = ("x", "y", "z")
@@ -76,7 +72,7 @@ class InfoPanel(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel("Vectors")
-        title.setStyleSheet("font-weight: bold;")
+        title.setProperty("role", "title")
         outer.addWidget(title)
 
         self._cards = QWidget()
@@ -108,7 +104,7 @@ class InfoPanel(QWidget):
         if not vectors:
             empty = QLabel(EMPTY_TEXT)
             empty.setWordWrap(True)
-            empty.setStyleSheet("color: #666666;")
+            empty.setStyleSheet(f"color: {theme.MUTED_TEXT};")
             self._cards_layout.addWidget(empty)
             return
 
@@ -169,15 +165,16 @@ def _build_card(
     color = naming.color_for(vector.name)
 
     card = _Card(vector.name, on_activate)
-    border = ACTIVE_BORDER if is_active else CARD_BORDER
-    background = ACTIVE_BACKGROUND if is_active else "transparent"
+    border = theme.ACTIVE_BORDER if is_active else theme.CARD_BORDER
+    background = theme.ACTIVE_BACKGROUND if is_active else theme.CARD_BACKGROUND
     card.setStyleSheet(
         f"QFrame {{ border: 1px solid {border};"
-        f" border-radius: 4px; background: {background}; }}"
+        f" border-radius: {theme.CARD_RADIUS}px; background: {background}; }}"
     )
 
     layout = QGridLayout(card)
-    layout.setContentsMargins(8, 6, 8, 6)
+    layout.setContentsMargins(theme.GAP, theme.GAP_SMALL, theme.GAP, theme.GAP_SMALL)
+    layout.setHorizontalSpacing(theme.GAP_SMALL)
 
     # The tick box comes first, so the ticks form a column that can be read
     # down the panel at a glance when picking vectors for an operation.
@@ -189,11 +186,11 @@ def _build_card(
 
     swatch = QLabel()
     swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
-    swatch.setStyleSheet(f"background: {color}; border: none; border-radius: 2px;")
+    swatch.setStyleSheet(f"background: {color}; border: none; border-radius: 3px;")
     layout.addWidget(swatch, 0, 1)
 
     name = QLabel(vector.name)
-    name.setStyleSheet("font-weight: bold; border: none;")
+    name.setStyleSheet("font-weight: 600; border: none;")
     layout.addWidget(name, 0, 2)
     layout.setColumnStretch(2, 1)
 
@@ -203,13 +200,13 @@ def _build_card(
     delete.setText("✕")
     delete.setToolTip(f"Delete vector {vector.name}")
     delete.setAutoRaise(True)
-    delete.setStyleSheet("border: none; color: #666666;")
+    delete.setStyleSheet(f"border: none; color: {theme.MUTED_TEXT};")
     delete.clicked.connect(lambda: on_delete(vector.name))
     layout.addWidget(delete, 0, 3)
 
     for row, (axis, text) in enumerate(card_values(vector), start=1):
         label = QLabel(axis)
-        label.setStyleSheet("color: #666666; border: none;")
+        label.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
         value = QLabel(text)
         value.setStyleSheet("border: none;")
         value.setAlignment(Qt.AlignmentFlag.AlignRight)

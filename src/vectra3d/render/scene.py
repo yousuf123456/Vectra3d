@@ -53,8 +53,47 @@ NUMBER_FONT_SIZE = 10
 # Where the camera sits by default: raised, in front and to the right, so that
 # x, y and z are all clearly visible (`interaction-spec.md` section 2.1).
 CAMERA_DIRECTION = (1.0, -1.35, 0.75)
-CAMERA_DISTANCE = 3.1  # multiples of the extent
 VIEW_UP = (0.0, 0.0, 1.0)
+
+# How much of the world has to be on screen, in multiples of the extent.
+#
+# The furthest thing out is an axis letter, which sits a little past the tip
+# of its axis: 1 + ARROW_LENGTH * 2.2, about 1.13 extents. The rest is margin
+# so the letters are not jammed against the edge of the view.
+#
+# The camera distance is worked out from this and the lens angle rather than
+# being a number of its own. It used to be a fixed 3.1 extents, which was too
+# close for its own scene: the visible half-height there is 3.1 * tan(15) =
+# 0.83 extents, so the axes were cut off before their tips, and the x and z
+# letters were outside the picture entirely. It was only obvious once the
+# preset views arrived, because looking straight down an axis foreshortens
+# nothing and the letters have nowhere to hide.
+VISIBLE_RADIUS = 1.30
+
+# How far the numbers sit off their axis, as a fraction of the extent. The
+# direction is decided per view in `place_labels`; this is only the distance.
+LABEL_OFFSET = 0.045
+
+# An axis within about 12 degrees of pointing straight at the camera is hidden
+# along with its numbers: it is a point on screen, so there is nothing to read
+# along it, and every one of its numbers would land on the origin at once.
+AXIS_HEAD_ON_LIMIT = 0.978  # cos(12 degrees)
+
+# Below this, an axis counts as running up and down the screen, where "push
+# the numbers downwards" is meaningless and they go to the left instead.
+UPRIGHT_AXIS_LIMIT = 0.2
+
+# The named viewpoints in the toolbar: which way the camera sits from the
+# origin, and which way is up on screen once it is there.
+#
+# Looking down an axis, "up" is z, the way the student is used to seeing it.
+# Looking down z itself that is meaningless, since z points at them, so the
+# top of the screen becomes +y and the view reads like a map of the XY plane.
+VIEWPOINTS: dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]] = {
+    "Front": ((0.0, -1.0, 0.0), (0.0, 0.0, 1.0)),
+    "Right": ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
+    "Top": ((0.0, 0.0, 1.0), (0.0, 1.0, 0.0)),
+}
 
 
 def extent_steps() -> Iterable[float]:
@@ -117,6 +156,42 @@ def _format_tick(value: float) -> str:
     return f"{value:g}"
 
 
+def label_offset_direction(
+    axis: np.ndarray, view: np.ndarray, up: np.ndarray
+) -> np.ndarray | None:
+    """Which way to push an axis's numbers so they can be read on screen.
+
+    `axis` is the axis direction, `view` the way the camera is looking, `up`
+    the camera's up direction, all in world space. Returns a unit vector
+    perpendicular to the axis and lying in the plane of the screen, or None
+    if the axis points so nearly at the camera that it is a point on screen
+    and its numbers should not be drawn at all.
+
+    `cross(axis, view)` is perpendicular to both, which makes it "sideways
+    from this axis, as the student sees it". The sign is then chosen so the
+    numbers hang below their axis, as on a printed graph. An axis drawn
+    up and down the screen has no below, so its numbers go to the left.
+    """
+    view = view / np.linalg.norm(view)
+    if abs(float(np.dot(axis, view))) >= AXIS_HEAD_ON_LIMIT:
+        return None
+
+    sideways = np.cross(axis, view)
+    length = float(np.linalg.norm(sideways))
+    if length == 0.0:  # pragma: no cover - the head-on check already caught it
+        return None
+    sideways /= length
+
+    downwards = float(np.dot(sideways, up))
+    if abs(downwards) < UPRIGHT_AXIS_LIMIT:
+        right = np.cross(view, up)
+        if float(np.dot(sideways, right)) > 0.0:
+            sideways = -sideways
+    elif downwards > 0.0:
+        sideways = -sideways
+    return sideways
+
+
 class Scene:
     """Draws the world the vectors live in, and resizes it to fit them.
 
@@ -127,8 +202,28 @@ class Scene:
         self._plotter = plotter
         self._extent = MIN_EXTENT
 
+        # Filled in by `_draw`, then arranged for the current view by
+        # `place_labels`: the numbers with the point on the axis each belongs
+        # to, the three axis letters, and where each axis is pushing its
+        # numbers at the moment.
+        self._numbers: list[tuple[int, np.ndarray, pv.Label]] = []
+        self._letters: dict[int, pv.Label] = {}
+        self._offsets: list[np.ndarray] = [np.zeros(3) for _ in range(3)]
+        self._axis_visible: list[bool] = [True, True, True]
+
         self._draw()
         self.reset_view()
+
+        # Keep the labels arranged while the student drags the view around.
+        # The plotter has no interactor when rendering off screen, as the
+        # tests and the screenshot scripts do.
+        interactor = getattr(self._plotter, "iren", None)
+        if interactor is not None:
+            interactor.add_observer("InteractionEvent", self._on_camera_moved)
+
+    def _on_camera_moved(self, *_args: object) -> None:
+        """Rearrange the labels as the view turns. Called on every drag frame."""
+        self.place_labels()
 
     @property
     def extent(self) -> float:
@@ -233,7 +328,7 @@ class Scene:
                 render=False,
             )
 
-            self._label(
+            self._letters[index] = self._label(
                 label,
                 tip + direction * (ARROW_LENGTH * 2.2 * extent),
                 AXIS_FONT_SIZE,
@@ -242,29 +337,76 @@ class Scene:
             )
 
     def _draw_numbers(self, extent: float) -> None:
-        """The numbers along each axis, so magnitudes can be read off the scene."""
+        """The numbers along each axis, so magnitudes can be read off the scene.
+
+        Placed on the axis itself here. Where they actually sit is decided by
+        `place_labels`, which pushes them clear of the axis in whichever
+        direction is clear *on screen* for the current view.
+        """
         step = extent / DIVISIONS
-        offset = TICK_LENGTH * 3 * extent
 
-        # Which way to nudge the numbers so they sit clear of their axis. The
-        # x and y numbers move across the floor rather than under it, and the
-        # z numbers move sideways.
-        nudge = {0: (0.0, 1.0, 0.0), 1: (1.0, 0.0, 0.0), 2: (1.0, 0.0, 0.0)}
-
+        self._numbers = []
         for index in range(3):
             direction = np.zeros(3)
             direction[index] = 1.0
-            away = np.array(nudge[index])
             for i in range(-DIVISIONS, DIVISIONS + 1, LABEL_EVERY):
                 if i == 0:
                     continue
-                self._label(
+                label = self._label(
                     _format_tick(i * step),
-                    direction * (i * step) - away * offset,
+                    direction * (i * step),
                     NUMBER_FONT_SIZE,
                     LABEL_COLOR,
                     f"number-{index}-{i}",
                 )
+                self._numbers.append((index, direction * (i * step), label))
+
+    # --- Where the labels sit ---
+
+    def place_labels(self) -> None:
+        """Move every axis label to where it can be read from this viewpoint.
+
+        The numbers used to be nudged off their axis in a fixed world
+        direction - x numbers towards -y, y and z towards -x. Those
+        directions suit the default view and no other. Turn the scene and
+        they push the numbers onto the axis line, across a vector, or into
+        each other; look straight down an axis and every number on it lands
+        on the origin in a single unreadable smudge.
+
+        So the direction is worked out per axis, per view. `cross(axis,
+        view)` is perpendicular to the axis and lies in the plane of the
+        screen, which is exactly the "sideways from this axis, as the student
+        sees it" direction. Its sign is chosen to push the numbers down the
+        screen, or, for an axis that is already near-vertical on screen and
+        so has no meaningful "down", to the left.
+
+        An axis pointing within a few degrees of the camera is hidden
+        outright, numbers and letter both. There is nothing to read along an
+        axis that is a single point on screen, and stacking twenty numbers on
+        the origin is worse than showing none.
+        """
+        camera = self._plotter.camera
+        view = np.array(camera.direction, dtype=float)
+        up = np.array(camera.up, dtype=float)
+        offset = LABEL_OFFSET * self._extent
+
+        for index in range(3):
+            axis = np.zeros(3)
+            axis[index] = 1.0
+            sideways = label_offset_direction(axis, view, up)
+
+            visible = sideways is not None
+            self._axis_visible[index] = visible
+            letter = self._letters.get(index)
+            if letter is not None:
+                letter.SetVisibility(visible)
+            if sideways is not None:
+                self._offsets[index] = sideways * offset
+
+        for index, base, label in self._numbers:
+            label.SetVisibility(self._axis_visible[index])
+            if self._axis_visible[index]:
+                label.position = tuple(float(v) for v in base + self._offsets[index])
 
     def _label(
         self,
@@ -273,7 +415,7 @@ class Scene:
         size: int,
         color: str,
         name: str,
-    ) -> None:
+    ) -> pv.Label:
         """Place one piece of text in the scene, facing the camera.
 
         `pv.Label` is a billboard: it turns to face the viewer and costs
@@ -289,19 +431,61 @@ class Scene:
         )
         label.prop.color = color
         self._plotter.add_actor(label, name=name, reset_camera=False, render=False)
+        return label
 
     # --- The camera ---
+
+    def camera_distance(self) -> float:
+        """How far back the camera has to sit for the whole world to fit.
+
+        Read from the camera's own lens angle rather than assumed, so the
+        framing stays right if that angle is ever changed. VTK's view angle
+        is the vertical one, which is the tighter of the two on a window
+        wider than it is tall, so fitting it fits the width as well.
+        """
+        half_angle = math.radians(self._plotter.camera.view_angle / 2.0)
+        return VISIBLE_RADIUS * self._extent / math.tan(half_angle)
 
     def default_camera_position(self) -> list[tuple[float, float, float]]:
         """The default viewpoint for the current extent."""
         direction = np.array(CAMERA_DIRECTION, dtype=float)
         direction /= np.linalg.norm(direction)
-        position = direction * (CAMERA_DISTANCE * self._extent)
+        position = direction * self.camera_distance()
         return [tuple(float(v) for v in position), (0.0, 0.0, 0.0), VIEW_UP]
 
     def reset_view(self) -> None:
         """Put the camera back at the default angle (F-01)."""
         self._plotter.camera_position = self.default_camera_position()
+        self.place_labels()
+        self._plotter.render()
+
+    def set_view(self, name: str) -> None:
+        """Look at the scene from one of the named directions.
+
+        The default angle shows all three axes at once, which is right for
+        seeing a vector as a whole but poor for judging it: from an angle,
+        a vector leaning towards x looks much like one leaning towards y.
+        Looking straight down an axis removes that guesswork, because the
+        axis pointing at the student collapses to a point and the other two
+        are seen true.
+
+        The camera is placed by hand rather than through PyVista's
+        `view_xy` and friends, for two reasons. Those helpers frame the
+        scene's bounds, so the framing would jump about as vectors are
+        created and deleted; and they choose their own up direction, which
+        for a z-up scene puts the top of the screen somewhere unexpected.
+        Placing it keeps every view at the same distance, with z up wherever
+        z is on screen, so switching views feels like walking around one
+        fixed object.
+        """
+        direction, view_up = VIEWPOINTS[name]
+        position = np.array(direction, dtype=float) * self.camera_distance()
+        self._plotter.camera_position = [
+            tuple(float(v) for v in position),
+            (0.0, 0.0, 0.0),
+            view_up,
+        ]
+        self.place_labels()
         self._plotter.render()
 
     # --- Resizing the world ---
@@ -348,4 +532,7 @@ class Scene:
         focal = np.array(self._plotter.camera.focal_point, dtype=float)
         moved = focal + (position - focal) * (extent / previous)
         self._plotter.camera.position = tuple(float(v) for v in moved)
+        # `_draw` built a fresh set of numbers sitting on their axes, so they
+        # have to be arranged again before the frame goes out.
+        self.place_labels()
         self._plotter.render()

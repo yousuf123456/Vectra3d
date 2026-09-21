@@ -24,9 +24,21 @@ The scene is redrawn whenever the vectors change. That is exactly when the spec 
 
 Everything in the scene is sized as a fraction of the extent, including how far away the camera sits. The geometry and the camera therefore change in the **same frame**. An earlier version redrew the grid at once and slid the camera out over 300 ms to catch up, which meant the world really was ten times too big for that third of a second: the origin dot swelled to fill the view and the grid shot off the edges of the screen. Changed together, the grid keeps its ten divisions at a proportional distance, so its lines land in almost the same pixels and what visibly changes is the numbers on the axes — which is the part the student needs to notice.
 
+**Looking at the scene from different angles.** The toolbar has **Reset view**, which returns to the default three-quarter angle, and **Front**, **Right** and **Top**, which look straight down the y, x and z axes. Those three matter more than they sound: seen from an angle, a vector leaning towards x looks much like one leaning towards y, and the only way to be sure is to remove the perspective. Looking down an axis does exactly that — the axis facing you shrinks to a point and the other two are seen true, so the view becomes an ordinary 2D graph you can read values off.
+
+The camera is placed by hand rather than through PyVista's built-in `view_xy` and friends, which reframe themselves around whatever is currently in the scene. That would make the zoom lurch every time a vector was created or deleted. Placing it keeps every view at the same distance with z upwards, so switching between them feels like walking around one fixed object rather than being teleported.
+
+How far back the camera sits is worked out from the camera's own lens angle, so that the whole world — out to the axis letters, which sit a little past the tips — is inside the picture. It used to be a fixed multiple of the extent, and that number was too small for its own scene: the axes were cut off before their tips and the x and z letters were off-screen entirely. Nobody noticed until the preset views arrived, because an angled view foreshortens everything towards the middle and hid it.
+
+**Where the numbers sit.** Each axis decides for itself, for the current view, which way to push its numbers clear of its line. The rule is a cross product of the axis direction with the direction the camera is looking, which gives a direction perpendicular to the axis that lies flat in the plane of the screen — "sideways from this line, as the student sees it". The sign is chosen so the numbers hang below their axis, the way they do on a printed graph; an axis drawn up and down the screen has no below, so its numbers go to the left instead.
+
+This replaced a fixed choice — x numbers always towards −y, y and z always towards −x — which was right for the default view and wrong for every other. Turned around, it pushed the x numbers across the vector; seen edge-on, it piled them into each other. An axis pointing within about 12° of the camera is hidden altogether, numbers and letter: it is a single point on screen, so there is nothing to read along it, and drawing its twenty numbers would stack them all on the origin in one unreadable smudge. The positions are recalculated as the view is dragged, so the numbers keep up with it.
+
 ### Likely questions
 - **Why is z up and not y?** Physics and engineering textbooks usually draw z up. Some computer graphics tools use y up, but matching the students' course matters more.
 - **What does "right-handed" mean and why does it matter?** It fixes which way +z points relative to x and y. With the opposite (left-handed) choice, cross products would point the wrong way, so it matters for the planned cross-product feature.
+- **Why does an axis disappear when I look straight down it?** Because there is nothing left of it to see. Pointing at you, it is a dot, and its numbers would all land on the origin together. Hiding it is what turns the top view into a clean XY graph. Turn the view slightly and it comes straight back.
+- **Why do the numbers move when I rotate the view?** They are staying out of the way. Each one sits just off its axis on the side that happens to be clear from where you are looking, and that side changes as you move.
 
 ---
 

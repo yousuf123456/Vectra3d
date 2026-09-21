@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vectra3d.paths import GESTURE_MODEL, resource_path  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
+from vectra3d.ui import theme  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 
@@ -84,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     # sys.argv is passed on so that Qt's own options still work, such as
     # -platform offscreen when running without a display.
     app = QApplication(sys.argv)
+
+    # Themed before the window is built, so every widget is created against
+    # the final palette rather than being restyled after it is on screen.
+    theme.apply(app)
 
     # One store for the whole app: the single source of truth every panel and
     # the 3D view read from (`architecture.md` section 2).

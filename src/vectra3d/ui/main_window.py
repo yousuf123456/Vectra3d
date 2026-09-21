@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
+from vectra3d.ui import theme
 from vectra3d.ui.action_panel import ActionPanel
 from vectra3d.ui.info_panel import InfoPanel
 
@@ -41,6 +42,14 @@ PANEL_WIDTH = 300
 # the 3D view, and MediaPipe will be competing for this same modest chip.
 MULTI_SAMPLES = 2
 LINE_SMOOTHING = True
+
+# What each preset view button says it does, in the student's terms rather
+# than in axis names alone.
+VIEW_HINTS = {
+    "Front": "Look along the y axis: x across, z up",
+    "Right": "Look along the x axis: y across, z up",
+    "Top": "Look down the z axis onto the XY plane",
+}
 
 
 class VectraMainWindow(MainWindow):
@@ -68,6 +77,7 @@ class VectraMainWindow(MainWindow):
             line_smoothing=LINE_SMOOTHING,
         )
         self.plotter.enable_anti_aliasing("fxaa")
+        self.plotter.set_background(theme.SCENE_BACKGROUND)
         layout.addWidget(self.plotter.interactor)
 
         # The 3D view on the left, the panels on the right. A splitter lets
@@ -110,9 +120,25 @@ class VectraMainWindow(MainWindow):
         """The view controls. Everything that changes vectors is in the panels."""
         toolbar = QToolBar("View", self)
         toolbar.setMovable(False)
+
         reset = toolbar.addAction("Reset view")
-        reset.setToolTip("Return the camera to the default angle")
+        reset.setToolTip("Return the camera to the default angle, showing all three axes")
         reset.triggered.connect(self.scene.reset_view)
+
+        toolbar.addSeparator()
+
+        # Looking straight down an axis is what makes a vector readable: the
+        # axis facing the student collapses to a point, and the other two are
+        # seen without foreshortening.
+        for name, hint in VIEW_HINTS.items():
+            action = toolbar.addAction(name)
+            action.setToolTip(hint)
+            # `name` is bound now rather than read at click time, so each
+            # button keeps the view it was made for.
+            action.triggered.connect(
+                lambda _checked=False, view=name: self.scene.set_view(view)
+            )
+
         self.addToolBar(toolbar)
 
     def _on_store_changed(self) -> None:

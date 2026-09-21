@@ -11,13 +11,20 @@
 # 2. The gesture recognizer model is added under "assets/models", the same
 #    path it has in the project. That is what lets paths.resource_path() work
 #    unchanged whether the app runs from source or from the .exe.
+# 3. qdarktheme loads its stylesheet's icons from .svg files inside the
+#    package, referenced by URL from the stylesheet rather than imported, so
+#    PyInstaller cannot see them either. Without them the themed widgets lose
+#    their checkbox ticks and dropdown arrows in the packaged build only,
+#    which is the kind of difference that is only noticed after shipping.
 
 from PyInstaller.utils.hooks import collect_all
 
 mediapipe_datas, mediapipe_binaries, mediapipe_hiddenimports = collect_all("mediapipe")
+qdarktheme_datas, _, qdarktheme_hiddenimports = collect_all("qdarktheme")
 
 datas = [
     *mediapipe_datas,
+    *qdarktheme_datas,
     ("../assets/models/gesture_recognizer.task", "assets/models"),
 ]
 
@@ -26,7 +33,7 @@ a = Analysis(
     pathex=["../src"],
     binaries=mediapipe_binaries,
     datas=datas,
-    hiddenimports=mediapipe_hiddenimports,
+    hiddenimports=[*mediapipe_hiddenimports, *qdarktheme_hiddenimports],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -7,6 +7,7 @@ dependencies = [
     "mediapipe>=1.0.1",
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
+    "pyqtdarktheme-fork>=2.3.6",
     "pyside6>=6.11.2",
     "pyvista>=0.49.0",
     "pyvistaqt>=0.13.1",
