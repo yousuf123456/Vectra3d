@@ -129,7 +129,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-11 Information panel
 **Basic — Group:** G1 · **Depends on:** F-04
-- [ ] Lists every vector with: name, color swatch, and components `(x, y, z)`.
+- [x] Lists every vector with: name, color swatch, and components `(x, y, z)`.
 
 **Full — Group:** G2 · **Depends on:** F-11 basic, F-12
 - [ ] Adds magnitude, direction angles `(α, β, γ)`, unit vector, and lock status for every vector.

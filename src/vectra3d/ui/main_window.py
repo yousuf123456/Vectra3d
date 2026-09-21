@@ -21,6 +21,7 @@ from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
 from vectra3d.ui.action_panel import ActionPanel
+from vectra3d.ui.info_panel import InfoPanel
 
 WINDOW_TITLE = "Vectra3D"
 WINDOW_WIDTH = 1200
@@ -72,10 +73,18 @@ class VectraMainWindow(MainWindow):
         # The 3D view on the left, the panels on the right. A splitter lets
         # the student widen either side but never lose the panel, which
         # matters because everything must stay doable without gestures.
+        # The panels share the right column, split so the list of vectors can
+        # be given more room as they accumulate.
+        self.action_panel = ActionPanel(self._store)
+        self.info_panel = InfoPanel()
+        panels = QSplitter(Qt.Orientation.Vertical, self)
+        panels.addWidget(self.action_panel)
+        panels.addWidget(self.info_panel)
+        panels.setStretchFactor(1, 1)
+
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.addWidget(frame)
-        self.action_panel = ActionPanel(self._store)
-        splitter.addWidget(self.action_panel)
+        splitter.addWidget(panels)
         splitter.setStretchFactor(0, 1)
         splitter.setSizes([WINDOW_WIDTH - PANEL_WIDTH, PANEL_WIDTH])
         self.setCentralWidget(splitter)
@@ -111,5 +120,7 @@ class VectraMainWindow(MainWindow):
         # a vector that made the scene grow is never drawn against the old
         # grid even for one frame.
         vectors = self._store.vectors
+        active = self._store.active_name
         self.scene.update_for(vectors)
-        self.vectors.draw(vectors, self._store.active_name)
+        self.vectors.draw(vectors, active)
+        self.info_panel.refresh(vectors, active)

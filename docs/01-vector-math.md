@@ -242,9 +242,11 @@ The app calculates with full precision and only rounds the numbers when showing 
 - The zero vector is handled explicitly: its magnitude is 0 and its direction values are shown as "—".
 
 ### How it's implemented
-*The "keep full precision" half was settled in step G1.3. The display rounding itself is `core/formatting.py`, built in G2.3, and will be described here then.*
+*Built across steps G1.3 and G1.4. The em dash shown for values the zero vector does not have comes with the full info panel in G2.3.*
 
 Nothing is rounded or snapped when a vector is stored. A vector typed as r = 1, θ = 90°, φ = 90° keeps an x of 6.1e-17 rather than a tidy zero, because that genuinely is cos(90°) in floating point. Rounding it at the point of storage would be a small lie that later calculations would inherit; rounding it only when it is shown gives "0.00" on screen with the true value still underneath.
+
+`core/formatting.py` is where that rounding happens, and it is the only place it happens. `format_number()` gives two decimals and turns anything that rounds to zero into "0.00", so a component like that 6.1e-17, or a −0.001, never appears as "−0.00". Values that survive rounding keep their sign as normal: −0.006 still shows as −0.01.
 
 ### Likely questions
 - **Why might a value show 4.99 when I expect 5?** Converting angles to components involves sin and cos, which produce tiny floating-point errors. Full precision is kept internally, so this only affects display, and rounding to 2 decimals usually hides it.

@@ -6,7 +6,7 @@ Updated after every approved step. Read this at the start of every session to se
 
 ## Current status
 - **Current group:** G1 — Foundation, in progress
-- **Next step:** G1.4 — F-11 info panel, basic (name, color swatch, components)
+- **Next step:** G1.5 — F-10 delete and clear (including the clear-all confirmation)
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -19,15 +19,16 @@ Updated after every approved step. Read this at the start of every session to se
 | G0.4 | Window and 3D view smoke test | 2026-09-20 | `G0.4: window with embedded 3D view` | Opens, rotates, closes cleanly (exit 0). PySide6 6.11.2 works; the section 2 fallback pin is not needed. Anti-aliasing changed from 8x MSAA to FXAA after measuring, roughly doubling the frame rate. User's verdict on rotation: "not super smooth but acceptable". |
 | G0.5 | Packaging smoke test | 2026-09-20 | `G0.5: package as a one-folder exe` | One-folder build, 972 files / 0.66 GB. `vectra3d.exe --check-model` loads the model from `_internal`, proving the `sys._MEIPASS` branch on a real build. Anti-aliasing raised to 2x MSAA + FXAA + line smoothing after the axes looked jagged; measured as free. |
 | G1.1 | Global vector rules: `state/models.py`, `naming.py`, `store.py`, `actions.py` | 2026-09-20 | `G1.1: global vector rules` | Frozen `Vector` keyed by letter; color derived from the letter; plain-callback change events, so `state` needs no Qt. 39 new tests; suite now 51 passing. No UI. |
-| G1.3 | F-04 create by typing: `core/spherical.py`, `render/vector_actor.py`, `ui/action_panel.py`, splitter layout | 2026-09-21 | `G1.3: create a vector by typing` | All four F-04 criteria pass, the limit message verified through the real panel offscreen. Vectors are drawn in this step, since F-04 cannot be judged without seeing the arrow. Palette and arrow proportions took three rounds of visual feedback. 36 new tests; suite now 103 passing. |
 | G1.2 | F-01 3D scene: `render/scene.py`, toolbar, scene scaling | 2026-09-20 | `G1.2: 3D scene with axes, grid and scene scaling` | All three F-01 criteria pass. Scene runs at ~50 fps after two measured rendering fixes (see `library-docs.md`). The rescale needed `/recover`: the planned "redraw geometry, glide the camera after it" is wrong for an extent-proportional scene and was replaced by a synchronized change. 16 new tests; suite now 67 passing. |
+| G1.3 | F-04 create by typing: `core/spherical.py`, `render/vector_actor.py`, `ui/action_panel.py`, splitter layout | 2026-09-21 | `G1.3: create a vector by typing` | All four F-04 criteria pass, the limit message verified through the real panel offscreen. Vectors are drawn in this step, since F-04 cannot be judged without seeing the arrow. Palette and arrow proportions took three rounds of visual feedback. 36 new tests; suite now 103 passing. |
+| G1.4 | F-11 info panel (basic): `ui/info_panel.py`, `core/formatting.py` | 2026-09-21 | `G1.4: info panel listing every vector` | One card per vector rather than a table, because F-11 full needs about twelve values per vector in a 300px column. `core/formatting.py` built here rather than at G2.3, since showing components means the section 2.5 display rules apply now. 21 new tests; suite now 124 passing. |
 
 ## Groups
 
 | Group | Name | Status |
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
-| G1 | Foundation | In progress — G1.1 done |
+| G1 | Foundation | In progress — G1.4 done |
 | G2 | Vector math and display | Not started |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
@@ -58,6 +59,9 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-20 | `test_config.py` asserts relationships between tunables, not their exact literals | The spec allows re-tuning after real hand testing. Tests repeating each literal would have to be edited on every legitimate change, which is the habit `code-standards.md` section 4 forbids. |
 | 2026-09-20 | The 3D view uses `multi_samples=2` + FXAA + line smoothing, rather than PyVista's default 8x MSAA | Measured on the target hardware (Intel HD Graphics 620) against a scene of thin lines: 8x MSAA 37 fps, this combination 60 fps. An earlier attempt at `multi_samples=0` + FXAA hit the same 60 fps but left the axes visibly jagged, so 2x was added back at no measurable cost. F-02 requires hand tracking not to slow the 3D view, so the headroom matters. |
 | 2026-09-20 | `app.py` has a `--check-model` option | The app had no camera code when packaging was first proven, so nothing loaded the model. This verifies the bundled model from the .exe without adding code the app does not otherwise need, and G6.2 reuses it on a machine with no Python and no internet. |
+| 2026-09-21 | The info panel shows one card per vector rather than a table row | The panel is a 300px column, and by G2.3 each vector has about twelve values: components, magnitude, three direction angles, a unit vector and a lock state. A table would have to scroll sideways to reach them; a card absorbs them. |
+| 2026-09-21 | `core/formatting.py` was built at G1.4, ahead of its G2.3 slot in `build-plan.md` | Showing components means `interaction-spec.md` section 2.5 applies now: two decimals and never "-0.00". Writing `f"{v:.2f}"` inline would have duplicated the rule later and shipped the "-0.00" bug in the meantime. G2.3 extends the module for angles rather than starting it. |
+| 2026-09-21 | The info panel's card list is rebuilt from scratch on every change | At most ten cards, so working out what moved costs more than rebuilding, and a rebuilt list cannot drift out of step with the store. |
 | 2026-09-21 | The ten vector colors were rebuilt twice, ending with a maximum-contrast set rather than hues chosen by hand | Excluding red, green and blue leaves a narrow band, and the first palette put two olives and two teals in it. The second separated same-family pairs (orange/brown, teal/cyan) by lightness and the user still found them hard to tell apart. The third takes colors from a set designed for mutual contrast and keeps only those clear of the axis colors, so no two share a family. Judged on screen with all ten drawn at once. |
 | 2026-09-21 | The active vector is shown with a translucent halo, not extra thickness | `interaction-spec.md` section 10 allows "thicker, with a glow or outline". Thickness was built first and the user asked for something else. It was also the weaker choice: thickness would mean two things at once from G2.6, when component arrows arrive. |
 | 2026-09-21 | Arrow proportions are fractions of each vector's own length, not of the scene extent | A vector then looks the same shape whether it is 3 units or 300, and a short vector is a small arrow rather than a stubby barrel in a large world. Final values after three rounds of visual feedback: shaft 0.007, tip radius 0.018, tip length 0.060 - much slimmer than PyVista's defaults, which look like pipes beside one-pixel axis lines. |
