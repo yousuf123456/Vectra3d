@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. G2.1 to G2.4 complete, plus two user-requested UI passes
-- **Next step:** G2.5 — F-09a lock / unlock (panel)
+- **Current group:** G2 — Vector math and display. G2.1 to G2.5 complete, plus two user-requested UI passes
+- **Next step:** G2.6 — F-13a resolve into components (panel)
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -32,6 +32,8 @@ Updated after every approved step. Read this at the start of every session to se
 | G2.4 | F-08 edit exact values: `core/spherical.py` `to_spherical`, `actions.edit_vector`, the Edit box in `ui/action_panel.py` | 2026-09-21 | `G2.4: edit a vector's exact values` | All three F-08 criteria pass. A second box rather than a mode on the create form, so filled fields never mean two things. `VectorForm` extracted so both boxes share one toggle and one set of parse rules. The locked refusal is in the action as well as the greyed form, because G5's gestures reach the same function. 53 new tests; suite now 318 passing. |
 | Panel space | One-row fields, foldable boxes, layout instead of the panel splitter (user-requested, not a `build-plan.md` step) | 2026-09-21 | `G2.4: edit a vector's exact values` (same commit as G2.4; the two changes touch the same files) | Raised by the user at the G2.4 review: the two forms took 498px of an 800px window, leaving two of ten cards visible. Now 424px with both open (3 cards), 292 with one folded (4), 160 with both (6). The panel splitter had to go: it hands out the sizes it was last given, so folding freed nothing. Radios deliberately left stacked - measured, and only "x, y, z / r, θ, φ" fits one row, which would erode F-04's wording. |
 
+| G2.5 | F-09a lock / unlock: `actions.toggle_locked`, delete protection, the lock control on each card | 2026-09-21 | `G2.5: lock and unlock a vector` | All three F-09a criteria pass, and G2.4's greyed edit form finally has something that can set the flag. The control is on every card, reversing G2.3's "only drawn when locked" - an indicator that cannot be clicked is not a control. The padlock emoji were replaced by the words Lock / Locked after the user could not tell 🔒 from 🔓: Windows draws them as colour bitmaps, which ignore the muting meant to separate the states. 19 new tests; suite now 337 passing. |
+
 
 ## Groups
 
@@ -39,7 +41,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | In progress — G2.1 to G2.4 done |
+| G2 | Vector math and display | In progress — G2.1 to G2.5 done |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -124,6 +126,11 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-21 | The mode radios stay stacked, against the compacting done everywhere else | Measured: two radios fit one 300px row only as "x, y, z" and "r, θ, φ" (230px against 260px usable); every wording that keeps "Components (x, y, z)" and "Magnitude + angles" needs 326-518px. F-04's criterion names those two modes, and shortening them to buy 24px would have quietly weakened a ticked criterion. |
 | 2026-09-21 | Conversion between the two modes on toggling was **not** built | A G1.3 comment promised it for G2.4, but F-08's criteria do not ask for it and it was not in the approved plan. In the edit box it costs nothing, because both sets of fields are filled from the vector whenever it changes. The stale comment was corrected rather than left as a false promise. Open: offered to the user, not yet chosen. |
 
+| 2026-09-21 | The lock control sits on every card, not only on locked ones, reversing the G2.3 decision | That decision was made when nothing could set the flag, so an indicator was all it could be. A control that only appears once the state is already set cannot be used to reach that state, and the alternative - locking from the action panel, reading the result in the info panel - splits one idea across two places and makes unlocking require activating the vector first. |
+| 2026-09-21 | The lock control is the word Lock / Locked, not a padlock glyph | Built first with 🔒 and 🔓, and the user could not tell them apart. Windows draws emoji as colour bitmaps, so they ignore the colour and weight that were carrying the difference. Text obeys both, and reads the same whatever font the machine has. "Locked" is a state in bold accent blue; "Lock" is an offer in muted grey. |
+| 2026-09-21 | A locked vector's delete button is greyed with an explaining tooltip, rather than removed or left to fail | Removing it makes the header shift as vectors are locked and reads as a lost feature; letting it fail puts an error in front of someone for doing something reasonable. Greyed matches how the edit form already treats a locked vector, so locking looks like one rule rather than three. |
+| 2026-09-21 | `delete_vector` refuses a locked vector, but `clear_all` does not | F-09a protects a vector from being deleted on its own; F-10 promises that clearing the scene takes locked vectors too, and the prompt has said so since G1.5. The two are different questions and a test asserts the prompt's wording. |
+
 
 ---
 
@@ -147,6 +154,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-20 | `app.py`'s `check_model()` constructs a MediaPipe `GestureRecognizer` directly, but `architecture.md` section 2 puts MediaPipe in the `tracking` layer. Nothing is inverted (`app` sits above `tracking`), and the duplication was removed by having the tests call `check_model()` rather than repeat the loading code. **Decide in G4**, when `tracking/tracker_thread.py` exists, whether `check_model()` should delegate to it. | Open — decide at G4 |
 | 2026-09-20 | 3D view performance is adequate but not generous on Intel HD Graphics 620: ~56 fps with one sphere, and the user describes rotation as "not super smooth but acceptable". Worth re-checking when the camera thread is added, because F-02 requires hand tracking not to slow the 3D view. | Open — monitor at G4 |
 | 2026-09-20 | ~~The ten vector colors have not been seen against anything.~~ Checked at G1.3 with all ten drawn at once; the palette was rebuilt twice and approved. | Closed — 2026-09-21 |
+| 2026-09-21 | A vector card's `minimumSizeHint` is 352px against a 300px panel, driven by the unit vector label alone needing 216px. Measured at G2.5 and confirmed identical on the committed G2.4 code, so it predates that step and was not introduced by the lock control. Nothing looks wrong in the real window, so it is recorded rather than chased. | Open — watch if the card gains anything else at G2.6 |
 | 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
 | 2026-09-21 | Conversion between components and magnitude+angles when the toggle is switched. A G1.3 comment promised this for G2.4; it is not in F-08's criteria and was not built. Harmless in the edit box, where both field sets are refilled from the vector; visible in the create box, where typing in one mode and switching shows the other mode's old text. | Open — offered to the user at the G2.4 review, not chosen |
 | 2026-09-21 | The Clear all prompt says "It cannot be undone", which stops being true when undo arrives at G2.8. Revise the sentence in that step; `tests/ui/test_dialogs.py` asserts it, so the test will not let it be forgotten silently. | Open — revise at G2.8 |

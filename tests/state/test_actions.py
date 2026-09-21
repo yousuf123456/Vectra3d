@@ -226,6 +226,133 @@ def test_a_vector_can_be_edited_to_zero() -> None:
     assert actions.edit_vector(store, "A", (0.0, 0.0, 0.0)) is True
 
 
+# --- Locking (F-09a) ---
+
+
+def test_a_vector_starts_unlocked() -> None:
+    store = VectorStore()
+    vector = actions.create_vector(store, (1.0, 0.0, 0.0))
+    assert vector.locked is False
+
+
+def test_locking_and_unlocking_report_the_new_state() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+
+    assert actions.toggle_locked(store, "A") is True
+    assert store.get("A").locked is True
+    assert actions.toggle_locked(store, "A") is False
+    assert store.get("A").locked is False
+
+
+def test_locking_keeps_everything_else_about_the_vector() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    before = store.get("A")
+
+    actions.toggle_locked(store, "A")
+
+    after = store.get("A")
+    assert (after.name, after.components, after.tail) == (
+        before.name,
+        before.components,
+        before.tail,
+    )
+
+
+def test_an_absent_vector_cannot_be_locked() -> None:
+    store = VectorStore()
+    with pytest.raises(KeyError):
+        actions.toggle_locked(store, "A")
+
+
+def test_locking_leaves_the_active_vector_and_the_ticks_alone() -> None:
+    store = VectorStore()
+    fill(store, 3)
+    actions.set_active(store, "C")
+    actions.toggle_selected(store, "A")
+
+    actions.toggle_locked(store, "A")
+
+    assert store.active_name == "C"
+    assert store.selected == ("A",)
+
+
+def test_a_locked_vector_can_still_be_made_active() -> None:
+    # F-09a: locking stops it changing, not it being chosen.
+    store = VectorStore()
+    fill(store, 2)
+    actions.toggle_locked(store, "B")
+
+    actions.set_active(store, "B")
+
+    assert store.active_name == "B"
+
+
+def test_a_locked_vector_can_still_be_ticked() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+
+    assert actions.toggle_selected(store, "A") is True
+
+
+# --- Locking protects against deletion (F-09a) ---
+
+
+def test_a_locked_vector_refuses_to_be_deleted() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+
+    assert actions.delete_vector(store, "A") is False
+    assert store.names == ("A",)
+
+
+def test_unlocking_lets_it_be_deleted_again() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+    actions.toggle_locked(store, "A")
+
+    assert actions.delete_vector(store, "A") is True
+    assert store.names == ()
+
+
+def test_a_refused_deletion_notifies_nothing() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.delete_vector(store, "A")
+
+    assert calls == []
+
+
+def test_a_refused_deletion_does_not_move_the_active_vector() -> None:
+    store = VectorStore()
+    fill(store, 2)
+    actions.set_active(store, "A")
+    actions.toggle_locked(store, "A")
+
+    actions.delete_vector(store, "A")
+
+    assert store.active_name == "A"
+
+
+def test_clear_all_still_removes_locked_vectors() -> None:
+    # F-10 promises this, and the Clear all prompt says so.
+    store = VectorStore()
+    fill(store, 3)
+    actions.toggle_locked(store, "B")
+
+    actions.clear_all(store)
+
+    assert store.names == ()
+
+
 # --- Change events ---
 
 
@@ -237,6 +364,7 @@ def test_a_vector_can_be_edited_to_zero() -> None:
         lambda s: actions.clear_all(s),
         lambda s: actions.set_active(s, "A"),
         lambda s: actions.edit_vector(s, "A", (9.0, 9.0, 9.0)),
+        lambda s: actions.toggle_locked(s, "A"),
     ],
 )
 def test_every_action_notifies_once(act) -> None:

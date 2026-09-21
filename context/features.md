@@ -114,9 +114,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-09 Lock / unlock
 **F-09a (panel) — Group:** G2 · **Depends on:** F-05a
-- [ ] A vector can be locked or unlocked from the panel.
-- [ ] A locked vector ignores all edits, shows a lock indicator in the info panel, and cannot be deleted until unlocked.
-- [ ] Locked vectors can still be selected for operations and have their components shown.
+- [x] A vector can be locked or unlocked from the panel.
+- [x] A locked vector ignores all edits, shows a lock indicator in the info panel, and cannot be deleted until unlocked.
+- [x] Locked vectors can still be selected for operations and have their components shown.
 
 **F-09b (gesture) — Group:** G5 · **Depends on:** F-09a, F-02
 - [ ] The lock gesture toggles the lock on the active vector.

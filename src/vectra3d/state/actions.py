@@ -69,12 +69,21 @@ def edit_vector(store: VectorStore, name: str, components: Point) -> bool:
 
 
 def delete_vector(store: VectorStore, name: str) -> bool:
-    """Remove one vector. Returns False if there is no such vector.
+    """Remove one vector. Returns False if there is no such vector, or if it
+    is locked.
 
     If the deleted vector was the active one, the first remaining vector by
     name becomes active, or nothing is active if it was the last one.
+
+    A locked vector is protected here as well as by the greyed-out button on
+    its card (F-09a), for the same reason a locked vector's edit is refused
+    here: this is the one place a vector can leave the scene singly, and a
+    rule kept in the widget would have to be repeated by every future caller.
+    `clear_all` deliberately does not check, because F-10 promises that
+    clearing the scene takes locked vectors too, and says so in its prompt.
     """
-    if store.get(name) is None:
+    vector = store.get(name)
+    if vector is None or vector.locked:
         return False
 
     was_active = store.active_name == name
@@ -84,6 +93,31 @@ def delete_vector(store: VectorStore, name: str) -> bool:
         store.set_active(remaining[0] if remaining else None)
     store.notify()
     return True
+
+
+def toggle_locked(store: VectorStore, name: str) -> bool:
+    """Lock or unlock a vector. Returns its new state.
+
+    A locked vector keeps its components and cannot be deleted on its own
+    (F-09a). It is otherwise a vector like any other: it can be the active
+    one, it can be ticked for an operation, it shows all of its numbers, and
+    Clear all still removes it.
+
+    A toggle rather than a setter, because both things that will ask for it
+    are toggles: the padlock on the card, and G5's `Thumb_Up` hold gesture
+    (F-09b). Raises KeyError if there is no such vector.
+
+    Unlike ticking, locking *is* a change to the vector, so F-19 lists it
+    among the things undo must cover when that arrives in G2.8.
+    """
+    vector = store.get(name)
+    if vector is None:
+        raise KeyError(f"no vector named {name!r}")
+
+    now_locked = not vector.locked
+    store.put(replace(vector, locked=now_locked))
+    store.notify()
+    return now_locked
 
 
 def clear_all(store: VectorStore) -> None:

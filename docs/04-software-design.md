@@ -98,7 +98,13 @@ A locked vector is refused in two places — the form is greyed out, and `action
 
 The panels used to share a splitter, which had to go for the folding to do anything. A splitter hands out the sizes it was last given and does not ask again when a child shrinks — so folding a form freed nothing, the box just shrank and left the gap behind as padding. A plain layout re-reads what each side needs, which gives the action panel exactly the height of its forms and the vector list everything that remains.
 
-`state/actions.py` holds the changes themselves — creating, editing, deleting, and clearing vectors, choosing the active one, and ticking and unticking. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
+**Locking (G2.5).** Each card carries a lock control beside its ✕. It reads **Lock** in muted grey while the vector is free, and **Locked** in the accent colour while it is not. A locked vector keeps its components, refuses to be deleted on its own, and greys out both the edit form and its own ✕ — each with a line saying why and pointing at the control that lifts it. Everything else still works on it: it can be the active vector, it can be ticked for an operation, and it shows every one of its numbers, because locking is about protecting a vector rather than setting it aside.
+
+**Clear all** is the deliberate exception: it takes locked vectors too, and its prompt has said so since it was written. Protecting a vector from a single stray ✕ is a different question from what happens when a student asks to empty the scene, and the prompt is where that is made clear.
+
+The control started as a padlock, 🔒 and 🔓, and had to be rewritten as words: Windows draws emoji as colour bitmaps, so they ignore the colour and weight the two states were relying on, and at that size the two padlocks were not tellable apart. Text obeys both.
+
+`state/actions.py` holds the changes themselves — creating, editing, locking, deleting, and clearing vectors, choosing the active one, and ticking and unticking. The store stores; the actions decide what is allowed. Each action makes all of its changes and then notifies listeners exactly once, so nothing ever redraws a half-finished change. Creating an eleventh vector is refused: the action returns nothing and the panel shows the limit message.
 
 ### Likely questions
 - **What does "single source of truth" solve?** If the 3D view and the panel each kept their own copy of the vectors, they could disagree. With one copy, they can't.

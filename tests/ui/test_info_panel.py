@@ -12,7 +12,15 @@ from __future__ import annotations
 
 from vectra3d.core.formatting import EM_DASH, UNDEFINED_NOTE
 from vectra3d.state.models import Vector
-from vectra3d.ui.info_panel import card_note, card_values
+from vectra3d.ui.info_panel import (
+    LOCKED_TEXT,
+    UNLOCKED_TEXT,
+    card_note,
+    card_values,
+    delete_tooltip,
+    lock_label,
+    lock_tooltip,
+)
 
 
 def left_of(vector: Vector) -> list[tuple[str, str]]:
@@ -133,3 +141,41 @@ def test_a_vector_can_be_locked() -> None:
     # Nothing sets this until F-09a in G2.5; the card already honours it.
     vector = Vector(name="A", components=(1.0, 0.0, 0.0), locked=True)
     assert vector.locked is True
+
+
+# --- The padlock and the delete button (F-09a) ---
+
+
+def test_the_lock_control_shows_the_state_it_is_in() -> None:
+    assert lock_label(True) == LOCKED_TEXT
+    assert lock_label(False) == UNLOCKED_TEXT
+
+
+def test_the_two_lock_labels_are_tellable_apart() -> None:
+    # The padlock glyphs this replaced were not: Windows draws them as colour
+    # emoji, which ignore the colour and weight meant to separate the states.
+    assert LOCKED_TEXT != UNLOCKED_TEXT
+
+
+def test_the_lock_control_offers_the_opposite_of_the_state() -> None:
+    # A control is read as a verb: on a locked vector it offers to unlock.
+    assert lock_tooltip("A", locked=True) == "Unlock vector A so it can be changed"
+    assert (
+        lock_tooltip("A", locked=False)
+        == "Lock vector A so it cannot be changed or deleted"
+    )
+
+
+def test_the_delete_button_explains_why_it_is_unavailable() -> None:
+    assert delete_tooltip("B", locked=True) == "Vector B is locked. Unlock it to delete."
+
+
+def test_the_delete_button_is_plain_when_the_vector_is_not_locked() -> None:
+    assert delete_tooltip("B", locked=False) == "Delete vector B"
+
+
+def test_a_locked_vector_still_shows_every_value() -> None:
+    # F-09a: locking stops it changing, not it being read.
+    locked = Vector(name="A", components=(3.0, 4.0, 0.0), locked=True)
+    unlocked = Vector(name="A", components=(3.0, 4.0, 0.0))
+    assert card_values(locked) == card_values(unlocked)

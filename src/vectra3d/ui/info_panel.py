@@ -56,7 +56,24 @@ SWATCH_SIZE = 12
 AXIS_LABELS = ("x", "y", "z")
 ANGLE_LABELS = ("α", "β", "γ")
 
-LOCK_INDICATOR = "🔒"
+# The lock control is on every card, not only on locked ones. Until G2.5
+# nothing could set the flag, so an indicator was all it could be; now it is
+# the control, and hiding it on unlocked cards would mean locking from one
+# panel and reading the result in another.
+#
+# A word rather than a padlock glyph. The first version used 🔒 and 🔓, and
+# the two were not tellable apart at this size: Windows draws them as colour
+# emoji, which are bitmaps, so they ignore the muting that was supposed to
+# separate the two states. Text obeys colour and weight, so the difference
+# survives whatever font the machine has.
+LOCKED_TEXT = "Locked"
+UNLOCKED_TEXT = "Lock"
+
+# The theme pads tool buttons for a toolbar, where they stand alone. In a
+# card header, four of them in a 300px column, that padding is what decides
+# whether the card fits: "Locked" asked for 109px of the 282 available until
+# this was trimmed.
+HEADER_BUTTON_STYLE = "border: none; padding: 0px 2px; margin: 0px;"
 
 
 def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -90,6 +107,39 @@ def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, 
     right.append(("û", format_triple(unit)))
 
     return left, right
+
+
+def lock_label(locked: bool) -> str:
+    """What the lock control reads.
+
+    A state when locked and an offer when not, which is what makes the two
+    tellable apart at a glance: "Locked" is a fact about this vector,
+    "Lock" is a button waiting to be pressed.
+    """
+    return LOCKED_TEXT if locked else UNLOCKED_TEXT
+
+
+def lock_tooltip(name: str, locked: bool) -> str:
+    """What the padlock says it will do, rather than what it is showing.
+
+    A control is read as a verb: the tooltip on a locked vector offers to
+    unlock it. Which state it is in is already said by the icon.
+    """
+    if locked:
+        return f"Unlock vector {name} so it can be changed"
+    return f"Lock vector {name} so it cannot be changed or deleted"
+
+
+def delete_tooltip(name: str, locked: bool) -> str:
+    """What the delete button says, including why it is unavailable.
+
+    A locked vector's button is greyed rather than removed or left to fail,
+    so the tooltip is the only place the rule can be explained - and the
+    padlock that lifts it is immediately beside it.
+    """
+    if locked:
+        return f"Vector {name} is locked. Unlock it to delete."
+    return f"Delete vector {name}"
 
 
 def card_note(vector: Vector) -> str | None:
@@ -161,6 +211,7 @@ class InfoPanel(QWidget):
                     on_delete=self._delete,
                     on_activate=self._activate,
                     on_toggle=self._toggle,
+                    on_toggle_lock=self._toggle_lock,
                 )
             )
 
@@ -172,6 +223,9 @@ class InfoPanel(QWidget):
 
     def _toggle(self, name: str) -> None:
         actions.toggle_selected(self._store, name)
+
+    def _toggle_lock(self, name: str) -> None:
+        actions.toggle_locked(self._store, name)
 
 
 class _Card(QFrame):
@@ -203,6 +257,7 @@ def _build_card(
     on_delete: Callable[[str], None],
     on_activate: Callable[[str], None],
     on_toggle: Callable[[str], None],
+    on_toggle_lock: Callable[[str], None],
 ) -> QWidget:
     """One vector's card: a tick box, its name and colour, then its components."""
     color = naming.color_for(vector.name)
@@ -244,21 +299,31 @@ def _build_card(
     header.addWidget(name)
     header.addStretch(1)
 
-    if vector.locked:
-        # Only ever drawn when locked, so an unlocked card spends no room
-        # saying so. Nothing can set this until F-09a arrives in G2.5.
-        lock = QLabel(LOCK_INDICATOR)
-        lock.setToolTip(f"Vector {vector.name} is locked")
-        lock.setStyleSheet("border: none;")
-        header.addWidget(lock)
+    # Like the tick box, this is a child widget, so its click never reaches
+    # the card underneath and locking a vector does not also activate it.
+    lock = QToolButton()
+    lock.setText(lock_label(vector.locked))
+    lock.setToolTip(lock_tooltip(vector.name, vector.locked))
+    lock.setAutoRaise(True)
+    # "Lock" is muted and light: an offer, not a state worth noticing.
+    # "Locked" is the card's accent colour and bold, because it is the
+    # reason the card's other controls have stopped working.
+    lock.setStyleSheet(
+        f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER}; font-weight: 600;"
+        if vector.locked
+        else f"{HEADER_BUTTON_STYLE} color: {theme.MUTED_TEXT};"
+    )
+    lock.clicked.connect(lambda: on_toggle_lock(vector.name))
+    header.addWidget(lock)
 
     # The name is bound into the call rather than read back from the widget,
     # so a card can only ever delete the vector it is showing.
     delete = QToolButton()
     delete.setText("✕")
-    delete.setToolTip(f"Delete vector {vector.name}")
+    delete.setToolTip(delete_tooltip(vector.name, vector.locked))
     delete.setAutoRaise(True)
-    delete.setStyleSheet(f"border: none; color: {theme.MUTED_TEXT};")
+    delete.setEnabled(not vector.locked)
+    delete.setStyleSheet(f"{HEADER_BUTTON_STYLE} color: {theme.MUTED_TEXT};")
     delete.clicked.connect(lambda: on_delete(vector.name))
     header.addWidget(delete)
 
