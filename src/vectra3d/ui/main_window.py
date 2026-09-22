@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt
 from pyvistaqt import MainWindow, QtInteractor
 from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout, QWidget
 
-from vectra3d.render.overlays import ComponentOverlays
+from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
@@ -122,6 +122,9 @@ class VectraMainWindow(MainWindow):
         # for it (F-13a). Separate from the arrows, because the two answer
         # different questions and are switched on and off independently.
         self.overlays = ComponentOverlays(self.plotter)
+        # The shadows on the three planes, switched on separately from the
+        # components: the two answer different questions about a vector.
+        self.projections = ProjectionOverlays(self.plotter)
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
@@ -169,7 +172,12 @@ class VectraMainWindow(MainWindow):
         self.scene.update_for(vectors)
         self.vectors.draw(vectors, active)
         self.overlays.draw(vectors, self._store.components_shown)
+        self.projections.draw(vectors, self._store.projections_shown)
         self.info_panel.refresh(
-            vectors, active, self._store.selected, self._store.components_shown
+            vectors,
+            active,
+            self._store.selected,
+            self._store.components_shown,
+            self._store.projections_shown,
         )
         self.action_panel.refresh()

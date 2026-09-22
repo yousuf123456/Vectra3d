@@ -2,7 +2,7 @@
 
 The store holds the vectors, remembers which one is active, remembers which
 ones are ticked for an operation, and remembers which one is showing its
-components. The ticks live here rather than in the
+components and which one is showing its shadows. The ticks live here rather than in the
 info panel for a practical reason: the panel rebuilds its cards from scratch
 on every change, so a tick kept in a checkbox would be wiped by any unrelated
 edit. Keeping them here also means G3's Resultant button reads them from the
@@ -36,6 +36,7 @@ class VectorStore:
         self._active: str | None = None
         self._selected: set[str] = set()
         self._components_shown: str | None = None
+        self._projections_shown: str | None = None
         self._listeners: list[Callable[[], None]] = []
 
     # --- Reading ---
@@ -109,6 +110,24 @@ class VectorStore:
     def is_components_shown(self, name: str) -> bool:
         return self._components_shown == name
 
+    @property
+    def projections_shown(self) -> str | None:
+        """The one vector whose shadows on the three planes are drawn (F-14).
+
+        One at a time and held by name, for the same reason as
+        `components_shown`: two vectors projecting would put overlapping
+        arrows on the same three planes.
+
+        Independent of `components_shown`, though. The two answer different
+        questions - what a vector is made of, and what it looks like from
+        each side - and either or both can be on, on the same vector or on
+        different ones.
+        """
+        return self._projections_shown
+
+    def is_projections_shown(self, name: str) -> bool:
+        return self._projections_shown == name
+
     # --- Listening ---
 
     def subscribe(self, listener: Callable[[], None]) -> None:
@@ -139,11 +158,14 @@ class VectorStore:
         self._selected.discard(name)
         if self._components_shown == name:
             self._components_shown = None
+        if self._projections_shown == name:
+            self._projections_shown = None
 
     def clear(self) -> None:
         self._vectors.clear()
         self._selected.clear()
         self._components_shown = None
+        self._projections_shown = None
 
     def set_active(self, name: str | None) -> None:
         if name is not None and name not in self._vectors:
@@ -162,6 +184,19 @@ class VectorStore:
             self._components_shown = name
         elif self._components_shown == name:
             self._components_shown = None
+
+    def set_projections_shown(self, name: str, shown: bool) -> None:
+        """Show this vector's shadows, or hide them.
+
+        Showing one replaces whichever was showing before, so nothing else
+        has to remember to turn the previous one off.
+        """
+        if name not in self._vectors:
+            raise KeyError(f"no vector named {name!r}")
+        if shown:
+            self._projections_shown = name
+        elif self._projections_shown == name:
+            self._projections_shown = None
 
     def set_selected(self, name: str, selected: bool) -> None:
         if name not in self._vectors:

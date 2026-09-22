@@ -172,6 +172,26 @@ def toggle_components(store: VectorStore, name: str) -> bool:
     return now_shown
 
 
+def toggle_projections(store: VectorStore, name: str) -> bool:
+    """Show or hide a vector's shadows on the XY, YZ and XZ planes (F-14).
+    Returns the new state.
+
+    Only one vector shows them at a time, like components, because three
+    shadows from two vectors would overlap on the same three planes. The two
+    overlays are independent of each other, so a vector can show both, and
+    one vector can show its components while another shows its shadows.
+
+    A display setting, so F-19 leaves it out of undo. It still goes through
+    an action because everything that changes what the app is showing does.
+
+    Raises KeyError if there is no such vector.
+    """
+    now_shown = not store.is_projections_shown(name)
+    store.set_projections_shown(name, now_shown)
+    store.notify()
+    return now_shown
+
+
 def clear_selection(store: VectorStore) -> None:
     """Untick every vector, leaving the vectors themselves alone."""
     store.clear_selection()

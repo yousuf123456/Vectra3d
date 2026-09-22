@@ -286,3 +286,119 @@ def test_toggling_components_notifies_once() -> None:
     actions.toggle_components(store, "A")
 
     assert len(calls) == 1
+
+
+# --- Showing shadows (F-14) ---
+
+
+def test_projections_start_hidden() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    assert store.is_projections_shown("A") is False
+    assert store.projections_shown is None
+
+
+def test_projections_can_be_shown_and_hidden() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    assert actions.toggle_projections(store, "A") is True
+    assert store.projections_shown == "A"
+    assert actions.toggle_projections(store, "A") is False
+    assert store.projections_shown is None
+
+
+def test_only_one_vector_shows_its_shadows_at_a_time() -> None:
+    store = VectorStore()
+    for _ in range(3):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_projections(store, "A")
+    actions.toggle_projections(store, "C")
+
+    assert store.projections_shown == "C"
+    assert store.is_projections_shown("A") is False
+
+
+def test_the_two_overlays_do_not_interfere() -> None:
+    # They answer different questions, so either or both can be on.
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    actions.toggle_components(store, "A")
+    actions.toggle_projections(store, "A")
+
+    assert store.components_shown == "A"
+    assert store.projections_shown == "A"
+
+
+def test_the_two_overlays_can_be_on_different_vectors() -> None:
+    store = VectorStore()
+    for _ in range(2):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    actions.toggle_components(store, "A")
+    actions.toggle_projections(store, "B")
+
+    assert store.components_shown == "A"
+    assert store.projections_shown == "B"
+
+
+def test_hiding_one_overlay_leaves_the_other_alone() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+    actions.toggle_projections(store, "A")
+
+    actions.toggle_components(store, "A")
+
+    assert store.components_shown is None
+    assert store.projections_shown == "A"
+
+
+def test_an_absent_vector_cannot_show_shadows() -> None:
+    store = VectorStore()
+    with pytest.raises(KeyError):
+        actions.toggle_projections(store, "A")
+
+
+def test_deleting_forgets_both_overlays() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_components(store, "A")
+    actions.toggle_projections(store, "A")
+
+    actions.delete_vector(store, "A")
+    actions.create_vector(store, (9.0, 9.0, 9.0))
+
+    assert store.is_components_shown("A") is False
+    assert store.is_projections_shown("A") is False
+
+
+def test_clearing_forgets_the_shadows() -> None:
+    store = VectorStore()
+    for _ in range(3):
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_projections(store, "B")
+
+    actions.clear_all(store)
+
+    assert store.projections_shown is None
+
+
+def test_a_locked_vector_can_still_cast_shadows() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_locked(store, "A")
+
+    assert actions.toggle_projections(store, "A") is True
+
+
+def test_toggling_shadows_notifies_once() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.toggle_projections(store, "A")
+
+    assert len(calls) == 1

@@ -85,6 +85,7 @@ HEADER_BUTTON_STYLE = "border: none; padding: 0px 2px; margin: 0px;"
 # Only one vector shows its components at a time, so switching it on here
 # switches it off wherever it was; `VectorStore` explains why.
 COMPONENTS_TEXT = "Components"
+PROJECTIONS_TEXT = "Projections"
 
 
 def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -172,6 +173,13 @@ def components_tooltip(name: str, shown: bool) -> str:
     return f"Show vector {name} resolved into its x, y and z parts"
 
 
+def projections_tooltip(name: str, shown: bool) -> str:
+    """What the projections toggle offers to do next."""
+    if shown:
+        return f"Hide vector {name}'s shadows"
+    return f"Show vector {name}'s shadows on the XY, YZ and XZ planes"
+
+
 def card_note(vector: Vector) -> str | None:
     """The line explaining why a card has dashes on it, or None.
 
@@ -217,6 +225,7 @@ class InfoPanel(QWidget):
         active_name: str | None,
         selected: Sequence[str] = (),
         components_shown: str | None = None,
+        projections_shown: str | None = None,
     ) -> None:
         """Rebuild the list to match the store."""
         while self._cards_layout.count():
@@ -244,7 +253,9 @@ class InfoPanel(QWidget):
                     on_toggle=self._toggle,
                     on_toggle_lock=self._toggle_lock,
                     on_toggle_components=self._toggle_components,
+                    on_toggle_projections=self._toggle_projections,
                     shows_components=vector.name == components_shown,
+                    shows_projections=vector.name == projections_shown,
                 )
             )
 
@@ -262,6 +273,9 @@ class InfoPanel(QWidget):
 
     def _toggle_components(self, name: str) -> None:
         actions.toggle_components(self._store, name)
+
+    def _toggle_projections(self, name: str) -> None:
+        actions.toggle_projections(self._store, name)
 
 
 class _Card(QFrame):
@@ -295,7 +309,9 @@ def _build_card(
     on_toggle: Callable[[str], None],
     on_toggle_lock: Callable[[str], None],
     on_toggle_components: Callable[[str], None],
+    on_toggle_projections: Callable[[str], None],
     shows_components: bool,
+    shows_projections: bool,
 ) -> QWidget:
     """One vector's card: a tick box, its name and colour, then its components."""
     color = naming.color_for(vector.name)
@@ -398,6 +414,15 @@ def _build_card(
     components.setStyleSheet(toggle_style(shows_components))
     components.clicked.connect(lambda: on_toggle_components(vector.name))
     toggles.addWidget(components)
+
+    projections = QToolButton()
+    projections.setText(PROJECTIONS_TEXT)
+    projections.setToolTip(projections_tooltip(vector.name, shows_projections))
+    projections.setAutoRaise(True)
+    projections.setStyleSheet(toggle_style(shows_projections))
+    projections.clicked.connect(lambda: on_toggle_projections(vector.name))
+    toggles.addWidget(projections)
+
     toggles.addStretch(1)
 
     outer.addLayout(toggles)

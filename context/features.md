@@ -155,9 +155,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-14 Plane projections
 **Group:** G2 · **Depends on:** F-01, F-05a
-- [ ] Can be toggled per vector from the panel.
-- [ ] When on, shows the vector's projection ("shadow") on the XY, YZ, and XZ planes.
-- [ ] Projections update whenever the vector changes.
+- [x] Can be toggled per vector from the panel.
+- [x] When on, shows the vector's projection ("shadow") on the XY, YZ, and XZ planes.
+- [x] Projections update whenever the vector changes.
 
 ### F-15 Resultant
 **Group:** G3 · **Depends on:** F-05a, F-11 full

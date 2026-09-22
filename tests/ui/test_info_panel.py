@@ -22,6 +22,7 @@ from vectra3d.ui.info_panel import (
     delete_tooltip,
     lock_label,
     lock_tooltip,
+    projections_tooltip,
     toggle_style,
 )
 
@@ -203,3 +204,10 @@ def test_the_components_toggle_offers_the_opposite_of_the_state() -> None:
         "Show vector A resolved into its x, y and z parts"
     )
     assert components_tooltip("A", shown=True) == "Hide vector A's x, y and z parts"
+
+
+def test_the_projections_toggle_offers_the_opposite_of_the_state() -> None:
+    assert projections_tooltip("A", shown=False) == (
+        "Show vector A's shadows on the XY, YZ and XZ planes"
+    )
+    assert projections_tooltip("A", shown=True) == "Hide vector A's shadows"

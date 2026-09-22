@@ -1,4 +1,4 @@
-"""The geometry behind "resolve into components" (F-13a).
+"""The geometry behind the two overlays: components (F-13a) and shadows (F-14).
 
 Worked out by hand from the cuboid whose space diagonal is the vector: its
 eight corners are every combination of (0 or x, 0 or y, 0 or z), and its
@@ -22,6 +22,7 @@ from vectra3d.render.overlays import (
     dash_segments,
     label_positions,
     label_text,
+    projection_offsets,
 )
 
 
@@ -244,3 +245,74 @@ def test_the_label_offset_scales_with_the_vector() -> None:
     near = label_positions((1.0, 1.0, 1.0), magnitude=1.0)[0][1]
     far = label_positions((10.0, 10.0, 10.0), magnitude=10.0)[0][1]
     assert far == pytest.approx(near * 10.0)
+
+
+# --- Shadows on the three planes (F-14) ---
+
+
+def test_each_shadow_drops_the_perpendicular_component() -> None:
+    xy, yz, xz = projection_offsets((3.0, 4.0, 5.0))
+    assert xy == (3.0, 4.0, 0.0)  # flat on the floor: no height
+    assert yz == (0.0, 4.0, 5.0)  # against the far wall: no depth
+    assert xz == (3.0, 0.0, 5.0)  # against the side wall
+
+
+def test_every_shadow_keeps_exactly_two_components() -> None:
+    for shadow in projection_offsets((3.0, 4.0, 5.0)):
+        assert sum(1 for value in shadow if value == 0.0) == 1
+
+
+def test_negative_components_survive_into_the_shadow() -> None:
+    xy, yz, xz = projection_offsets((-2.0, 3.0, -4.0))
+    assert xy == (-2.0, 3.0, 0.0)
+    assert yz == (0.0, 3.0, -4.0)
+    assert xz == (-2.0, 0.0, -4.0)
+
+
+def test_a_vector_in_a_plane_is_its_own_shadow_there() -> None:
+    # Nothing to project: it is already flat on the floor.
+    components = (3.0, 4.0, 0.0)
+    assert projection_offsets(components)[0] == components
+
+
+def test_a_vector_on_an_axis_casts_nothing_on_the_opposite_plane() -> None:
+    # Straight up the z axis: no shadow on the floor at all, and the same
+    # shadow on each of the two walls that contain the axis.
+    xy, yz, xz = projection_offsets((0.0, 0.0, 5.0))
+    assert xy == (0.0, 0.0, 0.0)
+    assert yz == (0.0, 0.0, 5.0)
+    assert xz == (0.0, 0.0, 5.0)
+
+
+def test_the_zero_vector_casts_no_shadows() -> None:
+    assert projection_offsets((0.0, 0.0, 0.0)) == (
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0),
+    )
+
+
+def test_the_three_shadows_sum_to_twice_the_vector() -> None:
+    # Each component appears in exactly two of the three shadows, which is
+    # another way of saying each is dropped exactly once.
+    components = (3.0, 4.0, 5.0)
+    total = tuple(
+        sum(shadow[i] for shadow in projection_offsets(components)) for i in range(3)
+    )
+    assert total == tuple(2 * value for value in components)
+
+
+def test_a_shadow_is_never_longer_than_the_vector() -> None:
+    import math
+
+    components = (3.0, 4.0, 5.0)
+    length = math.hypot(*components)
+    for shadow in projection_offsets(components):
+        assert math.hypot(*shadow) <= length
+
+
+def test_shadows_are_not_the_component_arrows() -> None:
+    # A shadow keeps two components; a component arrow keeps one. Easy to
+    # conflate, and they are drawn by different overlays.
+    components = (3.0, 4.0, 5.0)
+    assert set(projection_offsets(components)) & set(component_offsets(components)) == set()

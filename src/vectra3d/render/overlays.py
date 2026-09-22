@@ -1,6 +1,9 @@
 """Drawing what a vector is made of: its components, and the box they build.
 
-When a vector has its components switched on (F-13a), three things are drawn:
+Two overlays live here, switched on and off independently.
+
+**Components** (F-13a). When a vector has its components switched on, three
+things are drawn:
 
 - **three arrows along the axes**, carrying its x, y and z parts, in the axis
   colours red, green and blue,
@@ -18,6 +21,11 @@ plotter. They work in tail-relative coordinates - offsets from wherever the
 vector starts - and the class adds the tail, so nothing here has to change
 when free vectors arrive (`project-overview.md`).
 
+**Projections** (F-14). A vector's shadows on the XY, YZ and XZ planes: each
+one an arrow in the vector's own colour, with a dashed line dropping from the
+head to its tip. The colour says whose shadow it is; the drop line is what
+makes it read as a shadow rather than as another vector from the origin.
+
 PyVista exposes no line-stipple setting, so a dash is geometry: each edge is
 cut into short segments, and all of a vector's segments are batched into one
 mesh so the whole box stays a single actor.
@@ -33,6 +41,7 @@ import pyvista as pv
 from vectra3d.core.formatting import format_number
 from vectra3d.render.scene import AXIS_COLORS
 from vectra3d.render.vector_actor import SHAFT_RADIUS, TIP_LENGTH, TIP_RADIUS
+from vectra3d.state import naming
 from vectra3d.state.models import Point, Vector
 
 Triple = tuple[float, float, float]
@@ -71,6 +80,21 @@ MAX_TIP_FRACTION = 0.5
 # dash rather than one dash per edge.
 DASH_FRACTION = 0.035
 MIN_DASHES = 2
+
+# A shadow is drawn in its own vector's colour rather than in grey, so it
+# says whose shadow it is without needing a label. Grey is already the
+# component box's, and the axis colours are already the component arrows'.
+PROJECTION_OPACITY = 0.4
+# Shadows are thinner and fainter than the vector itself: they are a
+# consequence of it, not a second reading of it, and three at once would
+# otherwise crowd the scene. They can be this faint and still read, unlike
+# the component arrows, precisely because they are in the vector's own
+# colour: nothing else in the scene is that colour, so there is no axis line
+# for them to disappear into. Chosen by rendering and looking.
+PROJECTION_WEIGHT = 0.55
+
+# The three planes a vector is projected onto.
+PROJECTION_PLANES = ("xy", "yz", "xz")
 
 BOX_COLOR = "#999999"
 BOX_LINE_WIDTH = 1.0
@@ -138,6 +162,24 @@ def box_edges(components: Triple) -> tuple[tuple[Triple, Triple], ...]:
             edges[_edge_key(start, end)] = (start, end)
 
     return tuple(edges.values())
+
+
+def projection_offsets(components: Triple) -> tuple[Triple, Triple, Triple]:
+    """The vector's shadows on the XY, YZ and XZ planes (F-14).
+
+    A shadow on a plane is the vector with the one component perpendicular
+    to that plane dropped: flattened onto XY, a vector keeps its x and y and
+    loses its height. Which is what a shadow is - what is left when one
+    direction stops counting.
+
+        XY -> (x, y, 0)     YZ -> (0, y, z)     XZ -> (x, 0, z)
+
+    A vector already lying in one of the planes is its own shadow there, and
+    a vector along an axis casts the same shadow on the two planes that
+    contain it and nothing on the third.
+    """
+    x, y, z = components
+    return ((x, y, 0.0), (0.0, y, z), (x, 0.0, z))
 
 
 def dash_segments(
@@ -251,6 +293,134 @@ def _is_arrow(start: Triple, end: Triple, corners: dict[str, Triple]) -> bool:
     if _key(start) != (0.0, 0.0, 0.0):
         return False
     return _key(end) in {_key(corner) for corner in corners.values()}
+
+
+class ProjectionOverlays:
+    """Keeps each vector's shadows on the three planes matching the store.
+
+    Its own class rather than part of `ComponentOverlays`, because the two
+    overlays are switched on and off separately and neither should have to
+    know whether the other is showing.
+    """
+
+    def __init__(self, plotter: pv.Plotter) -> None:
+        self._plotter = plotter
+        self._drawn: set[str] = set()
+
+    def draw(self, vectors: Sequence[Vector], shown: str | None) -> None:
+        """Draw the one vector casting shadows, and remove any others."""
+        wanted = {vector.name for vector in vectors if vector.name == shown}
+        for name in self._drawn - wanted:
+            self._remove(name)
+        self._drawn = wanted
+
+        for vector in vectors:
+            if vector.name in wanted:
+                self._draw_one(vector)
+
+        self._plotter.render()
+
+    def _remove(self, name: str) -> None:
+        for plane in PROJECTION_PLANES:
+            self._plotter.remove_actor(f"shadow-{plane}-{name}", render=False)
+        self._plotter.remove_actor(f"drop-{name}", render=False)
+
+    def _draw_one(self, vector: Vector) -> None:
+        tail = np.array(vector.tail, dtype=float)
+        magnitude = float(np.linalg.norm(np.array(vector.components, dtype=float)))
+        if magnitude == 0.0:
+            self._remove(vector.name)
+            return
+
+        color = naming.color_for(vector.name)
+        shadows = projection_offsets(vector.components)
+        self._draw_shadows(vector, tail, magnitude, shadows, color)
+        self._draw_drops(vector, tail, magnitude, shadows, color)
+
+    def _draw_shadows(
+        self,
+        vector: Vector,
+        tail: np.ndarray,
+        magnitude: float,
+        shadows: Sequence[Triple],
+        color: str,
+    ) -> None:
+        for plane, offset in zip(PROJECTION_PLANES, shadows):
+            name = f"shadow-{plane}-{vector.name}"
+            length = float(np.linalg.norm(np.array(offset, dtype=float)))
+            if length == 0.0:
+                # The vector is perpendicular to this plane, so its shadow
+                # there is a point. Nothing to draw.
+                self._plotter.remove_actor(name, render=False)
+                continue
+
+            shaft = SHAFT_RADIUS * magnitude * PROJECTION_WEIGHT
+            tip = TIP_RADIUS * magnitude * PROJECTION_WEIGHT
+            self._plotter.add_mesh(
+                pv.Arrow(
+                    start=tail,
+                    direction=offset,
+                    scale=length,
+                    shaft_radius=shaft / length,
+                    tip_radius=tip / length,
+                    tip_length=min(MAX_TIP_FRACTION, TIP_LENGTH * magnitude / length),
+                ),
+                color=color,
+                opacity=PROJECTION_OPACITY,
+                lighting=False,
+                name=name,
+                render=False,
+            )
+
+    def _draw_drops(
+        self,
+        vector: Vector,
+        tail: np.ndarray,
+        magnitude: float,
+        shadows: Sequence[Triple],
+        color: str,
+    ) -> None:
+        """The dashed lines joining the head to each shadow's tip.
+
+        Without them the three shadows read as three more vectors sharing
+        the origin, rather than as this one seen from three sides.
+        """
+        name = f"drop-{vector.name}"
+        head = np.array(vector.components, dtype=float)
+        dash = magnitude * DASH_FRACTION
+
+        pairs: list[tuple[Point, Point]] = []
+        for offset in shadows:
+            target = np.array(offset, dtype=float)
+            if np.allclose(target, head):
+                # The vector lies in this plane, so it is its own shadow
+                # there and there is no gap to bridge.
+                continue
+            if not np.any(target):
+                # The vector is perpendicular to this plane, so its shadow
+                # is a point at the tail and no arrow was drawn. A drop line
+                # to it would run from the head back to the tail - a dashed
+                # copy of the vector, lying along the vector.
+                continue
+            for start, end in dash_segments(tuple(head), tuple(target), dash):
+                pairs.append(
+                    (tuple(tail + np.array(start)), tuple(tail + np.array(end)))
+                )
+
+        if not pairs:
+            self._plotter.remove_actor(name, render=False)
+            return
+
+        points = np.array([point for pair in pairs for point in pair], dtype=float)
+        lines = np.hstack([[2, 2 * i, 2 * i + 1] for i in range(len(pairs))])
+        self._plotter.add_mesh(
+            pv.PolyData(points, lines=lines),
+            color=color,
+            opacity=PROJECTION_OPACITY,
+            line_width=BOX_LINE_WIDTH,
+            name=name,
+            render=False,
+        )
 
 
 class ComponentOverlays:

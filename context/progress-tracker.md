@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. G2.1 to G2.6 complete, plus two user-requested UI passes
-- **Next step:** G2.7 — F-14 plane projections
+- **Current group:** G2 — Vector math and display. G2.1 to G2.7 complete, plus two user-requested UI passes
+- **Next step:** G2.8 — F-19 undo / redo (panel), the last step in G2
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -36,6 +36,8 @@ Updated after every approved step. Read this at the start of every session to se
 
 | G2.6 | F-13a resolve into components: `render/overlays.py`, `actions.toggle_components`, the toggle row on each card | 2026-09-21 | `G2.6: resolve a vector into its components` | All five F-13a criteria pass. Three rounds of visual feedback on the arrows, all judged by rendering the scene off screen and reading the image: invisible at first (scaled to their own length, so thinner than the axis line), then too prominent, then flat-shaded and translucent. Changed to one vector at a time at the user's request, which also removed the overlap the first version had. 51 new tests; suite now 388 passing. |
 
+| G2.7 | F-14 plane projections: `ProjectionOverlays`, `actions.toggle_projections`, the second toggle on each card | 2026-09-22 | `G2.7: cast a vector's shadows on the three planes` | All three F-14 criteria pass. Shadows are arrows in the vector's own colour with dashed drop lines from the head. Rendered and toned down before the user saw it, having learnt that from G2.6: at the planned 0.8 / 0.6 they were as loud as the vector. One real bug caught by the offscreen run - a vector on the z axis has no XY shadow, but a drop line to it was still drawn, a dashed copy of the vector lying along the vector. 21 new tests; suite now 409 passing. |
+
 
 ## Groups
 
@@ -43,7 +45,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | In progress — G2.1 to G2.6 done |
+| G2 | Vector math and display | In progress — G2.1 to G2.7 done |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -141,6 +143,12 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-21 | Component value labels sit four fifths along their arrow, lifted in z for x and y and pushed out sideways for z | Placed at the midpoint and nudged into two negative axes at first, which reads as no offset at all from many angles: the two displacements cancel in projection and the label lands on the origin. Near the tail all four arrows converge, so anything placed there ends up behind one of them. The axis tick numbers hang below their axis lines, so the flat labels go above. |
 | 2026-09-21 | Rendering changes are now judged by rendering the scene off screen and reading the image | Three visual faults in this step were invisible from the code and from tests, and two of them the user had to report. A plain `pv.Plotter(off_screen=True)` renders the real `Scene`, `VectorActors` and `ComponentOverlays`, so the picture can be looked at before it is shown to anyone. Note the Qt-embedded `QtInteractor` cannot screenshot off screen - it raises `RenderWindowUnavailable` - and text renders as boxes off screen, so this judges geometry and colour, not labels. |
 
+| 2026-09-22 | Components and projections are independent settings, either or both on, on the same vector or different ones | They answer different questions - what a vector is made of, and what it looks like from each side - and comparing them is what the 3D view is for. Held as two separate `str \| None` fields, so neither has to know about the other, and as two separate overlay classes for the same reason. |
+| 2026-09-22 | One vector casts shadows at a time, matching components | Three shadows from two vectors would overlap on the same three planes. Same structural guard: the store holds which vector, not a set. |
+| 2026-09-22 | A shadow is an arrow plus a dashed drop line from the head, in the vector's own colour | The arrow says a shadow is itself a vector; the drop line is what stops the three reading as three more vectors sharing the origin. The colour says whose shadow it is without needing a label, and keeps the axis colours free for components, so the two overlays cannot be confused when both are on. |
+| 2026-09-22 | Shadows are fainter than the component arrows (0.55 thickness, 0.4 opacity against 1.3 and 0.7) | Not inconsistency. The component arrows lie on the axes and share their colours, so they need bulk to be seen at all; a shadow is in its vector's own colour, which nothing else in the scene uses, so it can be faint and still read. Both numbers were chosen by rendering and looking. |
+| 2026-09-22 | No drop line where a shadow has no length | Found by the offscreen run. A vector on the z axis casts a point at the origin on the XY plane, and the drop line to it ran from the head back to the tail - a dashed copy of the vector, drawn along the vector. |
+
 
 ---
 
@@ -168,6 +176,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
 | 2026-09-21 | Conversion between components and magnitude+angles when the toggle is switched. A G1.3 comment promised this for G2.4; it is not in F-08's criteria and was not built. Harmless in the edit box, where both field sets are refilled from the vector; visible in the create box, where typing in one mode and switching shows the other mode's old text. | Open — offered to the user at the G2.4 review, not chosen |
 | 2026-09-21 | The Clear all prompt says "It cannot be undone", which stops being true when undo arrives at G2.8. Revise the sentence in that step; `tests/ui/test_dialogs.py` asserts it, so the test will not let it be forgotten silently. | Open — revise at G2.8 |
+| 2026-09-22 | Shadows cost nothing measurable on top of components: 40.3 fps with ten vectors, 37.4 with components on, 40.4 with both overlays (76 actors). They are four actors against the component box's dash geometry, and the run-to-run spread is wider than the difference. | Open — monitor at G4 |
 | 2026-09-21 | Components cost about 10% of the frame rate: 42.9 fps with ten vectors, 38.7 with one of them resolved (72 actors against 66). Measured on screen at 1200x800. The one-at-a-time rule capped this - showing all ten at once measured 35.1 fps. Projections at G2.7 go on top of it, and MediaPipe competes for the same chip at G4. | Open — monitor at G2.7 and G4 |
 | 2026-09-20 | The scene renders at ~50 fps at 1200x800 on Intel HD Graphics 620, against 60 fps for the single sphere in G0.5. Measured again at G1.3: ten vectors cost almost nothing (47.7 fps empty against 47.2 with all ten), so the cost is the scene itself, not what is drawn in it. Components and projections still have to go on top, and MediaPipe competes for the same chip at G4, where F-02 requires tracking not to slow the view. | Open — monitor at G2.6 and G4 |
 | 2026-09-20 | `git push` to the remote fails with HTTP 408 / "Stream error in the HTTP/2 framing layer". Diagnosed as git's HTTP/2 transport on this network; the fix is `git config http.version HTTP/1.1`, not yet applied. Commits are intact locally. | Open — pushing deferred by the user |
