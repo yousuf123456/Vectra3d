@@ -14,10 +14,19 @@ window after Qt has gone, which shows up as a hang on exit.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 from pyvistaqt import MainWindow, QtInteractor
-from PySide6.QtWidgets import QFrame, QSplitter, QToolBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QLineEdit,
+    QSplitter,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
+)
 
 from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
+from vectra3d.state import actions
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
@@ -128,12 +137,20 @@ class VectraMainWindow(MainWindow):
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
+        self._on_store_changed()
 
         # Shut the plotter down as the window closes, not after.
         self.signal_close.connect(self.plotter.close)
 
     def _build_toolbar(self) -> None:
-        """The view controls. Everything that changes vectors is in the panels."""
+        """The view controls, and undo.
+
+        Undo and redo are the one thing here that changes vectors rather than
+        the view. F-19 originally put them in the panel; the criterion was
+        amended at G2.8 because the panel's height is what the vector list
+        competes for, and because a toolbar is where a student reaches for
+        undo without being told.
+        """
         toolbar = QToolBar("View", self)
         toolbar.setMovable(False)
 
@@ -155,7 +172,38 @@ class VectraMainWindow(MainWindow):
                 lambda _checked=False, view=name: self.scene.set_view(view)
             )
 
+        toolbar.addSeparator()
+
+        self._undo = toolbar.addAction("Undo")
+        self._undo.setToolTip("Take back the last change to the vectors (Ctrl+Z)")
+        self._undo.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo.triggered.connect(self._on_undo)
+
+        self._redo = toolbar.addAction("Redo")
+        self._redo.setToolTip("Put back a change that was undone (Ctrl+Y)")
+        self._redo.setShortcut(QKeySequence.StandardKey.Redo)
+        self._redo.triggered.connect(self._on_redo)
+
         self.addToolBar(toolbar)
+
+    def _on_undo(self) -> None:
+        """Undo, unless the student is typing.
+
+        A focused text field keeps Ctrl+Z for its own text, which is what
+        every other application does: the shortcut undoes whatever you are
+        currently doing. Pressing the toolbar button moves focus away from
+        the field first, so the button is never caught by this.
+        """
+        if isinstance(self.focusWidget(), QLineEdit):
+            self.focusWidget().undo()
+            return
+        actions.undo(self._store)
+
+    def _on_redo(self) -> None:
+        if isinstance(self.focusWidget(), QLineEdit):
+            self.focusWidget().redo()
+            return
+        actions.redo(self._store)
 
     def _on_store_changed(self) -> None:
         """Bring everything back in step after a change to the vectors.
@@ -181,3 +229,5 @@ class VectraMainWindow(MainWindow):
             self._store.projections_shown,
         )
         self.action_panel.refresh()
+        self._undo.setEnabled(self._store.history.can_undo)
+        self._redo.setEnabled(self._store.history.can_redo)

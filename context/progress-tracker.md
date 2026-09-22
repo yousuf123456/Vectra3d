@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. G2.1 to G2.7 complete, plus two user-requested UI passes
-- **Next step:** G2.8 — F-19 undo / redo (panel), the last step in G2
+- **Current group:** G2 — Vector math and display. All eight steps complete, plus two user-requested UI passes
+- **Next step:** the G2 checkpoint — run `/review` over the group, fix what it finds, then `/remember save` and a fresh session for G3
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -38,6 +38,8 @@ Updated after every approved step. Read this at the start of every session to se
 
 | G2.7 | F-14 plane projections: `ProjectionOverlays`, `actions.toggle_projections`, the second toggle on each card | 2026-09-22 | `G2.7: cast a vector's shadows on the three planes` | All three F-14 criteria pass. Shadows are arrows in the vector's own colour with dashed drop lines from the head. Rendered and toned down before the user saw it, having learnt that from G2.6: at the planned 0.8 / 0.6 they were as loud as the vector. One real bug caught by the offscreen run - a vector on the z axis has no XY shadow, but a drop line to it was still drawn, a dashed copy of the vector lying along the vector. 21 new tests; suite now 409 passing. |
 
+| G2.8 | F-19 undo / redo: `state/undo.py`, snapshots recorded in `actions.py`, toolbar buttons and shortcuts | 2026-09-22 | `G2.8: undo and redo` | All four F-19 criteria pass, one of them amended first (see the decisions log). Snapshots hold the vectors and the active one; ticks and both overlays stay outside, as decided when each was built. The G1.5 tripwire fired on schedule: the test asserting "It cannot be undone" failed the moment undo arrived, and was replaced by one asserting the opposite. 33 new tests; suite now 442 passing. |
+
 
 ## Groups
 
@@ -45,7 +47,7 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | In progress — G2.1 to G2.7 done |
+| G2 | Vector math and display | All steps done — `/review` still to run |
 | G3 | Operations | Not started |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
@@ -149,6 +151,14 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-22 | Shadows are fainter than the component arrows (0.55 thickness, 0.4 opacity against 1.3 and 0.7) | Not inconsistency. The component arrows lie on the axes and share their colours, so they need bulk to be seen at all; a shadow is in its vector's own colour, which nothing else in the scene uses, so it can be faint and still read. Both numbers were chosen by rendering and looking. |
 | 2026-09-22 | No drop line where a shadow has no length | Found by the offscreen run. A vector on the z axis casts a point at the origin on the XY plane, and the drop line to it ran from the head back to the tail - a dashed copy of the vector, drawn along the vector. |
 
+| 2026-09-22 | **F-19 amended**: undo and redo moved from the panel to the toolbar | The user asked why they could not go in the toolbar, and the honest answer was only that F-19 said "in the panel". Panel height is what the vector list competes for, and a toolbar is where a student reaches for undo without being told. The criterion was changed in `features.md` with a note pointing here, rather than being quietly built past: `CLAUDE.md` forbids weakening a criterion, and this is the user changing their own spec on purpose. It does cross a line held until now - the toolbar had contained nothing that changes vectors - which was tidiness rather than correctness. |
+| 2026-09-22 | A snapshot holds the vectors **and** the active one | Creating a vector makes it active, so undoing a create has to leave the highlight somewhere honest, and where it was before is the only honest answer. The cost, accepted: undoing an edit can also move the highlight if another card was clicked in between. |
+| 2026-09-22 | Ticks and the two display overlays are not in a snapshot, so a restored vector comes back unticked with its overlays off | F-19 keeps undo for changes to the vectors and excludes display options, and each of the three was decided to sit outside undo when it was built (G2.2, G2.6, G2.7). `store.restore` prunes them against what actually came back, so a name no longer in the scene cannot keep a mark. |
+| 2026-09-22 | Snapshots are shallow dictionary copies, not deep ones | `Vector` is frozen, so two snapshots sharing a vector object can never come to disagree. This is the G1.1 decision paying off: it is what makes recording before every change cheap enough not to think about. |
+| 2026-09-22 | Ctrl+Z belongs to whatever the student is doing | In a focused text field it is Qt's own text undo and the vector history is untouched; anywhere else it undoes the last vector change. Matches every other application. The toolbar button is unaffected, because pressing it moves focus off the field first. |
+| 2026-09-22 | Actions record a snapshot only once the change is certain to happen | A refused action - an eleventh vector, editing or deleting a locked one - changes nothing, and a step recorded for it would make undo appear to do nothing when pressed. Three tests hold this line. |
+| 2026-09-22 | The Clear all prompt lost "It cannot be undone" rather than softening it | Undo made the sentence false. A prompt that overstates what is at stake teaches students to ignore prompts. Flagged as a known issue at G1.5 and caught automatically: the test asserting the old wording failed the moment undo arrived. |
+
 
 ---
 
@@ -175,7 +185,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-21 | A vector card's `minimumSizeHint` is 352px against a 300px panel, driven by the unit vector label alone needing 216px. Measured at G2.5 and confirmed identical on the committed G2.4 code, so it predates that step and was not introduced by the lock control. Nothing looks wrong in the real window, so it is recorded rather than chased. | Open — watch if the card gains anything else at G2.6 |
 | 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
 | 2026-09-21 | Conversion between components and magnitude+angles when the toggle is switched. A G1.3 comment promised this for G2.4; it is not in F-08's criteria and was not built. Harmless in the edit box, where both field sets are refilled from the vector; visible in the create box, where typing in one mode and switching shows the other mode's old text. | Open — offered to the user at the G2.4 review, not chosen |
-| 2026-09-21 | The Clear all prompt says "It cannot be undone", which stops being true when undo arrives at G2.8. Revise the sentence in that step; `tests/ui/test_dialogs.py` asserts it, so the test will not let it be forgotten silently. | Open — revise at G2.8 |
+| 2026-09-21 | ~~The Clear all prompt says "It cannot be undone".~~ Revised at G2.8, and the test caught it exactly as intended. | Closed — 2026-09-22 |
 | 2026-09-22 | Shadows cost nothing measurable on top of components: 40.3 fps with ten vectors, 37.4 with components on, 40.4 with both overlays (76 actors). They are four actors against the component box's dash geometry, and the run-to-run spread is wider than the difference. | Open — monitor at G4 |
 | 2026-09-21 | Components cost about 10% of the frame rate: 42.9 fps with ten vectors, 38.7 with one of them resolved (72 actors against 66). Measured on screen at 1200x800. The one-at-a-time rule capped this - showing all ten at once measured 35.1 fps. Projections at G2.7 go on top of it, and MediaPipe competes for the same chip at G4. | Open — monitor at G2.7 and G4 |
 | 2026-09-20 | The scene renders at ~50 fps at 1200x800 on Intel HD Graphics 620, against 60 fps for the single sphere in G0.5. Measured again at G1.3: ten vectors cost almost nothing (47.7 fps empty against 47.2 with all ten), so the cost is the scene itself, not what is drawn in it. Components and projections still have to go on top, and MediaPipe competes for the same chip at G4, where F-02 requires tracking not to slow the view. | Open — monitor at G2.6 and G4 |

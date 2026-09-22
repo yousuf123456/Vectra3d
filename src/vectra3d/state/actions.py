@@ -8,6 +8,16 @@ where undo will record its snapshots (F-19).
 
 Each action makes its changes and then notifies the store's listeners exactly
 once, so the info panel and the 3D view never redraw a half-finished change.
+
+Actions that change the vectors record a snapshot first, which is what makes
+undo work (F-19): creating, editing, locking, deleting and clearing. They
+record only once the change is certain to happen, so a refused action - an
+eleventh vector, or deleting a locked one - leaves the history alone, or undo
+would appear to do nothing.
+
+Choosing the active vector, ticking one for an operation, and switching the
+component and shadow overlays on and off are *not* recorded. F-19 keeps undo
+for changes to the vectors themselves and leaves out display options.
 """
 
 from __future__ import annotations
@@ -36,6 +46,7 @@ def create_vector(
     if name is None:
         return None
 
+    store.history.record(store.snapshot())
     vector = Vector(name=name, components=components, tail=tail)
     store.put(vector)
     store.set_active(name)
@@ -63,6 +74,7 @@ def edit_vector(store: VectorStore, name: str, components: Point) -> bool:
     if vector is None or vector.locked:
         return False
 
+    store.history.record(store.snapshot())
     store.put(replace(vector, components=components))
     store.notify()
     return True
@@ -86,6 +98,7 @@ def delete_vector(store: VectorStore, name: str) -> bool:
     if vector is None or vector.locked:
         return False
 
+    store.history.record(store.snapshot())
     was_active = store.active_name == name
     store.remove(name)
     if was_active:
@@ -114,6 +127,7 @@ def toggle_locked(store: VectorStore, name: str) -> bool:
     if vector is None:
         raise KeyError(f"no vector named {name!r}")
 
+    store.history.record(store.snapshot())
     now_locked = not vector.locked
     store.put(replace(vector, locked=now_locked))
     store.notify()
@@ -122,9 +136,37 @@ def toggle_locked(store: VectorStore, name: str) -> bool:
 
 def clear_all(store: VectorStore) -> None:
     """Remove every vector. The confirmation prompt is the panel's job (F-10)."""
+    store.history.record(store.snapshot())
     store.clear()
     store.set_active(None)
     store.notify()
+
+
+def undo(store: VectorStore) -> bool:
+    """Take back the last change to the vectors (F-19). False if there is none.
+
+    The scene as it is now is handed over so that redo can come back to it.
+    Everything is put back at once and listeners hear about it once, so the
+    panels and the 3D view never see a half-restored scene.
+    """
+    restored = store.history.undo(store.snapshot())
+    if restored is None:
+        return False
+
+    store.restore(restored)
+    store.notify()
+    return True
+
+
+def redo(store: VectorStore) -> bool:
+    """Put back a change that was undone (F-19). False if there is none."""
+    restored = store.history.redo(store.snapshot())
+    if restored is None:
+        return False
+
+    store.restore(restored)
+    store.notify()
+    return True
 
 
 def set_active(store: VectorStore, name: str) -> None:

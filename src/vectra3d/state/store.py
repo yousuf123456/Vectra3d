@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from vectra3d.state.models import Vector
+from vectra3d.state.undo import History, Snapshot
 
 
 class VectorStore:
@@ -38,6 +39,10 @@ class VectorStore:
         self._components_shown: str | None = None
         self._projections_shown: str | None = None
         self._listeners: list[Callable[[], None]] = []
+        # The steps that can be taken back (F-19). The store owns it so that
+        # every action keeps its one-argument signature, and so that G5's
+        # gesture engine records through the same place the panel does.
+        self.history = History()
 
     # --- Reading ---
 
@@ -72,6 +77,31 @@ class VectorStore:
 
     def get(self, name: str) -> Vector | None:
         return self._vectors.get(name)
+
+    def snapshot(self) -> Snapshot:
+        """The scene as it is now, for the history to hold on to.
+
+        A plain dictionary copy, not a deep one: `Vector` is frozen, so two
+        snapshots sharing a vector object can never come to disagree. That
+        is what makes taking one before every change cheap.
+        """
+        return Snapshot(vectors=dict(self._vectors), active=self._active)
+
+    def restore(self, snapshot: Snapshot) -> None:
+        """Put a remembered scene back, replacing what is there now.
+
+        Only called by `actions.undo`/`actions.redo`. Ticks and the display
+        overlays are not in a snapshot (see `undo.py`), so they are pruned
+        against what actually came back rather than being restored: a name
+        that is no longer in the scene must not keep a tick or an overlay.
+        """
+        self._vectors = dict(snapshot.vectors)
+        self._active = snapshot.active if snapshot.active in self._vectors else None
+        self._selected &= set(self._vectors)
+        if self._components_shown not in self._vectors:
+            self._components_shown = None
+        if self._projections_shown not in self._vectors:
+            self._projections_shown = None
 
     @property
     def selected(self) -> tuple[str, ...]:

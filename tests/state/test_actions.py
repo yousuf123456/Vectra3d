@@ -390,3 +390,188 @@ def test_a_refused_creation_changes_nothing_and_notifies_nothing() -> None:
 
     assert calls == []
     assert store.active_name == "J"
+
+
+# --- What undo covers (F-19) ---
+
+
+def test_creating_can_be_undone() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    assert actions.undo(store) is True
+    assert store.names == ()
+
+
+def test_editing_can_be_undone() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.edit_vector(store, "A", (9.0, 9.0, 9.0))
+
+    actions.undo(store)
+
+    assert store.get("A").components == (1.0, 2.0, 3.0)
+
+
+def test_locking_can_be_undone() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_locked(store, "A")
+
+    actions.undo(store)
+
+    assert store.get("A").locked is False
+
+
+def test_deleting_can_be_undone() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.create_vector(store, (4.0, 5.0, 6.0))
+    actions.delete_vector(store, "A")
+
+    actions.undo(store)
+
+    assert store.names == ("A", "B")
+    assert store.get("A").components == (1.0, 2.0, 3.0)
+
+
+def test_clearing_can_be_undone() -> None:
+    store = VectorStore()
+    fill(store, 3)
+    actions.clear_all(store)
+
+    actions.undo(store)
+
+    assert store.names == ("A", "B", "C")
+
+
+def test_undo_puts_the_active_vector_back() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))  # A, active
+    actions.create_vector(store, (0.0, 1.0, 0.0))  # B, now active
+
+    actions.undo(store)
+
+    assert store.active_name == "A"
+
+
+def test_redo_puts_the_change_back() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.undo(store)
+
+    assert actions.redo(store) is True
+    assert store.names == ("A",)
+    assert store.get("A").components == (1.0, 2.0, 3.0)
+
+
+def test_undo_and_redo_report_when_there_is_nothing_to_do() -> None:
+    store = VectorStore()
+    assert actions.undo(store) is False
+    assert actions.redo(store) is False
+
+
+def test_a_new_change_after_undoing_abandons_the_redo() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.create_vector(store, (0.0, 1.0, 0.0))
+    actions.undo(store)  # B gone
+
+    actions.create_vector(store, (0.0, 0.0, 1.0))  # a different B
+
+    assert actions.redo(store) is False
+    assert store.get("B").components == (0.0, 0.0, 1.0)
+
+
+def test_undo_notifies_once() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.undo(store)
+
+    assert len(calls) == 1
+
+
+def test_a_refused_undo_notifies_nothing() -> None:
+    store = VectorStore()
+    calls: list[None] = []
+    store.subscribe(lambda: calls.append(None))
+
+    actions.undo(store)
+
+    assert calls == []
+
+
+# --- What undo does not cover (F-19) ---
+
+
+def test_a_refused_creation_records_no_step() -> None:
+    # Otherwise undo would appear to do nothing when pressed.
+    store = VectorStore()
+    fill(store, naming.MAX_VECTORS)
+    actions.create_vector(store, (1.0, 1.0, 1.0))  # refused
+
+    actions.undo(store)
+
+    assert store.count == naming.MAX_VECTORS - 1  # the last real create, undone
+
+
+def test_a_refused_deletion_records_no_step() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+    actions.delete_vector(store, "A")  # refused
+
+    actions.undo(store)  # undoes the lock, not a phantom delete
+
+    assert store.get("A").locked is False
+
+
+def test_a_refused_edit_records_no_step() -> None:
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.toggle_locked(store, "A")
+    actions.edit_vector(store, "A", (9.0, 9.0, 9.0))  # refused
+
+    actions.undo(store)
+
+    assert store.get("A").locked is False
+
+
+@pytest.mark.parametrize(
+    "act",
+    [
+        lambda s: actions.set_active(s, "B"),
+        lambda s: actions.toggle_selected(s, "B"),
+        lambda s: actions.toggle_components(s, "B"),
+        lambda s: actions.toggle_projections(s, "B"),
+    ],
+)
+def test_display_changes_are_not_undoable(act) -> None:
+    # F-19 keeps undo for changes to the vectors, and leaves out choosing the
+    # active one, ticking, and the two overlays.
+    store = VectorStore()
+    fill(store, 2)
+    act(store)
+
+    actions.undo(store)  # should undo the creation of B, not the display change
+
+    assert store.names == ("A",)
+
+
+def test_a_restored_vector_comes_back_without_its_ticks_or_overlays() -> None:
+    # Snapshots hold vectors, not display state, so a vector that returns is
+    # not carrying marks from before it left.
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.toggle_selected(store, "A")
+    actions.toggle_components(store, "A")
+    actions.delete_vector(store, "A")
+
+    actions.undo(store)
+
+    assert store.names == ("A",)
+    assert store.selected == ()
+    assert store.components_shown is None

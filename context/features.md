@@ -190,10 +190,10 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 ### F-19 Undo / redo
 **Undo (panel) — Group:** G2 · **Depends on:** F-04, F-08, F-09a, F-10
 Keep this simple: store a snapshot of all vectors before each change. Do not build a complex command system.
-- [ ] **Undo** and **Redo** buttons in the panel, plus `Ctrl+Z` and `Ctrl+Y`.
-- [ ] Undo covers every change to vectors: create, edit, lock/unlock, delete, clear all, and saving a result as a vector.
-- [ ] Undo does not cover camera view changes or toggling display options (components, projections).
-- [ ] Keeps the last 20 steps. Making a new change after undoing clears the redo history.
+- [x] **Undo** and **Redo** buttons in the toolbar, plus `Ctrl+Z` and `Ctrl+Y`. (Amended at G2.8 from "in the panel"; see `progress-tracker.md`.)
+- [x] Undo covers every change to vectors: create, edit, lock/unlock, delete, clear all, and saving a result as a vector. (Saving a result is built with F-15 in G3.2; it records through the same action.)
+- [x] Undo does not cover camera view changes or toggling display options (components, projections).
+- [x] Keeps the last 20 steps. Making a new change after undoing clears the redo history.
 
 **Undo for gestures — Group:** G5 · **Depends on:** F-19 panel, F-03, F-06, F-07
 - [ ] One complete gesture (from grab to release) counts as **one** undo step, not one step per frame.

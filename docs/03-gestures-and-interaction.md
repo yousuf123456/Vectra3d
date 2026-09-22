@@ -151,7 +151,17 @@ Any change can be undone, including an entire hand movement. One full gesture, f
 - Gestures record a snapshot only at the start, and commit one step on release. Cancelled gestures record nothing.
 
 ### How it's implemented
-*To be filled in by the agent after steps G2.8 and G5.9.*
+*The panel half was built in step G2.8; the gesture half comes in G5.9.*
+
+`src/vectra3d/state/undo.py` holds a `History` of snapshots. A snapshot is the vectors plus which one was active — the active vector is in there because creating a vector makes it active, so undoing a create has to put the highlight back where it was rather than guess.
+
+Each snapshot is a plain dictionary copy rather than a deep one. That is safe because a `Vector` is frozen and cannot be edited in place, so two snapshots sharing the same vector object can never come to disagree. It is also what makes taking a snapshot before *every* change cheap enough not to think about.
+
+The snapshots are recorded in `state/actions.py`, the one place every change passes through — the same property that lets gestures reuse all of this in G5. An action records only once its change is certain to happen: creating an eleventh vector, or editing or deleting a locked one, is refused and records nothing, because a step recorded for a change that never happened would make undo appear to do nothing.
+
+**Undo and Redo sit in the toolbar**, with Ctrl+Z and Ctrl+Y, and grey out when there is nothing to do. F-19 originally asked for them in the panel; the criterion was changed deliberately at G2.8, because panel height is what the vector list competes for and a toolbar is where people look for undo. While a text field has focus, Ctrl+Z is that field's own text undo and the vector history is left alone — the shortcut undoes whatever you are currently doing.
+
+What undo deliberately does *not* cover: the camera, which vector is active, which are ticked for an operation, and the components and shadows toggles. Those are ways of looking at the scene rather than changes to it, so a vector restored by undo comes back unticked with its overlays off.
 
 ### Likely questions
 - **Why snapshots instead of recording each action?** With at most 10 vectors, copying everything is simpler and less error-prone than a command system.

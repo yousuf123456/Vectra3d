@@ -12,16 +12,17 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 def clear_all_message(count: int) -> str:
     """What the Clear all prompt says.
 
-    It names the number going, says that locked vectors go too (F-10), and
-    warns that it cannot be undone. Locking itself arrives in G2.5; the
-    sentence is written now because the criterion requires it and because
-    the wording will still be right then.
+    It names the number going and says that locked vectors go too (F-10).
+
+    It used to end "It cannot be undone", which stopped being true at G2.8
+    when undo arrived. A prompt that overstates what is at stake teaches
+    students to ignore prompts, so the sentence was removed rather than
+    softened.
     """
     vectors = "vector" if count == 1 else "vectors"
     return (
         f"Remove all {count} {vectors}?\n\n"
-        "This removes every vector, including any that are locked. "
-        "It cannot be undone."
+        "This removes every vector, including any that are locked."
     )
 
 

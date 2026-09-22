@@ -18,13 +18,14 @@ def test_one_vector_reads_as_singular() -> None:
 
 @pytest.mark.parametrize("count", [1, 2, 10])
 def test_the_message_says_locked_vectors_go_too(count: int) -> None:
-    # F-10 requires this explicitly. Locking itself arrives in G2.5; the
-    # sentence is here now because the criterion asks for it and the wording
-    # will still be right then.
+    # F-10 requires this explicitly.
     assert "including any that are locked" in clear_all_message(count)
 
 
 @pytest.mark.parametrize("count", [1, 2, 10])
-def test_the_message_warns_it_cannot_be_undone(count: int) -> None:
-    # True until undo arrives in G2.8, when this line has to be revisited.
-    assert "cannot be undone" in clear_all_message(count)
+def test_the_message_no_longer_claims_it_cannot_be_undone(count: int) -> None:
+    # It said so until G2.8, and undo made it untrue. A prompt that
+    # overstates what is at stake teaches students to ignore prompts, so the
+    # sentence went rather than being softened. This test replaces the one
+    # that asserted the old wording, which is what caught the change.
+    assert "cannot be undone" not in clear_all_message(count)
