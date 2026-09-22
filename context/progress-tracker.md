@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G2 — Vector math and display. All eight steps complete, plus two user-requested UI passes
-- **Next step:** the G2 checkpoint — run `/review` over the group, fix what it finds, then `/remember save` and a fresh session for G3
+- **Current group:** G3 — Operations. Not started
+- **Next step:** G3.1 — operation maths in `core/operations.py`: resultant, subtraction, scalar multiplication, fully tested before any UI
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -47,8 +47,8 @@ Updated after every approved step. Read this at the start of every session to se
 |---|---|---|
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
-| G2 | Vector math and display | All steps done — `/review` still to run |
-| G3 | Operations | Not started |
+| G2 | Vector math and display | Complete — `/review` skipped at the user's request |
+| G3 | Operations | Next |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
 | G6 | Packaging | Not started |
@@ -159,6 +159,8 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-22 | Actions record a snapshot only once the change is certain to happen | A refused action - an eleventh vector, editing or deleting a locked one - changes nothing, and a step recorded for it would make undo appear to do nothing when pressed. Three tests hold this line. |
 | 2026-09-22 | The Clear all prompt lost "It cannot be undone" rather than softening it | Undo made the sentence false. A prompt that overstates what is at stake teaches students to ignore prompts. Flagged as a known issue at G1.5 and caught automatically: the test asserting the old wording failed the moment undo arrived. |
 
+| 2026-09-22 | **G2 closed without running `/review`**, at the user's request | `build-plan.md` section 3 asks for `/review` at the end of every group. The user judged G2 simple enough not to need it and chose to move on. Recorded rather than passed over silently, because it is the first group to close without one: G0 and G1 both had a review that found real faults, including the G1 critical where a typed "nan" froze the window. The whole-app `/review` before the student trial still stands and will be the first pass over this group's code. |
+
 
 ---
 
@@ -175,6 +177,9 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 
 | Found | Issue | Status |
 |---|---|---|
+| 2026-09-22 | `render/overlays.py` now holds two overlay classes and six geometry functions, having been one class when `architecture.md` named it. Nothing is wrong with it, but G3 adds result rendering on top. Worth deciding whether it splits before that, rather than after. | Open — decide at G3.2 |
+| 2026-09-22 | Three visual faults in G2.6 reached the user before they reached the agent (invisible component arrows, then over-prominent ones, then labels on top of the axis numbers). Rendering off screen and reading the image was adopted partway through the group and caught the G2.7 faults before the user saw them. The earlier G2 steps were never checked that way. | Open — worth a visual pass at the pre-trial review |
+| 2026-09-22 | Conversion between components and magnitude+angles when the toggle is switched is still not built. A G1.3 comment promised it for G2.4; the comment was corrected instead. Harmless in the edit box, visible in the create box. | Open — offered twice, not chosen |
 | 2026-09-21 | The user reports a 1-2 second delay creating the first vector. **Not reproduced.** Measured on a real on-screen window: 145 ms when the vector fits the current scene, 280 ms when it is large enough to force a rescale and rebuild the grid, axes and numbers; later vectors cost 55-70 ms. Needs the values typed and whether it happens on every launch. | Open — needs a reproducible case |
 | 2026-09-21 | Looking nearly edge-on along the grid plane, the x and y numbers still interleave, because both axes project onto almost the same line on screen. Improved by the per-view placement (they are at least consistently on one side) but still crowded. Hiding heavily foreshortened axes, not only head-on ones, would fix it. | Open — offered to the user, not chosen |
 | 2026-09-21 | Anti-aliasing and geometry thickness left untouched, so the jagged look the user reported persists. Their decision: revisit once G5 is built, when the frame-rate budget against MediaPipe is known. | Open — revisit after G5 |
