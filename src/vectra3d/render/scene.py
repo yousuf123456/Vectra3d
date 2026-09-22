@@ -25,7 +25,7 @@ from collections.abc import Iterable, Sequence
 import numpy as np
 import pyvista as pv
 
-from vectra3d.state.models import Vector
+from vectra3d.state.models import Result, Vector
 
 # The smallest the world ever gets (`interaction-spec.md` section 3).
 MIN_EXTENT = 10.0
@@ -132,9 +132,17 @@ def extent_for(max_abs: float) -> float:
     raise AssertionError("extent_steps never runs out")  # pragma: no cover
 
 
-def extent_for_vectors(vectors: Sequence[Vector]) -> float:
-    """Return the extent that fits every component of every vector."""
+def extent_for_vectors(vectors: Sequence[Vector], result: Result | None = None) -> float:
+    """Return the extent that fits every component of every vector.
+
+    The result counts too when there is one: `interaction-spec.md` section 3
+    sizes the scene to "any vector **or the current result**", and a resultant
+    is longer than any of the vectors it came from whenever they point the
+    same way, so leaving it out would draw it off the edge of the grid.
+    """
     values = [abs(c) for vector in vectors for c in vector.components]
+    if result is not None:
+        values.extend(abs(c) for c in result.components)
     return extent_for(max(values, default=0.0))
 
 
@@ -490,8 +498,8 @@ class Scene:
 
     # --- Resizing the world ---
 
-    def update_for(self, vectors: Sequence[Vector]) -> None:
-        """Grow or shrink the world so every vector fits.
+    def update_for(self, vectors: Sequence[Vector], result: Result | None = None) -> None:
+        """Grow or shrink the world so every vector, and the result, fits.
 
         Called when the vectors change, which is exactly when
         `interaction-spec.md` section 3 allows rescaling: after a typed value
@@ -499,7 +507,7 @@ class Scene:
         released gesture. Never while a vector is being moved by hand,
         because a gesture in progress does not change the store.
         """
-        needed = extent_for_vectors(vectors)
+        needed = extent_for_vectors(vectors, result)
         if needed != self._extent:
             self.set_extent(needed)
 

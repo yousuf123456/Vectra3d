@@ -214,7 +214,17 @@ It adds each axis with **`math.fsum`** rather than with `+`. This is worth expla
 
 The function also **refuses to return a result that isn't a finite number**. Multiplying or adding very large vectors can reach infinity even though every number that went in was ordinary, and an infinity travelling quietly onward would fail somewhere far away from the cause. Instead all three operations raise an error naming the operation, which the panel turns into a message.
 
-*The temporary result object, its colour and its live updates are added in G3.2; the head-to-tail animation in G3.3.*
+**The temporary result (G3.2).** Pressing **Resultant** turns that sum into a `Result`, which is deliberately *not* a vector: it has no letter, does not count towards the ten, and cannot be locked, edited, ticked or made active. Only one exists at a time. Giving it its own type is what makes those rules structural rather than something every part of the app has to remember.
+
+It is drawn in one reserved near-black that no vector ever uses, labelled with its expression — `A + B` — rather than a letter, and it appears as its own card at the top of the info panel with the same twelve values a vector shows.
+
+A result remembers which letters it was worked out from, and that is what makes it **live**: every action that changes a vector calls one shared `_refresh_result`, so editing A moves the result immediately, and it works the same way when hands move a vector in G5 without any further code. If one of its input vectors is deleted the result disappears, because an answer about particular vectors has no honest value once one of them is gone. If a recomputed sum no longer fits in a number, the result disappears too and the panel says which expression was too large — a result frozen at its last value would be a confident wrong answer.
+
+When the arrow moves it **slides** over 150 ms rather than jumping (`config.RESULT_TRANSITION_MS`), so the student can see which thing responded to their edit. Only the drawing moves: the stored result holds its real value throughout, so the numbers in the panel are never a halfway figure.
+
+**Save as vector** turns the result into a real vector with the next free letter and colour, and the result goes, because the new vector is the same arrow. That is the one thing about a result that undo covers, so undoing the save removes the vector and puts the result back where it was.
+
+*The head-to-tail animation is added in G3.3.*
 
 ### Likely questions
 - **Does the order of vectors matter?** No. Any order ends at the same point; the animation's path changes shape, but the resultant doesn't. The app takes some care to keep this literally true down to the last decimal place — see "How it's implemented" above.

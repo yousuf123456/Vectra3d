@@ -54,7 +54,12 @@ from vectra3d.state.store import VectorStore
 from vectra3d.ui import theme
 from vectra3d.ui.dialogs import confirm_clear_all
 
-ERROR_STYLE = "color: #C2185B;"
+ERROR_STYLE = f"color: {theme.ERROR_TEXT};"
+
+# What the Resultant button says while it cannot be pressed. A disabled
+# button with no explanation reads as broken, and the rule it is waiting for
+# - tick two or more - is not guessable from the button alone.
+RESULTANT_HINT = "Tick two or more vectors to add them together."
 
 COMPONENTS_MODE = 0
 ANGLES_MODE = 1
@@ -432,6 +437,7 @@ class ActionPanel(QWidget):
         layout.addWidget(self._build_create_box())
         layout.addWidget(self._build_edit_box())
         layout.addWidget(self._edit_hint)
+        layout.addWidget(self._build_operations())
 
         self._clear = QPushButton("Clear all")
         self._clear.setToolTip("Remove every vector from the scene")
@@ -457,6 +463,54 @@ class ActionPanel(QWidget):
         self._edit_box.add(self._edit_form)
         return self._edit_box
 
+    def _build_operations(self) -> QWidget:
+        """The operations over several vectors. Subtraction and scaling join
+        this box at G3.4 and G3.5."""
+        box = CollapsibleBox("Operations")
+
+        holder = QWidget()
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.GAP_SMALL)
+
+        self._resultant = QPushButton("Resultant")
+        self._resultant.setToolTip("Add the ticked vectors and show their sum")
+        self._resultant.clicked.connect(self._on_resultant)
+        layout.addWidget(self._resultant)
+
+        self._resultant_hint = QLabel(RESULTANT_HINT)
+        self._resultant_hint.setWordWrap(True)
+        self._resultant_hint.setStyleSheet(f"color: {theme.MUTED_TEXT};")
+        layout.addWidget(self._resultant_hint)
+
+        self._resultant_message = QLabel()
+        self._resultant_message.setWordWrap(True)
+        self._resultant_message.setStyleSheet(ERROR_STYLE)
+        self._resultant_message.hide()
+        layout.addWidget(self._resultant_message)
+
+        box.add(holder)
+        return box
+
+    def _on_resultant(self) -> None:
+        """Add up the ticked vectors (F-15).
+
+        A sum too large to be a number is refused by `core/operations.py`
+        rather than drawn as an infinity, and the student is told which
+        expression could not be worked out.
+        """
+        names = self._store.selected
+        try:
+            actions.compute_resultant(self._store)
+        except ValueError:
+            self._resultant_message.setText(
+                f"{' + '.join(names)} is too large to show."
+            )
+            self._resultant_message.show()
+            return
+
+        self._resultant_message.hide()
+
     def refresh(self) -> None:
         """Bring the panel back in step with the store.
 
@@ -468,6 +522,14 @@ class ActionPanel(QWidget):
         never be raised with nothing to remove.
         """
         self._clear.setEnabled(self._store.count > 0)
+
+        # Two ticks is the rule (F-15), and the hint below the button says so
+        # for as long as it is not met.
+        enough = len(self._store.selected) >= actions.MIN_FOR_RESULTANT
+        self._resultant.setEnabled(enough)
+        self._resultant_hint.setVisible(not enough)
+        if enough:
+            self._resultant_message.hide()
 
         active = self._store.active
         if should_refill(self._shown, active):

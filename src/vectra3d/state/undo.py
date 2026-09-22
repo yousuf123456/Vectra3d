@@ -12,6 +12,13 @@ vector is in there because creating a vector makes it active, so undoing a
 create has to leave the highlight somewhere honest, and where it was before
 is the only honest answer.
 
+**The temporary result is in there too**, added at G3.2. This is a departure
+from the line drawn below, and a deliberate one: F-19 names "saving a result
+as a vector" as a thing undo must cover, and undoing that save leaves the
+scene wrong unless the result comes back to stand where the saved vector was.
+`store.restore` drops a restored result whose input vectors are no longer in
+the scene.
+
 **What it leaves out** is everything about display: which vectors are ticked
 for an operation, and which one is showing its components or its shadows.
 F-19 says undo covers changes to the vectors and not display options, and
@@ -29,7 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vectra3d.state.models import Vector
+from vectra3d.state.models import Result, Vector
 
 # How many changes can be taken back (F-19). Older steps fall off the end.
 MAX_STEPS = 20
@@ -37,10 +44,11 @@ MAX_STEPS = 20
 
 @dataclass(frozen=True)
 class Snapshot:
-    """The scene as it was: every vector, and which one was active."""
+    """The scene as it was: every vector, which one was active, and the result."""
 
     vectors: dict[str, Vector]
     active: str | None
+    result: Result | None = None
 
 
 class History:

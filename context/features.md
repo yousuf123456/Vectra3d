@@ -133,7 +133,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 **Full — Group:** G2 · **Depends on:** F-11 basic, F-12
 - [x] Adds magnitude, direction angles `(α, β, γ)`, unit vector, and lock status for every vector.
-- [ ] Also lists the current temporary result, if any (from G3 onward).
+- [x] Also lists the current temporary result, if any (from G3 onward).
 - [x] Every value updates live whenever a vector changes (by panel now; by hand from G5 onward).
 
 ### F-12 Direction angles and unit vector
@@ -161,9 +161,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-15 Resultant
 **Group:** G3 · **Depends on:** F-05a, F-11 full
-- [ ] With 2 or more vectors checked in the info panel, a **Resultant** button computes their sum.
-- [ ] Automated tests pass for sums of 2, 3, and 10 vectors, including vectors that cancel to zero.
-- [ ] The result follows the global rules for operation results.
+- [x] With 2 or more vectors checked in the info panel, a **Resultant** button computes their sum.
+- [x] Automated tests pass for sums of 2, 3, and 10 vectors, including vectors that cancel to zero.
+- [x] The result follows the global rules for operation results.
 - [ ] A **Show how** button plays a head-to-tail animation: the selected vectors slide into a head-to-tail chain, the resultant is drawn from the origin to the final head, then the vectors return to the origin.
 - [ ] The animation does not permanently move or change any vector.
 

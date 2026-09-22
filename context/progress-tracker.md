@@ -6,8 +6,8 @@ Updated after every approved step. Read this at the start of every session to se
 
 ## Current status
 - **Current group:** G3 — Operations. In progress
-- **Next step:** G3.2 — global result rules + F-15 Resultant: temporary result, reserved colour, expression label, Save as vector, live updates with transition
-- **Blocked on:** nothing
+- **Next step:** G3.3 — F-15 head-to-tail animation, in its own step because the animation must never change real vector values
+- **Blocked on:** nothing — but see the `extent_for` crash at the top of Known issues, which the user may want fixed first
 
 ## Completed steps
 
@@ -42,6 +42,7 @@ Updated after every approved step. Read this at the start of every session to se
 
 
 | G3.1 | Operation maths: `core/operations.py` | 2026-09-22 | `G3.1: operation maths` | Pure maths, no visible surface until G3.2 - the same shape as G2.1. The maths halves of F-15, F-16 and F-17 pass; nothing ticked in `features.md`, because each of those criteria also needs the panel from G3.2-G3.5. The approved plan's justification for `math.fsum` was wrong and failed twice, so `/recover` was run: the decision survived on corrected grounds (see the decisions log). 36 new tests; suite now 478 passing. |
+| G3.2 | Global result rules + F-15 Resultant: `state/models.py` `Result`, `render/result_actor.py`, `render/animations.py`, result actions, the Operations box and the result card | 2026-09-22 | `G3.2: the temporary result and the resultant` | All seven global result rules, F-15's first three criteria and F-11's last one pass; the user drove the whole story in the real window and found nothing wrong. The `Result` is its own type rather than a `Vector`, which makes "no letter, not one of the ten, cannot be locked or ticked" structural instead of a rule every caller has to keep. Live updates go through one `_refresh_result` that every vector-changing action calls, so G5's gestures get them free. First animation in the app. `render/overlays.py` did **not** need splitting after all. 42 new tests; suite now 520 passing. Found, and did not fix, a pre-existing crash in `extent_for`. |
 
 
 ## Groups
@@ -51,7 +52,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
-| G3 | Operations | In progress — G3.1 done |
+| G3 | Operations | In progress — G3.1, G3.2 done |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
 | G6 | Packaging | Not started |
@@ -169,6 +170,15 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-22 | Sums use `math.fsum`, **kept after its original justification turned out to be wrong** | The approved plan said `fsum` was needed so vectors that cancel would reach exactly zero, citing 0.1 + 0.2 - 0.3. That is false: `fsum` gives 2.78e-17 there and plain addition 5.55e-17, because those three floats genuinely do not add up to zero. F-15's cancellation case is A + (-A), which is exact either way, since equal floats subtract exactly. A second justification (order-independence) then appeared false too, because it was measured against Python's builtin `sum`, which since 3.12 compensates as it goes and was never the alternative. Two failures on one point, so `/recover` was run as `CLAUDE.md` requires. Diagnosed as a broken test rather than a broken decision: against adding the components one at a time, which is what the function would otherwise do, the seven components 0.1, 0.2, 0.3, 100.7, -100.7, 0.4, 0.5 give **20 different answers** depending on order, and 3 distinct answers for ten ordinary components within +/-1000. `fsum` gives one, and it is correct. A resultant sums a *set* of ticked vectors with no order, and `docs/01-vector-math.md` already promises the student that order does not matter. Kept, on the corrected grounds, with the user's explicit decision after being shown the correction. |
 | 2026-09-22 | The order-independence test compares against an explicit addition loop, not `sum` | Writing the baseline out is what stops the false negative above from happening again silently, and the test asserts that its own example really is order-sensitive, so it cannot quietly stop testing anything if the components are edited. |
 | 2026-09-22 | `docs/04-software-design.md` no longer credits NumPy with all the vector maths | `build-plan.md` section 7 requires correcting a concept section the implementation contradicts. Two modules now depart deliberately - `math.hypot` in `vector_math.py` (G2.1) and `math.fsum` here - and the stack table stated the opposite. NumPy remains the rule for genuinely array-shaped data. |
+| 2026-09-22 | The temporary result is its own type, `Result`, not a `Vector` with a flag | Every rule about it - no letter, no colour of its own, outside the ten-vector limit, cannot be locked, edited, ticked or made active, only one at a time - becomes structural rather than something each caller has to remember. It carries `sources`, the letters it was worked out from, which is what makes it live, and `expression`, built at the moment the operation runs because nothing can reconstruct it from the numbers afterwards. |
+| 2026-09-22 | **The result is inside the undo snapshot**, reversing the line drawn at G2.2, G2.6 and G2.7 | Those three decisions kept display and derived state out of undo. F-19 names "saving a result as a vector" as something undo must cover, and undoing that save leaves the scene in a state it was never in unless the result comes back to stand where the saved vector was. `Snapshot` gained a third field; `store.restore` drops a restored result whose input vectors are no longer there, the same way it already prunes ticks. |
+| 2026-09-22 | Live updates go through one `_refresh_result`, called by the actions that change components | The alternative was each action remembering to do it, which is four places now and more later. One place also means G5's gesture engine gets live results with no work at all, because it calls these same actions. |
+| 2026-09-22 | A result that no longer fits in a number disappears, and the panel says which expression failed | The other option was freezing the arrow at its last good value, which would show a confident wrong answer in an app whose premise is that the maths is always right. The edit that caused it still succeeds; only the result goes. The reason is held on the store as `result_error`, because a result can vanish without the student touching it and something disappearing unexplained reads as a bug. |
+| 2026-09-22 | Saving a result replaces it rather than leaving both | `features.md` says Save "turns it into" a vector. Two arrows at the same place, one near-black and one coloured, would fight for the same pixels and say nothing extra. |
+| 2026-09-22 | **`render/overlays.py` was not split; the question dissolved** | Held open from G2.7 to be decided here. A result is an arrow with a label, which is `vector_actor.py`'s shape rather than an overlay's, so it went to its own `render/result_actor.py` and `overlays.py` did not grow at all. Recorded as resolved rather than deferred again. |
+| 2026-09-22 | The result arrow is drawn at 1.5x a vector's thickness | Judged by rendering off screen with two vectors and with ten. The reserved near-black already separates it, but the result is the answer the student asked for and should not be the thinnest thing on screen. Checked against a ten-vector scene, where it still reads clearly and its expression label clears the crowd. |
+| 2026-09-22 | The transition animates only what is drawn, never the stored result | The store keeps the real components throughout, so the info panel never shows a halfway number while the arrow is moving. This is also the rule G3.3's head-to-tail animation has to follow, where F-15 states it outright. |
+| 2026-09-22 | The error colour moved from `ui/action_panel.py` into `ui/theme.py` | The result card needed the same colour, and the G2 decision says app colours live in the theme. Moved rather than copied, which is two lines and leaves one source. |
 
 
 ---
@@ -186,6 +196,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 
 | Found | Issue | Status |
 |---|---|---|
+| 2026-09-22 | **`extent_for` returns infinity from finite input, and the app then crashes.** `extent_for(1e308)` gives `inf`, because `decade *= 10` accumulates error until the `1e308` step lands fractionally under the target, so the search rejects it and takes `2e308`, which overflows. The scene is sized to infinity and VTK raises `ValueError: matrix must have finite values`. **A student reaches this by typing `1e308` into the create form** - `parse_number` allows it correctly, since it is finite. Reproduced with no result in the scene at all, so it is G1.2/G1.3 code that G1's `/review` missed. It also makes G3.2's result-overflow handling unreachable through the window, because overflowing a sum needs inputs of about 1e308 and drawing one crashes first; the logic is proven at the state level instead. | **Open — reported at G3.2, not fixed. Worth its own step before G3.3** |
 | 2026-09-22 | `render/overlays.py` now holds two overlay classes and six geometry functions, having been one class when `architecture.md` named it. Nothing is wrong with it, but G3 adds result rendering on top. Worth deciding whether it splits before that, rather than after. | Open — decide at G3.2 |
 | 2026-09-22 | Three visual faults in G2.6 reached the user before they reached the agent (invisible component arrows, then over-prominent ones, then labels on top of the axis numbers). Rendering off screen and reading the image was adopted partway through the group and caught the G2.7 faults before the user saw them. The earlier G2 steps were never checked that way. | Open — worth a visual pass at the pre-trial review |
 | 2026-09-22 | Conversion between components and magnitude+angles when the toggle is switched is still not built. A G1.3 comment promised it for G2.4; the comment was corrected instead. Harmless in the edit box, visible in the create box. | Open — offered twice, not chosen |

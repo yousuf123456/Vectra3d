@@ -18,15 +18,30 @@ would appear to do nothing.
 Choosing the active vector, ticking one for an operation, and switching the
 component and shadow overlays on and off are *not* recorded. F-19 keeps undo
 for changes to the vectors themselves and leaves out display options.
+
+**Keeping the result live.** A result is worked out from named vectors, so
+anything that changes one of those vectors has to work it out again, and
+anything that removes one has to take the result away. Rather than leaving
+each action to remember that, the actions that touch components call
+`_refresh_result` before they notify. That is one place to get right, and it
+is what makes the result live for hand gestures in G5 without any further
+work: the gesture engine calls these same actions.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
+from vectra3d.core.operations import resultant
 from vectra3d.state import naming
-from vectra3d.state.models import ORIGIN, Point, Vector
+from vectra3d.state.models import ORIGIN, Point, Result, Vector
 from vectra3d.state.store import VectorStore
+
+# The fewest vectors an operation can be run over (F-15).
+MIN_FOR_RESULTANT = 2
+
+# What the student is told when a result cannot be worked out as a number.
+TOO_LARGE = "{expression} is too large to show."
 
 
 def create_vector(
@@ -76,6 +91,7 @@ def edit_vector(store: VectorStore, name: str, components: Point) -> bool:
 
     store.history.record(store.snapshot())
     store.put(replace(vector, components=components))
+    _refresh_result(store)
     store.notify()
     return True
 
@@ -104,6 +120,7 @@ def delete_vector(store: VectorStore, name: str) -> bool:
     if was_active:
         remaining = store.names
         store.set_active(remaining[0] if remaining else None)
+    _refresh_result(store)
     store.notify()
     return True
 
@@ -238,3 +255,106 @@ def clear_selection(store: VectorStore) -> None:
     """Untick every vector, leaving the vectors themselves alone."""
     store.clear_selection()
     store.notify()
+
+
+def compute_resultant(store: VectorStore) -> Result | None:
+    """Add up the ticked vectors and show the answer (F-15).
+
+    Returns the new result, or None if fewer than two vectors are ticked,
+    which is the caller's cue to leave the button disabled. Replaces whatever
+    result was showing, because only one exists at a time.
+
+    Raises `ValueError` if the sum is too large to be a number, having left
+    the scene alone. The panel turns that into a message; `_refresh_result`
+    handles the same failure arriving later, when a vector is edited.
+
+    Not recorded for undo. A result is worked out from the vectors rather
+    than being a change to them, and it can always be worked out again from
+    the same ticks. Saving one *is* a change, and `save_result_as_vector`
+    records it.
+    """
+    names = store.selected
+    if len(names) < MIN_FOR_RESULTANT:
+        return None
+
+    result = _resultant_for(store, names)
+    store.set_result(result)
+    store.notify()
+    return result
+
+
+def save_result_as_vector(store: VectorStore) -> Vector | None:
+    """Turn the temporary result into a real vector (`features.md`).
+
+    It takes the next free letter and colour like any other vector and counts
+    towards the ten. Returns None if there is no result or if ten already
+    exist, which is the caller's cue to show the limit message.
+
+    The result goes when it is saved, because the vector now standing in its
+    place is the same arrow: leaving both would draw one on top of the other.
+
+    This is the one thing about a result that undo covers (F-19), so a
+    snapshot is recorded - and because the snapshot holds the result too,
+    undoing the save brings the result back exactly where it was.
+    """
+    result = store.result
+    if result is None:
+        return None
+
+    name = naming.next_free_name(store.names)
+    if name is None:
+        return None
+
+    store.history.record(store.snapshot())
+    vector = Vector(name=name, components=result.components, tail=result.tail)
+    store.put(vector)
+    store.set_active(name)
+    store.set_result(None)
+    store.notify()
+    return vector
+
+
+def clear_result(store: VectorStore) -> None:
+    """Take the temporary result away."""
+    store.set_result(None)
+    store.notify()
+
+
+def _resultant_for(store: VectorStore, names: tuple[str, ...]) -> Result:
+    """Build the resultant of these vectors. Raises ValueError if it overflows."""
+    vectors = [store.get(name) for name in names]
+    components = resultant([v.components for v in vectors if v is not None])
+    return Result(
+        expression=" + ".join(names),
+        components=components,
+        sources=tuple(names),
+    )
+
+
+def _refresh_result(store: VectorStore) -> None:
+    """Work the result out again, or take it away if it can no longer be shown.
+
+    Called by every action that changes or removes a vector, before it
+    notifies, so the panels and the 3D view see the vectors and the result
+    agreeing with each other.
+
+    The result goes if one of the vectors it was worked out from has been
+    deleted, because a result is an answer about particular vectors and there
+    is no honest answer once one of them is gone. It also goes if the sum no
+    longer fits in a number, with the reason recorded for the panel - a
+    result that quietly froze at its last value would be a wrong answer shown
+    confidently.
+    """
+    result = store.result
+    if result is None:
+        return
+
+    if not set(result.sources) <= set(store.names):
+        store.set_result(None)
+        return
+
+    try:
+        store.set_result(_resultant_for(store, result.sources))
+    except ValueError:
+        store.set_result(None)
+        store.set_result_error(TOO_LARGE.format(expression=result.expression))

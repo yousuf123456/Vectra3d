@@ -40,6 +40,10 @@ CARD_BORDER = "#E1E4E8"
 # Secondary text: axis letters, hints, the empty-list message.
 MUTED_TEXT = "#6B7280"
 
+# What a refusal is written in: an invalid entry, a locked vector, a result
+# too large to show. Dark enough to read on white, and not the axis red.
+ERROR_TEXT = "#C2185B"
+
 # Spacing, so padding is consistent across the panels instead of each widget
 # inventing its own.
 GAP_SMALL = 6

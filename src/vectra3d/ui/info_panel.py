@@ -46,7 +46,7 @@ from vectra3d.core.formatting import (
 )
 from vectra3d.core.vector_math import direction_angles, magnitude, unit_vector
 from vectra3d.state import actions, naming
-from vectra3d.state.models import Vector
+from vectra3d.state.models import Result, Vector
 from vectra3d.state.store import VectorStore
 from vectra3d.ui import theme
 
@@ -89,6 +89,13 @@ PROJECTIONS_TEXT = "Projections"
 
 
 def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """The labelled numbers on a vector's card. See `values_for`."""
+    return values_for(vector.components)
+
+
+def values_for(
+    components: tuple[float, float, float],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """The labelled numbers on one card, in display form, as two columns.
 
     The left column is what the vector *is* - its components and how long it
@@ -102,8 +109,11 @@ def card_values(vector: Vector) -> tuple[list[tuple[str, str]], list[tuple[str, 
 
     Separate from the widgets so what a card says can be tested without
     opening a window.
+
+    Takes components rather than a vector, because a temporary result shows
+    exactly the same numbers as a vector does (`features.md`, global rules
+    for operation results) while not being one.
     """
-    components = vector.components
     angles = direction_angles(components)
     unit = unit_vector(components)
 
@@ -226,6 +236,9 @@ class InfoPanel(QWidget):
         selected: Sequence[str] = (),
         components_shown: str | None = None,
         projections_shown: str | None = None,
+        result: Result | None = None,
+        result_error: str | None = None,
+        can_save_result: bool = True,
     ) -> None:
         """Rebuild the list to match the store."""
         while self._cards_layout.count():
@@ -233,6 +246,18 @@ class InfoPanel(QWidget):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+
+        # The result sits above the vectors, where the answer to what the
+        # student just asked for is the first thing they see, and where it
+        # does not move as vectors are added and removed below it.
+        if result is not None:
+            self._cards_layout.addWidget(
+                _build_result_card(
+                    result, on_save=self._save_result, can_save=can_save_result
+                )
+            )
+        elif result_error is not None:
+            self._cards_layout.addWidget(_build_result_message(result_error))
 
         if not vectors:
             empty = QLabel(EMPTY_TEXT)
@@ -276,6 +301,9 @@ class InfoPanel(QWidget):
 
     def _toggle_projections(self, name: str) -> None:
         actions.toggle_projections(self._store, name)
+
+    def _save_result(self) -> None:
+        actions.save_result_as_vector(self._store)
 
 
 class _Card(QFrame):
@@ -456,4 +484,98 @@ def _value(text: str, *, align_right: bool = True) -> QLabel:
     label.setAlignment(
         Qt.AlignmentFlag.AlignRight if align_right else Qt.AlignmentFlag.AlignLeft
     )
+    return label
+
+
+# What the Save button says, and why it might be refused. The limit message
+# names the rule rather than just refusing, because a disabled button with no
+# explanation reads as a broken one.
+SAVE_TEXT = "Save as vector"
+SAVE_TOOLTIP = "Keep this result as a vector of its own, with the next free letter"
+SAVE_FULL_TOOLTIP = (
+    f"There are already {naming.MAX_VECTORS} vectors. "
+    "Delete one to save this result."
+)
+
+
+def _build_result_card(
+    result: Result,
+    *,
+    on_save: Callable[[], None],
+    can_save: bool,
+) -> QWidget:
+    """The temporary result's card: its expression, its numbers, and Save.
+
+    Built apart from `_build_card` rather than by adding options to it. A
+    result has no tick box, no lock, no delete and nothing to activate, and
+    it has a Save button that a vector does not; threading five "only if this
+    is a vector" conditions through one builder would make both harder to
+    read than having two.
+    """
+    card = QFrame()
+    card.setStyleSheet(
+        f"QFrame {{ border: 1px solid {naming.RESULT_COLOR};"
+        f" border-radius: {theme.CARD_RADIUS}px; background: {theme.CARD_BACKGROUND}; }}"
+    )
+
+    outer = QVBoxLayout(card)
+    outer.setContentsMargins(theme.GAP, theme.GAP_SMALL, theme.GAP, theme.GAP_SMALL)
+    outer.setSpacing(theme.GAP_SMALL)
+
+    header = QHBoxLayout()
+    header.setSpacing(theme.GAP_SMALL)
+
+    # The same swatch a vector card carries, in the reserved colour, so the
+    # black arrow in the 3D view is tied to this card without reading a word.
+    swatch = QLabel()
+    swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
+    swatch.setStyleSheet(
+        f"background: {naming.RESULT_COLOR}; border: none; border-radius: 3px;"
+    )
+    header.addWidget(swatch)
+
+    # The expression is the result's name: "A + B" says both what it is and
+    # where it came from, which a letter could not.
+    expression = QLabel(result.expression)
+    expression.setStyleSheet("font-weight: 600; border: none;")
+    header.addWidget(expression)
+    header.addStretch(1)
+    outer.addLayout(header)
+
+    values = QGridLayout()
+    values.setHorizontalSpacing(theme.GAP_SMALL)
+    values.setVerticalSpacing(2)
+    values.setColumnStretch(2, 1)
+
+    left, right = values_for(result.components)
+    for row, (name_text, value_text) in enumerate(left):
+        values.addWidget(_key(name_text), row, 0)
+        values.addWidget(_value(value_text), row, 1)
+    for row, (name_text, value_text) in enumerate(right):
+        values.addWidget(_key(name_text), row, 3)
+        values.addWidget(_value(value_text, align_right=False), row, 4)
+    outer.addLayout(values)
+
+    save = QToolButton()
+    save.setText(SAVE_TEXT)
+    save.setEnabled(can_save)
+    save.setToolTip(SAVE_TOOLTIP if can_save else SAVE_FULL_TOOLTIP)
+    save.setAutoRaise(True)
+    save.setStyleSheet(f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER};")
+    save.clicked.connect(lambda: on_save())
+    outer.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
+
+    return card
+
+
+def _build_result_message(message: str) -> QWidget:
+    """Why the result went away, where the result itself would have been.
+
+    A result can disappear without the student touching it - editing a vector
+    until the sum no longer fits in a number - and something vanishing with
+    no explanation reads as a bug rather than as an answer.
+    """
+    label = QLabel(message)
+    label.setWordWrap(True)
+    label.setStyleSheet(f"color: {theme.ERROR_TEXT}; padding: {theme.GAP_SMALL}px;")
     return label

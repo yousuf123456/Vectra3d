@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from vectra3d.state.models import Vector
+from vectra3d.state.models import Result, Vector
 from vectra3d.state.undo import History, Snapshot
 
 
@@ -38,6 +38,13 @@ class VectorStore:
         self._selected: set[str] = set()
         self._components_shown: str | None = None
         self._projections_shown: str | None = None
+        # The one temporary operation result, and why the last one was
+        # dropped if it was. The reason is kept because a result can vanish
+        # without the student touching it - editing a vector until the sum
+        # overflows - and a thing that disappears with no explanation reads
+        # as a bug.
+        self._result: Result | None = None
+        self._result_error: str | None = None
         self._listeners: list[Callable[[], None]] = []
         # The steps that can be taken back (F-19). The store owns it so that
         # every action keeps its one-argument signature, and so that G5's
@@ -85,7 +92,9 @@ class VectorStore:
         snapshots sharing a vector object can never come to disagree. That
         is what makes taking one before every change cheap.
         """
-        return Snapshot(vectors=dict(self._vectors), active=self._active)
+        return Snapshot(
+            vectors=dict(self._vectors), active=self._active, result=self._result
+        )
 
     def restore(self, snapshot: Snapshot) -> None:
         """Put a remembered scene back, replacing what is there now.
@@ -97,11 +106,31 @@ class VectorStore:
         """
         self._vectors = dict(snapshot.vectors)
         self._active = snapshot.active if snapshot.active in self._vectors else None
+        self._result = snapshot.result
+        self._result_error = None
+        if self._result is not None and not set(self._result.sources) <= set(
+            self._vectors
+        ):
+            # A result outlives an undo only while every vector it was worked
+            # out from is still there. Coming back as a black arrow labelled
+            # with a letter the scene no longer has would be worse than not
+            # coming back at all.
+            self._result = None
         self._selected &= set(self._vectors)
         if self._components_shown not in self._vectors:
             self._components_shown = None
         if self._projections_shown not in self._vectors:
             self._projections_shown = None
+
+    @property
+    def result(self) -> Result | None:
+        """The temporary operation result, if one is showing."""
+        return self._result
+
+    @property
+    def result_error(self) -> str | None:
+        """Why the last result was dropped, or None."""
+        return self._result_error
 
     @property
     def selected(self) -> tuple[str, ...]:
@@ -196,6 +225,8 @@ class VectorStore:
         self._selected.clear()
         self._components_shown = None
         self._projections_shown = None
+        self._result = None
+        self._result_error = None
 
     def set_active(self, name: str | None) -> None:
         if name is not None and name not in self._vectors:
@@ -227,6 +258,20 @@ class VectorStore:
             self._projections_shown = name
         elif self._projections_shown == name:
             self._projections_shown = None
+
+    def set_result(self, result: Result | None) -> None:
+        """Put a result in place of whatever was there, or clear it.
+
+        Only one exists at a time, so this replaces rather than adds. Setting
+        a result clears any message about the last one, because the message
+        described a result that no longer matters.
+        """
+        self._result = result
+        self._result_error = None
+
+    def set_result_error(self, message: str | None) -> None:
+        """Record why the result was dropped, for the panel to show."""
+        self._result_error = message
 
     def set_selected(self, name: str, selected: bool) -> None:
         if name not in self._vectors:

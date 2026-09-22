@@ -21,6 +21,34 @@ ORIGIN: Point = (0.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
+class Result:
+    """The temporary answer to an operation: a resultant, a difference, a
+    multiple (`features.md`, global rules for operation results).
+
+    Deliberately **not** a `Vector`. It has no letter and so no colour of its
+    own - every result is drawn in the one reserved colour - it does not count
+    towards the ten-vector limit, and it cannot be locked, edited, ticked or
+    made active. Only one exists at a time, and running another operation
+    replaces it. Giving it its own type is what makes all of that structural
+    rather than a set of rules every caller has to remember.
+
+    `sources` is the letters the result was worked out from, which is what
+    makes it live: when one of those vectors changes the result is worked out
+    again, and when one of them is deleted the result goes.
+
+    `expression` is how the student reads it - "A + B + C", "A - B", "2.50*A".
+    It is built when the result is made, because that is the only moment that
+    knows which operation ran; nothing can reconstruct it from the numbers
+    afterwards.
+    """
+
+    expression: str
+    components: Point
+    sources: tuple[str, ...]
+    tail: Point = ORIGIN
+
+
+@dataclass(frozen=True)
 class Vector:
     """One vector in the scene.
 

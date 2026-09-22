@@ -13,6 +13,8 @@ window after Qt has gone, which shows up as a hang on exit.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from pyvistaqt import MainWindow, QtInteractor
@@ -25,8 +27,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vectra3d.render.animations import ComponentTransition
 from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
-from vectra3d.state import actions
+from vectra3d.state import actions, naming
+from vectra3d.render.result_actor import ResultActor
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
@@ -125,6 +129,7 @@ class VectraMainWindow(MainWindow):
         # The scene draws the world the vectors live in, and resizes it to
         # fit them. It redraws whenever the store changes, which is exactly
         # when `interaction-spec.md` section 3 allows the scene to rescale.
+        self._result = None
         self.scene = Scene(self.plotter)
         self.vectors = VectorActors(self.plotter)
         # What a vector is made of, drawn only for the vectors that asked
@@ -134,6 +139,13 @@ class VectraMainWindow(MainWindow):
         # The shadows on the three planes, switched on separately from the
         # components: the two answer different questions about a vector.
         self.projections = ProjectionOverlays(self.plotter)
+        # The temporary operation result, drawn in the one reserved colour.
+        # It is not a vector, so it gets its own actor rather than being
+        # pushed through `VectorActors`.
+        self.result = ResultActor(self.plotter)
+        # When an input vector changes, the result arrow slides to its new
+        # value over 150 ms rather than jumping (`interaction-spec.md` 10).
+        self._result_transition = ComponentTransition(self._draw_result_at, self)
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
@@ -186,6 +198,19 @@ class VectraMainWindow(MainWindow):
 
         self.addToolBar(toolbar)
 
+    def _draw_result_at(self, components: tuple[float, float, float]) -> None:
+        """Draw the result arrow partway through its transition.
+
+        Called for each step of the animation, and once directly when a
+        result first appears. The result in the store keeps its real
+        components throughout: only what is drawn moves, so nothing the info
+        panel shows is ever a halfway value.
+        """
+        if self._result is None:
+            return
+        self.result.draw(replace(self._result, components=components))
+        self.plotter.render()
+
     def _on_undo(self) -> None:
         """Undo, unless the student is typing.
 
@@ -217,16 +242,35 @@ class VectraMainWindow(MainWindow):
         # grid even for one frame.
         vectors = self._store.vectors
         active = self._store.active_name
-        self.scene.update_for(vectors)
+        result = self._store.result
+        # The world is sized to the result as well as to the vectors: a
+        # resultant is longer than either of its parts when they point the
+        # same way (`interaction-spec.md` section 3).
+        self.scene.update_for(vectors, result)
         self.vectors.draw(vectors, active)
         self.overlays.draw(vectors, self._store.components_shown)
         self.projections.draw(vectors, self._store.projections_shown)
+
+        # The arrow is animated to its new components; everything else is
+        # already where it belongs. `move_to` renders each step, so this is
+        # also what renders the vectors drawn just above.
+        self._result = result
+        if result is None:
+            self._result_transition.cancel()
+            self.result.draw(None)
+            self.plotter.render()
+        else:
+            self._result_transition.move_to(result.components)
+
         self.info_panel.refresh(
             vectors,
             active,
             self._store.selected,
             self._store.components_shown,
             self._store.projections_shown,
+            result,
+            self._store.result_error,
+            can_save_result=self._store.count < naming.MAX_VECTORS,
         )
         self.action_panel.refresh()
         self._undo.setEnabled(self._store.history.can_undo)
