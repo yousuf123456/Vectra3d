@@ -17,12 +17,14 @@ Vectra3D is written in Python and builds on well-known free libraries instead of
 | Webcam | OpenCV (headless) | Standard, reliable camera access |
 | 3D graphics | PyVista + pyvistaqt | Arrows, labels, and camera controls built in; embeds in a Qt window |
 | Window and panels | PySide6 (Qt) | Mature desktop UI toolkit; the official Python binding for Qt |
-| Math | NumPy | Fast, well-tested vector operations |
+| Math | NumPy, and Python's own `math` | Array work goes to NumPy; the per-vector arithmetic uses `math`, for the reason below |
 | Tests | pytest | Standard Python testing tool |
 | Environment | uv | Installs the right Python version and locks exact library versions |
 | Packaging | PyInstaller | Turns the app into a Windows program that doesn't need Python |
 
 ### How it's implemented
+**Why some maths avoids NumPy.** The table above credits NumPy with the vector maths, and that is still the rule wherever the data is genuinely an array. But a single vector here is three numbers, not an array, and for three numbers Python's own `math` module is both simpler and more accurate at the extremes. `core/vector_math.py` uses `math.hypot` for magnitude because NumPy's `linalg.norm` squares the components first and so overflows to infinity for very large vectors (G2.1), and `core/operations.py` adds with `math.fsum` so that a resultant does not depend on the order its vectors were added in (G3.1). Both departures are deliberate and are explained in the modules themselves.
+
 The project is managed by **uv**, which downloads its own copy of **Python 3.12.14** (MediaPipe supports Python up to 3.12, so `pyproject.toml` sets `requires-python = ">=3.12,<3.13"` to make a newer Python impossible to pick by accident).
 
 `pyproject.toml` lists the libraries with loose minimum versions; `uv.lock` records the exact version of every package actually installed, so the same versions are reinstalled on any machine. These are the versions locked in step G0.1:

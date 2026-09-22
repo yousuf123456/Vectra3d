@@ -5,8 +5,8 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G3 — Operations. Not started
-- **Next step:** G3.1 — operation maths in `core/operations.py`: resultant, subtraction, scalar multiplication, fully tested before any UI
+- **Current group:** G3 — Operations. In progress
+- **Next step:** G3.2 — global result rules + F-15 Resultant: temporary result, reserved colour, expression label, Save as vector, live updates with transition
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -41,6 +41,9 @@ Updated after every approved step. Read this at the start of every session to se
 | G2.8 | F-19 undo / redo: `state/undo.py`, snapshots recorded in `actions.py`, toolbar buttons and shortcuts | 2026-09-22 | `G2.8: undo and redo` | All four F-19 criteria pass, one of them amended first (see the decisions log). Snapshots hold the vectors and the active one; ticks and both overlays stay outside, as decided when each was built. The G1.5 tripwire fired on schedule: the test asserting "It cannot be undone" failed the moment undo arrived, and was replaced by one asserting the opposite. 33 new tests; suite now 442 passing. |
 
 
+| G3.1 | Operation maths: `core/operations.py` | 2026-09-22 | `G3.1: operation maths` | Pure maths, no visible surface until G3.2 - the same shape as G2.1. The maths halves of F-15, F-16 and F-17 pass; nothing ticked in `features.md`, because each of those criteria also needs the panel from G3.2-G3.5. The approved plan's justification for `math.fsum` was wrong and failed twice, so `/recover` was run: the decision survived on corrected grounds (see the decisions log). 36 new tests; suite now 478 passing. |
+
+
 ## Groups
 
 | Group | Name | Status |
@@ -48,7 +51,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
-| G3 | Operations | Next |
+| G3 | Operations | In progress — G3.1 done |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
 | G6 | Packaging | Not started |
@@ -160,6 +163,12 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-22 | The Clear all prompt lost "It cannot be undone" rather than softening it | Undo made the sentence false. A prompt that overstates what is at stake teaches students to ignore prompts. Flagged as a known issue at G1.5 and caught automatically: the test asserting the old wording failed the moment undo arrived. |
 
 | 2026-09-22 | **G2 closed without running `/review`**, at the user's request | `build-plan.md` section 3 asks for `/review` at the end of every group. The user judged G2 simple enough not to need it and chose to move on. Recorded rather than passed over silently, because it is the first group to close without one: G0 and G1 both had a review that found real faults, including the G1 critical where a typed "nan" froze the window. The whole-app `/review` before the student trial still stands and will be the first pass over this group's code. |
+| 2026-09-22 | `core/operations.py` returns plain triples and knows nothing about names, colours or labels | `build-plan.md` splits G3.1 (maths) from G3.2-G3.5 (the panel and the temporary result). The expression label `A + B`, the reserved colour and the live updates belong with the `Result` object in G3.2, where they can be tested against the thing that shows them. G3.1 has no visible surface at all, the same shape as G2.1. |
+| 2026-09-22 | A result that is not a finite number raises `ValueError` rather than being returned | Scalar multiplication reaches infinity from input the app accepts as finite (a large vector times a large k), and addition does the same near the float limit. Returning it quietly would fail later in the scene sizing, far from the cause. Raising matches the two existing precedents: `parse_number` refuses nan and inf where numbers are typed, and `extent_for` raises rather than searching forever. The guard is shared by all three operations, not just `scale`, and catches non-finite *input* too, because infinity propagates - `core` does not assume its caller guarded anything. The cost, accepted now rather than discovered at G3.5: G3.2's live-update path has to handle the exception as well as the panel. |
+| 2026-09-22 | `resultant` sums any number of vectors, including none or one | F-15's "two or more" is the panel's rule, not the maths'. Same split as the G1.1 decision where `create_vector` accepts a zero vector that only typed input refuses. |
+| 2026-09-22 | Sums use `math.fsum`, **kept after its original justification turned out to be wrong** | The approved plan said `fsum` was needed so vectors that cancel would reach exactly zero, citing 0.1 + 0.2 - 0.3. That is false: `fsum` gives 2.78e-17 there and plain addition 5.55e-17, because those three floats genuinely do not add up to zero. F-15's cancellation case is A + (-A), which is exact either way, since equal floats subtract exactly. A second justification (order-independence) then appeared false too, because it was measured against Python's builtin `sum`, which since 3.12 compensates as it goes and was never the alternative. Two failures on one point, so `/recover` was run as `CLAUDE.md` requires. Diagnosed as a broken test rather than a broken decision: against adding the components one at a time, which is what the function would otherwise do, the seven components 0.1, 0.2, 0.3, 100.7, -100.7, 0.4, 0.5 give **20 different answers** depending on order, and 3 distinct answers for ten ordinary components within +/-1000. `fsum` gives one, and it is correct. A resultant sums a *set* of ticked vectors with no order, and `docs/01-vector-math.md` already promises the student that order does not matter. Kept, on the corrected grounds, with the user's explicit decision after being shown the correction. |
+| 2026-09-22 | The order-independence test compares against an explicit addition loop, not `sum` | Writing the baseline out is what stops the false negative above from happening again silently, and the test asserts that its own example really is order-sensitive, so it cannot quietly stop testing anything if the components are edited. |
+| 2026-09-22 | `docs/04-software-design.md` no longer credits NumPy with all the vector maths | `build-plan.md` section 7 requires correcting a concept section the implementation contradicts. Two modules now depart deliberately - `math.hypot` in `vector_math.py` (G2.1) and `math.fsum` here - and the stack table stated the opposite. NumPy remains the rule for genuinely array-shaped data. |
 
 
 ---
@@ -188,7 +197,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | 2026-09-20 | 3D view performance is adequate but not generous on Intel HD Graphics 620: ~56 fps with one sphere, and the user describes rotation as "not super smooth but acceptable". Worth re-checking when the camera thread is added, because F-02 requires hand tracking not to slow the 3D view. | Open — monitor at G4 |
 | 2026-09-20 | ~~The ten vector colors have not been seen against anything.~~ Checked at G1.3 with all ten drawn at once; the palette was rebuilt twice and approved. | Closed — 2026-09-21 |
 | 2026-09-21 | A vector card's `minimumSizeHint` is 352px against a 300px panel, driven by the unit vector label alone needing 216px. Measured at G2.5 and confirmed identical on the committed G2.4 code, so it predates that step and was not introduced by the lock control. Nothing looks wrong in the real window, so it is recorded rather than chased. | Open — watch if the card gains anything else at G2.6 |
-| 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. Typed input is now guarded, but `core/operations.py` is a second route to the same problem, and `extent_for` will raise rather than hang. Decide at G3.5 what the panel should say. | Open — handle at G3.5 |
+| 2026-09-21 | Operations in G3 can produce infinity from finite input: scalar multiplication of a large vector by a large k overflows. **Half handled at G3.1**: all three operations in `core/operations.py` now raise `ValueError` rather than returning a non-finite result, so the maths no longer leaks an infinity into `extent_for`. What the student is *shown* is still open, and there are now two call sites to cover, not one: G3.5's panel and G3.2's live-update path, which recomputes a result whenever an input vector changes and can therefore hit this without anyone pressing a button. | Open — panel message at G3.5; live updates at G3.2 |
 | 2026-09-21 | Conversion between components and magnitude+angles when the toggle is switched. A G1.3 comment promised this for G2.4; it is not in F-08's criteria and was not built. Harmless in the edit box, where both field sets are refilled from the vector; visible in the create box, where typing in one mode and switching shows the other mode's old text. | Open — offered to the user at the G2.4 review, not chosen |
 | 2026-09-21 | ~~The Clear all prompt says "It cannot be undone".~~ Revised at G2.8, and the test caught it exactly as intended. | Closed — 2026-09-22 |
 | 2026-09-22 | Shadows cost nothing measurable on top of components: 40.3 fps with ten vectors, 37.4 with components on, 40.4 with both overlays (76 actors). They are four actors against the component box's dash geometry, and the run-to-run spread is wider than the difference. | Open — monitor at G4 |

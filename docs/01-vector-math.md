@@ -208,10 +208,17 @@ The resultant is the single arrow that has the same effect as several arrows com
 Components simply add. The head-to-tail animation slides each vector so its tail sits on the previous vector's head; the resultant runs from the origin to the last head. Addition is commutative and associative, so the order doesn't change the result, only the shape of the path.
 
 ### How it's implemented
-*To be filled in by the agent after steps G3.1, G3.2, and G3.3.*
+`resultant()` in `core/operations.py` (G3.1) takes any number of vectors as plain (x, y, z) tuples and returns their sum as another tuple. It knows nothing about vector names, colours or the screen — that arrives with the temporary result in G3.2.
+
+It adds each axis with **`math.fsum`** rather than with `+`. This is worth explaining, because the obvious reason is the wrong one. `fsum` does *not* rescue decimals that look like they should cancel: 0.1 + 0.2 − 0.3 comes to about 2.8 × 10⁻¹⁷ either way, because those three values are not stored exactly in the first place and genuinely do not add up to zero. What `fsum` guarantees is that the answer **doesn't depend on the order the vectors are added in**. Adding seven ordinary components one at a time — 0.1, 0.2, 0.3, 100.7, −100.7, 0.4, 0.5 — produces 20 slightly different answers depending on their order; `fsum` always returns 1.5, which is correct. Since a resultant adds a *set* of ticked vectors, which has no natural order, that promise matters, and the first "Likely question" below depends on it.
+
+The function also **refuses to return a result that isn't a finite number**. Multiplying or adding very large vectors can reach infinity even though every number that went in was ordinary, and an infinity travelling quietly onward would fail somewhere far away from the cause. Instead all three operations raise an error naming the operation, which the panel turns into a message.
+
+*The temporary result object, its colour and its live updates are added in G3.2; the head-to-tail animation in G3.3.*
 
 ### Likely questions
-- **Does the order of vectors matter?** No. Any order ends at the same point; the animation's path changes shape, but the resultant doesn't.
+- **Does the order of vectors matter?** No. Any order ends at the same point; the animation's path changes shape, but the resultant doesn't. The app takes some care to keep this literally true down to the last decimal place — see "How it's implemented" above.
+- **What if the numbers get astronomically large?** The operation refuses rather than returning infinity, and the panel says so. It takes components beyond roughly 10³⁰⁸ to trigger, so no ordinary work will meet it.
 - **Can a resultant be zero?** Yes, when the vectors cancel out, like equal forces pulling in opposite directions.
 - **Why does the result update when I move a vector?** Results are live: if an input changes, the result is recalculated and glides to its new value.
 
@@ -228,7 +235,11 @@ Components simply add. The head-to-tail animation slides each vector so its tail
 Subtraction is not commutative: **B − A** = −(**A − B**), same length, opposite direction. That's why the app uses two dropdowns, so the order is always explicit.
 
 ### How it's implemented
-*To be filled in by the agent after step G3.4.*
+The arithmetic is `subtract(a, b)` in `core/operations.py`, built in G3.1: it returns `a − b` component by component, and like the other two operations refuses a result that isn't finite.
+
+One detail is free rather than designed. Subtracting a vector from itself gives *exactly* the zero vector, with no leftover dust, because subtracting two identical floating-point values is always exact. That is what makes "picking the same vector in both dropdowns gives the zero vector" reliable rather than approximately true.
+
+*The two dropdowns and the note shown for A − A are added in G3.4.*
 
 ### Likely questions
 - **Why is the result drawn from the origin, not between the tips?** All vectors in this version are position vectors starting at the origin. The tip-to-tip picture becomes possible once free vectors are added.
@@ -246,7 +257,11 @@ k**A** = (kAₓ, kA_y, kA_z),  |k**A**| = |k| · |**A**|
 For k > 0 the direction is unchanged; for k < 0 it reverses; for k = 0 the result is the zero vector.
 
 ### How it's implemented
-*To be filled in by the agent after step G3.5.*
+`scale(k, v)` in `core/operations.py` (G3.1) multiplies each component by k. The tests check the promise made just above — that |k**A**| really does come to |k| · |**A**| — and that a negative k reverses the direction *exactly*, by comparing unit vectors rather than by eye.
+
+Scalar multiplication is the one operation that can reach infinity from values a student could plausibly type, since a large vector times a large k overflows where addition would not. `scale` refuses such a result rather than returning infinity.
+
+*The vector dropdown, the k field, and the notes shown for k = 0 and negative k are added in G3.5.*
 
 ### Likely questions
 - **Is −1 × A the same as "A backwards"?** Yes: same length, exactly opposite direction.
