@@ -11,7 +11,7 @@ a large world.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pyvista as pv
@@ -64,12 +64,24 @@ class VectorActors:
         self._plotter = plotter
         self._drawn: set[str] = set()
 
-    def draw(self, vectors: Sequence[Vector], active_name: str | None) -> None:
+    def draw(
+        self,
+        vectors: Sequence[Vector],
+        active_name: str | None,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
         """Redraw every vector, and remove the ones that are gone.
 
         Actors are named after the vector, so PyVista replaces them in place.
         Nothing renders until the whole set is done: rendering per actor is
         what made the scene blink in G1.2.
+
+        `labels` overrides what is written beside a vector, by name. It exists
+        for the head-to-tail animation, where the second term of `A - B` is B
+        pointing the other way and has to read "-B"; calling it "B" would put
+        a letter on an arrow pointing away from where B actually points. The
+        colour still comes from the vector's own name, because it is still
+        that vector.
         """
         wanted = {vector.name for vector in vectors}
         for name in self._drawn - wanted:
@@ -85,11 +97,15 @@ class VectorActors:
         self._drawn = wanted
 
         for vector in vectors:
-            self._draw_one(vector, vector.name == active_name)
+            self._draw_one(
+                vector,
+                vector.name == active_name,
+                (labels or {}).get(vector.name, vector.name),
+            )
 
         self._plotter.render()
 
-    def _draw_one(self, vector: Vector, is_active: bool) -> None:
+    def _draw_one(self, vector: Vector, is_active: bool, label_text: str) -> None:
         tail = np.array(vector.tail, dtype=float)
         head = tail + np.array(vector.components, dtype=float)
         length = magnitude_of(tuple(head - tail))
@@ -132,7 +148,7 @@ class VectorActors:
         )
 
         label = pv.Label(
-            text=vector.name,
+            text=label_text,
             position=letter_position(vector),
             size=LETTER_FONT_SIZE,
         )

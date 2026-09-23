@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from vectra3d.state import actions, naming
+from vectra3d.state.models import Operation
 from vectra3d.state.store import VectorStore
 
 
@@ -389,3 +390,134 @@ class TestUndo:
 
         assert store.get("B") is None
         assert store.result is None
+
+
+# --- Subtraction (F-16) ---
+
+
+MINUS = "\u2212"
+
+
+class TestDifference:
+    def test_two_vectors_are_subtracted(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 7.0, 9.0))
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+
+        result = actions.compute_difference(store, "A", "B")
+
+        assert result.components == (4.0, 5.0, 6.0)
+        assert result.sources == ("A", "B")
+        assert store.result is result
+
+    def test_the_expression_shows_the_subtraction(self) -> None:
+        store = VectorStore()
+        fill(store, 2)
+        result = actions.compute_difference(store, "A", "B")
+        assert result.expression == f"A {MINUS} B"
+
+    def test_order_matters_and_reverses_the_answer(self) -> None:
+        # F-16 names A - B = -(B - A). The maths is tested in
+        # tests/core/test_operations.py; this checks the panel's two
+        # dropdowns really do produce opposite answers.
+        store = VectorStore()
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+        actions.create_vector(store, (4.0, 6.0, 8.0))
+
+        forward = actions.compute_difference(store, "A", "B").components
+        backward = actions.compute_difference(store, "B", "A").components
+
+        assert forward == tuple(-value for value in backward)
+
+    def test_the_same_vector_twice_gives_exactly_the_zero_vector(self) -> None:
+        # F-16 allows this on purpose. Exact, not approximate: equal floats
+        # subtract exactly, which is what makes the note honest.
+        store = VectorStore()
+        actions.create_vector(store, (0.1, 0.2, 0.3))
+
+        result = actions.compute_difference(store, "A", "A")
+
+        assert result.components == (0.0, 0.0, 0.0)
+
+    def test_a_difference_replaces_a_resultant(self) -> None:
+        store = VectorStore()
+        fill(store, 3)
+        tick(store, "A", "B")
+        actions.compute_resultant(store)
+
+        actions.compute_difference(store, "A", "C")
+
+        assert store.result is not None
+        assert store.result.sources == ("A", "C")
+        assert store.result.operation is Operation.DIFFERENCE
+
+    def test_a_resultant_replaces_a_difference(self) -> None:
+        store = VectorStore()
+        fill(store, 3)
+        actions.compute_difference(store, "A", "B")
+        tick(store, "B", "C")
+
+        actions.compute_resultant(store)
+
+        assert store.result is not None
+        assert store.result.operation is Operation.SUM
+
+    def test_a_missing_vector_is_refused(self) -> None:
+        store = VectorStore()
+        fill(store, 1)
+        with pytest.raises(KeyError):
+            actions.compute_difference(store, "A", "Z")
+
+
+class TestADifferenceStaysADifference:
+    """The fault this step exists to prevent."""
+
+    def test_editing_an_input_recomputes_it_as_a_difference_not_a_sum(self) -> None:
+        # Before `Result.operation` existed, every result was refreshed by
+        # adding its sources up. A difference would silently become a sum the
+        # first time one of its vectors was edited - the same numbers on
+        # screen, quietly wrong.
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 7.0, 9.0))
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+        actions.compute_difference(store, "A", "B")
+
+        actions.edit_vector(store, "A", (10.0, 10.0, 10.0))
+
+        assert store.result is not None
+        assert store.result.components == (9.0, 8.0, 7.0)
+        # What the bug would have produced, stated so the test explains itself.
+        assert store.result.components != (11.0, 12.0, 13.0)
+        assert store.result.operation is Operation.DIFFERENCE
+
+    def test_editing_the_subtrahend_recomputes_correctly(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 0.0, 0.0))
+        actions.create_vector(store, (1.0, 0.0, 0.0))
+        actions.compute_difference(store, "A", "B")
+
+        actions.edit_vector(store, "B", (4.0, 0.0, 0.0))
+
+        assert store.result.components == (1.0, 0.0, 0.0)
+
+    def test_deleting_either_input_takes_the_difference_away(self) -> None:
+        for deleted in ("A", "B"):
+            store = VectorStore()
+            fill(store, 3)
+            actions.compute_difference(store, "A", "B")
+
+            actions.delete_vector(store, deleted)
+
+            assert store.result is None, f"deleting {deleted} left the result"
+
+    def test_a_difference_survives_undo_of_its_save(self) -> None:
+        store = VectorStore()
+        fill(store, 2)
+        actions.compute_difference(store, "A", "B")
+        actions.save_result_as_vector(store)
+
+        actions.undo(store)
+
+        assert store.result is not None
+        assert store.result.operation is Operation.DIFFERENCE
+        assert store.result.expression == f"A {MINUS} B"

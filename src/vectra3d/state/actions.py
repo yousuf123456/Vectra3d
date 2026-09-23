@@ -32,10 +32,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from vectra3d.core.operations import resultant
+from vectra3d.core.operations import resultant, subtract
 from vectra3d.state import naming
-from vectra3d.state.models import ORIGIN, Point, Result, Vector
+from typing import NamedTuple
+
+from vectra3d.state.models import ORIGIN, Operation, Point, Result, Vector
 from vectra3d.state.store import VectorStore
+
+class ChainTerm(NamedTuple):
+    """One link of a head-to-tail chain: whose it is, what to call it, where
+    it goes."""
+
+    source: str
+    label: str
+    components: Point
+
 
 # The fewest vectors an operation can be run over (F-15).
 MIN_FOR_RESULTANT = 2
@@ -283,6 +294,23 @@ def compute_resultant(store: VectorStore) -> Result | None:
     return result
 
 
+def compute_difference(store: VectorStore, minuend: str, subtrahend: str) -> Result:
+    """Work out `a - b` for two named vectors and show the answer (F-16).
+
+    Picking the same vector twice is allowed and gives exactly the zero
+    vector, which F-16 asks for: it is a thing worth demonstrating rather than
+    a mistake to prevent. The card says so, because a result with no arrow and
+    a column of em dashes needs explaining.
+
+    Raises `KeyError` if either vector is gone, and `ValueError` if the
+    difference is too large to be a number, having left the scene alone.
+    """
+    result = _difference_for(store, (minuend, subtrahend))
+    store.set_result(result)
+    store.notify()
+    return result
+
+
 def save_result_as_vector(store: VectorStore) -> Vector | None:
     """Turn the temporary result into a real vector (`features.md`).
 
@@ -328,7 +356,95 @@ def _resultant_for(store: VectorStore, names: tuple[str, ...]) -> Result:
         expression=" + ".join(names),
         components=components,
         sources=tuple(names),
+        operation=Operation.SUM,
     )
+
+
+def _difference_for(store: VectorStore, names: tuple[str, str]) -> Result:
+    """Build `a - b`. Raises KeyError if either is gone, ValueError if it overflows."""
+    minuend, subtrahend = names
+    for name in names:
+        if store.get(name) is None:
+            raise KeyError(f"no vector named {name!r}")
+
+    components = subtract(
+        store.get(minuend).components, store.get(subtrahend).components
+    )
+    return Result(
+        # The minus sign is the typographic one, matching how F-16 writes it
+        # and how a textbook would.
+        expression=f"{minuend} \u2212 {subtrahend}",
+        components=components,
+        sources=names,
+        operation=Operation.DIFFERENCE,
+    )
+
+
+# How each kind of result is worked out again when one of its vectors changes.
+# Adding an operation means adding a line here; forgetting to is what would
+# make a result quietly turn into a different one.
+_REFRESH = {
+    Operation.SUM: _resultant_for,
+    Operation.DIFFERENCE: _difference_for,
+}
+
+# The typographic minus, as used in a result's expression.
+MINUS = "−"
+
+
+def chain_terms(store: VectorStore, result: Result) -> tuple[ChainTerm, ...]:
+    """The vectors to lay head to tail to arrive at this result (F-15).
+
+    **Not simply the source vectors.** A resultant is its vectors added, so
+    the chain is those vectors as they are. A difference is `A + (-B)`, so the
+    chain is A followed by B *reversed* - which is the whole point of the
+    picture, and what makes the last head land on the answer.
+
+    Laying out the raw sources instead is a real fault, not a cosmetic one:
+    for `A - B` the chain would end at `A + B`, somewhere the result is not,
+    and the animation would be showing the student the wrong sum.
+
+    Each term carries the name of the vector it came from, so the arrow keeps
+    that vector's colour, and the label to draw, which is "-B" rather than "B"
+    for a reversed term.
+    """
+    terms: list[ChainTerm] = []
+    for name, reversed_ in zip(result.sources, _SIGNS[result.operation](result)):
+        vector = store.get(name)
+        if vector is None:
+            return ()
+        components = vector.components
+        if reversed_:
+            components = (-components[0], -components[1], -components[2])
+        terms.append(
+            ChainTerm(
+                source=name,
+                label=f"{MINUS}{name}" if reversed_ else name,
+                components=components,
+            )
+        )
+    return tuple(terms)
+
+
+def _signs_for_sum(result: Result) -> tuple[bool, ...]:
+    """Every term of a resultant is added as it is."""
+    return tuple(False for _ in result.sources)
+
+
+def _signs_for_difference(result: Result) -> tuple[bool, ...]:
+    """`a - b` is `a` added and `b` reversed."""
+    return (False, True)
+
+
+# Which terms of each operation are reversed when the chain is laid out.
+# Beside `_REFRESH` on purpose: both are things an operation has to say about
+# itself, and keeping them together is what stops the next one being added to
+# only half of them - which is exactly how the head-to-tail animation came to
+# lay a difference out as a sum.
+_SIGNS = {
+    Operation.SUM: _signs_for_sum,
+    Operation.DIFFERENCE: _signs_for_difference,
+}
 
 
 def _refresh_result(store: VectorStore) -> None:
@@ -337,6 +453,11 @@ def _refresh_result(store: VectorStore) -> None:
     Called by every action that changes or removes a vector, before it
     notifies, so the panels and the 3D view see the vectors and the result
     agreeing with each other.
+
+    It is worked out again **the way it was made**, which is what
+    `Result.operation` is for. Refreshing everything as a sum was right while
+    a resultant was the only operation there was, and would have turned A - B
+    into A + B the moment B was edited.
 
     The result goes if one of the vectors it was worked out from has been
     deleted, because a result is an answer about particular vectors and there
@@ -354,7 +475,7 @@ def _refresh_result(store: VectorStore) -> None:
         return
 
     try:
-        store.set_result(_resultant_for(store, result.sources))
+        store.set_result(_REFRESH[result.operation](store, result.sources))
     except ValueError:
         store.set_result(None)
         store.set_result_error(TOO_LARGE.format(expression=result.expression))

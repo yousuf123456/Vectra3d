@@ -131,7 +131,7 @@ class VectraMainWindow(MainWindow):
         # when `interaction-spec.md` section 3 allows the scene to rescale.
         self._result = None
         # What the head-to-tail animation is currently explaining, if anything.
-        self._chain_vectors: list = []
+        self._chain_terms: tuple = ()
         self._chain_result = None
         self.scene = Scene(self.plotter)
         self.vectors = VectorActors(self.plotter)
@@ -217,20 +217,21 @@ class VectraMainWindow(MainWindow):
         if result is None:
             return
 
-        vectors = [self._store.get(name) for name in result.sources]
-        if any(vector is None for vector in vectors):
+        # Not the source vectors as they are: a difference is laid out as
+        # A followed by B reversed, so the chain ends on the answer. The
+        # operation decides, in `actions.chain_terms`.
+        terms = actions.chain_terms(self._store, result)
+        if not terms:
             return
 
-        self._chain_vectors = [vector for vector in vectors if vector is not None]
+        self._chain_terms = terms
         self._chain_result = result
         # The overlays are drawn at a vector's real position, so a vector
         # showing its components would slide away and leave them behind at the
         # origin. They come back when the animation ends.
         self.overlays.draw((), None)
         self.projections.draw((), None)
-        self._head_to_tail.play(
-            [vector.components for vector in self._chain_vectors]
-        )
+        self._head_to_tail.play([term.components for term in terms])
         self.info_panel.refresh(
             self._store.vectors,
             self._store.active_name,
@@ -256,11 +257,15 @@ class VectraMainWindow(MainWindow):
         if self._chain_result is None:
             return
 
-        moved = [
-            replace(vector, tail=tail)
-            for vector, tail in zip(self._chain_vectors, tails)
-        ]
-        self.vectors.draw(moved, None)
+        moved = []
+        labels = {}
+        for term, tail in zip(self._chain_terms, tails):
+            vector = self._store.get(term.source)
+            if vector is None:
+                return
+            moved.append(replace(vector, components=term.components, tail=tail))
+            labels[term.source] = term.label
+        self.vectors.draw(moved, None, labels)
 
         # The resultant grows from the origin along its own line.
         grown = tuple(value * drawn for value in self._chain_result.components)
@@ -271,7 +276,7 @@ class VectraMainWindow(MainWindow):
 
     def _on_animation_finished(self) -> None:
         """Put the real scene back once the animation stops or is cancelled."""
-        self._chain_vectors = []
+        self._chain_terms = ()
         self._chain_result = None
         self._result_transition.cancel()
         self._on_store_changed()

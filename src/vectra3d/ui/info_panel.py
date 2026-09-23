@@ -191,13 +191,24 @@ def projections_tooltip(name: str, shown: bool) -> str:
 
 
 def card_note(vector: Vector) -> str | None:
+    """The line explaining why a vector's card has dashes on it. See `note_for`."""
+    return note_for(vector.components)
+
+
+def note_for(components: tuple[float, float, float]) -> str | None:
     """The line explaining why a card has dashes on it, or None.
 
     On the card rather than once for the panel, because a card is meant to
     be read on its own and a panel-level note could not say which of ten
     vectors it was about.
+
+    Takes components rather than a vector so a result can use it too. F-16
+    asks for a note when A - B is the zero vector and F-17 asks for one when
+    k is zero, and both are this same situation - so they get this same
+    sentence, which `interaction-spec.md` section 2.4 already fixes the
+    wording of, rather than one wording each.
     """
-    if magnitude(vector.components) == 0.0:
+    if magnitude(components) == 0.0:
         return UNDEFINED_NOTE
     return None
 
@@ -514,6 +525,7 @@ SAVE_TEXT = "Save as vector"
 SHOW_TEXT = "Show how"
 SHOW_TOOLTIP = "Watch how these vectors add up, head to tail"
 SHOW_BUSY_TOOLTIP = "Already playing"
+
 SAVE_TOOLTIP = "Keep this result as a vector of its own, with the next free letter"
 SAVE_FULL_TOOLTIP = (
     f"There are already {naming.MAX_VECTORS} vectors. "
@@ -580,6 +592,13 @@ def _build_result_card(
         values.addWidget(_key(name_text), row, 3)
         values.addWidget(_value(value_text, align_right=False), row, 4)
     outer.addLayout(values)
+
+    text = note_for(result.components)
+    if text is not None:
+        note = QLabel(text)
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color: {theme.MUTED_TEXT};")
+        outer.addWidget(note)
 
     buttons = QHBoxLayout()
     buttons.setSpacing(theme.GAP_SMALL)

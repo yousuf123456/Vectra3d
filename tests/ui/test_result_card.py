@@ -109,3 +109,91 @@ def test_no_result_means_no_result_buttons(app: QApplication) -> None:
     labels = {button.text() for button in panel.findChildren(QToolButton)}
     assert SHOW_TEXT not in labels
     assert SAVE_TEXT not in labels
+
+
+# --- Subtraction (F-16) ---
+
+
+def test_pressing_subtract_makes_a_difference(app: QApplication) -> None:
+    # A button test, not a logic test: `compute_difference` is covered in
+    # tests/state/test_result.py. What this checks is that the panel's
+    # dropdowns and button are actually wired to it - the class of fault that
+    # G3.3's Show how button had, which every other kind of test missed.
+    from vectra3d.ui.action_panel import ActionPanel
+
+    store = VectorStore()
+    actions.create_vector(store, (5.0, 7.0, 9.0))
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+
+    panel = ActionPanel(store)
+    panel.refresh()
+    panel._minuend.setCurrentText("A")
+    panel._subtrahend.setCurrentText("B")
+    panel._subtract.click()
+
+    assert store.result is not None
+    assert store.result.components == (4.0, 5.0, 6.0)
+    assert store.result.sources == ("A", "B")
+
+
+def test_the_dropdowns_follow_the_vectors_in_the_scene(app: QApplication) -> None:
+    from vectra3d.ui.action_panel import ActionPanel
+
+    store = VectorStore()
+    panel = ActionPanel(store)
+    assert panel._minuend.count() == 0
+    assert not panel._subtract.isEnabled()
+
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.create_vector(store, (2.0, 0.0, 0.0))
+    panel.refresh()
+
+    assert [panel._minuend.itemText(i) for i in range(panel._minuend.count())] == [
+        "A",
+        "B",
+    ]
+    assert panel._subtract.isEnabled()
+
+    actions.delete_vector(store, "A")
+    panel.refresh()
+
+    assert [panel._minuend.itemText(i) for i in range(panel._minuend.count())] == ["B"]
+
+
+def test_a_refresh_keeps_the_students_choice(app: QApplication) -> None:
+    # Every action notifies every listener, so an unrelated change refreshes
+    # this panel too. It must not quietly move the selection back to A.
+    from vectra3d.ui.action_panel import ActionPanel
+
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.create_vector(store, (2.0, 0.0, 0.0))
+    actions.create_vector(store, (3.0, 0.0, 0.0))
+
+    panel = ActionPanel(store)
+    panel.refresh()
+    panel._subtrahend.setCurrentText("C")
+
+    actions.set_active(store, "B")
+    panel.refresh()
+
+    assert panel._subtrahend.currentText() == "C"
+
+
+def test_the_same_vector_twice_is_allowed_and_noted(app: QApplication) -> None:
+    # F-16 allows it on purpose, and the card explains the dashes it causes.
+    from vectra3d.ui.action_panel import ActionPanel
+    from vectra3d.ui.info_panel import note_for
+
+    store = VectorStore()
+    actions.create_vector(store, (2.0, 3.0, 4.0))
+
+    panel = ActionPanel(store)
+    panel.refresh()
+    panel._minuend.setCurrentText("A")
+    panel._subtrahend.setCurrentText("A")
+    panel._subtract.click()
+
+    assert store.result is not None
+    assert store.result.components == (0.0, 0.0, 0.0)
+    assert note_for(store.result.components) is not None

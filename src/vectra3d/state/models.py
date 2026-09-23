@@ -13,11 +13,29 @@ is where NumPy belongs; here the values are only stored and passed around.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 # A point in the scene: x, y, z.
 Point = tuple[float, float, float]
 
 ORIGIN: Point = (0.0, 0.0, 0.0)
+
+
+class Operation(Enum):
+    """Which operation made a result.
+
+    A result has to remember this, because it is worked out again whenever one
+    of its vectors changes and the answer depends on *how* it was made. Before
+    this existed, every result was refreshed by adding its sources up, which
+    was right for the only operation there was and would have turned A - B
+    silently into A + B the first time B was edited.
+
+    An enum rather than a stored function, so a snapshot stays plain data and
+    undo keeps working without knowing anything about operations.
+    """
+
+    SUM = "sum"
+    DIFFERENCE = "difference"
 
 
 @dataclass(frozen=True)
@@ -40,11 +58,17 @@ class Result:
     It is built when the result is made, because that is the only moment that
     knows which operation ran; nothing can reconstruct it from the numbers
     afterwards.
+
+    `operation` is what lets it be worked out again correctly when one of its
+    vectors changes. `sources` alone is not enough: A and B can be added or
+    subtracted, and the difference between those two answers is the whole
+    point.
     """
 
     expression: str
     components: Point
     sources: tuple[str, ...]
+    operation: Operation = Operation.SUM
     tail: Point = ORIGIN
 
 

@@ -257,7 +257,15 @@ The arithmetic is `subtract(a, b)` in `core/operations.py`, built in G3.1: it re
 
 One detail is free rather than designed. Subtracting a vector from itself gives *exactly* the zero vector, with no leftover dust, because subtracting two identical floating-point values is always exact. That is what makes "picking the same vector in both dropdowns gives the zero vector" reliable rather than approximately true.
 
-*The two dropdowns and the note shown for A − A are added in G3.4.*
+**The panel (G3.4).** Two dropdowns and a **Subtract** button in the Operations box, reading `[ A ] − [ B ]`. They are deliberately separate from the tick boxes that feed the resultant, because order matters here and a set of ticks has no order. The answer appears as a temporary result exactly like a resultant does — same reserved colour, same card, same live updates, same **Save as vector**.
+
+Picking the same vector in both is allowed, as the spec asks. It gives exactly the zero vector, and the card says "zero vector has no direction" to explain the dashes where the angles would be.
+
+Two things about this step are worth recording, because both were bugs caught rather than things designed.
+
+First, a result now remembers **which operation made it**. Until subtraction existed, a result was kept up to date by adding its source vectors together, which was right when addition was all there was. Left alone, editing one input of `A − B` would have silently recomputed it as `A + B` — the same card, the same colour, quietly wrong numbers.
+
+Second, the **Show how** animation had the same assumption in a second place. A difference is `A + (−B)`, so the chain has to lay out A and then B *reversed*; laying out the raw vectors made the chain end at `A + B`, a point the answer is not, so the picture contradicted the number beside it. The reversed arrow is labelled `−B` and keeps B's colour, because it is still B, pointing the other way. Both pieces of per-operation knowledge now sit side by side in `actions.py`, so a new operation cannot be added to one and forgotten in the other.
 
 ### Likely questions
 - **Why is the result drawn from the origin, not between the tips?** All vectors in this version are position vectors starting at the origin. The tip-to-tip picture becomes possible once free vectors are added.

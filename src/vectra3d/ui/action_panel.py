@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -61,6 +62,12 @@ ERROR_STYLE = f"color: {theme.ERROR_TEXT};"
 # button with no explanation reads as broken, and the rule it is waiting for
 # - tick two or more - is not guessable from the button alone.
 RESULTANT_HINT = "Tick two or more vectors to add them together."
+
+# The typographic minus, matching how F-16 writes the operation and how a
+# textbook prints it. Not the hyphen on the keyboard.
+MINUS = "\u2212"
+# Subtraction needs somewhere to subtract from, so it waits for a vector.
+SUBTRACT_HINT = "Create a vector to subtract."
 
 COMPONENTS_MODE = 0
 ANGLES_MODE = 1
@@ -497,8 +504,80 @@ class ActionPanel(QWidget):
         self._resultant_message.hide()
         layout.addWidget(self._resultant_message)
 
+        # --- Subtraction (F-16) ---
+        # Two dropdowns reading "[ A ] - [ B ]" across one row, with the
+        # button beside them. Picking the same vector twice is allowed: the
+        # answer is the zero vector and the card says so.
+        row = QHBoxLayout()
+        row.setSpacing(theme.GAP_SMALL)
+        self._minuend = QComboBox()
+        self._subtrahend = QComboBox()
+        for dropdown in (self._minuend, self._subtrahend):
+            dropdown.setMinimumWidth(FIELD_MIN_WIDTH)
+        row.addWidget(self._minuend, 1)
+        row.addWidget(QLabel(MINUS))
+        row.addWidget(self._subtrahend, 1)
+        layout.addLayout(row)
+
+        self._subtract = QPushButton("Subtract")
+        self._subtract.setToolTip("Show the difference between these two vectors")
+        self._subtract.clicked.connect(self._on_subtract)
+        layout.addWidget(self._subtract)
+
+        self._subtract_hint = QLabel(SUBTRACT_HINT)
+        self._subtract_hint.setWordWrap(True)
+        self._subtract_hint.setStyleSheet(f"color: {theme.MUTED_TEXT};")
+        layout.addWidget(self._subtract_hint)
+
+        self._subtract_message = QLabel()
+        self._subtract_message.setWordWrap(True)
+        self._subtract_message.setStyleSheet(ERROR_STYLE)
+        self._subtract_message.hide()
+        layout.addWidget(self._subtract_message)
+
         box.add(holder)
         return box
+
+    def _on_subtract(self) -> None:
+        """Show the difference between the two chosen vectors (F-16)."""
+        minuend = self._minuend.currentText()
+        subtrahend = self._subtrahend.currentText()
+        if not minuend or not subtrahend:
+            return
+
+        try:
+            actions.compute_difference(self._store, minuend, subtrahend)
+        except KeyError:
+            # A vector was deleted between the list being built and the
+            # button being pressed. The refresh will rebuild the dropdowns.
+            return
+        except ValueError:
+            self._subtract_message.setText(
+                f"{minuend} {MINUS} {subtrahend} is too large to show."
+            )
+            self._subtract_message.show()
+            return
+
+        self._subtract_message.hide()
+
+    def _fill_dropdowns(self) -> None:
+        """Rebuild both vector lists to match the store.
+
+        Rebuilt rather than patched, like the info panel's cards: at most ten
+        entries, so working out what changed costs more than starting again,
+        and a rebuilt list cannot drift out of step with the store. The
+        current choice is kept when that vector is still there, so a refresh
+        caused by something unrelated does not move the student's selection.
+        """
+        names = self._store.names
+        for dropdown in (self._minuend, self._subtrahend):
+            chosen = dropdown.currentText()
+            dropdown.blockSignals(True)
+            dropdown.clear()
+            dropdown.addItems(names)
+            if chosen in names:
+                dropdown.setCurrentText(chosen)
+            dropdown.blockSignals(False)
 
     def _on_resultant(self) -> None:
         """Add up the ticked vectors (F-15).
@@ -538,6 +617,16 @@ class ActionPanel(QWidget):
         self._resultant_hint.setVisible(not enough)
         if enough:
             self._resultant_message.hide()
+
+        # Subtraction needs one vector, not two: A - A is allowed (F-16).
+        self._fill_dropdowns()
+        has_vectors = self._store.count > 0
+        self._subtract.setEnabled(has_vectors)
+        self._minuend.setEnabled(has_vectors)
+        self._subtrahend.setEnabled(has_vectors)
+        self._subtract_hint.setVisible(not has_vectors)
+        if has_vectors:
+            self._subtract_message.hide()
 
         active = self._store.active
         if should_refill(self._shown, active):

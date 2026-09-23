@@ -120,3 +120,88 @@ class TestTheAnimationChangesNothing:
         # At full spread the second vector is away from the origin; the
         # window interpolates back to zero on the return phase.
         assert tails[1] != (0.0, 0.0, 0.0)
+
+
+class TestTheChainEndsOnTheResult:
+    """The chain has to arrive at the answer it is explaining.
+
+    This is the property that was broken for subtraction: the animation laid
+    out the raw source vectors, so `A - B` was drawn as A followed by B and
+    ended at `A + B` - a point the result is not. The picture told the student
+    something untrue, which is worse than it looking wrong.
+    """
+
+    def last_head(self, terms) -> tuple[float, float, float]:
+        tails = chain_tails([term.components for term in terms])
+        return tuple(
+            tails[-1][axis] + terms[-1].components[axis] for axis in range(3)
+        )
+
+    def test_a_resultant_chain_ends_on_the_resultant(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (3.0, 1.0, 0.0))
+        actions.create_vector(store, (1.0, 4.0, 2.0))
+        actions.toggle_selected(store, "A")
+        actions.toggle_selected(store, "B")
+        result = actions.compute_resultant(store)
+
+        terms = actions.chain_terms(store, result)
+
+        assert self.last_head(terms) == result.components
+
+    def test_a_difference_chain_ends_on_the_difference(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 7.0, 9.0))
+        actions.create_vector(store, (1.0, 2.0, 3.0))
+        result = actions.compute_difference(store, "A", "B")
+
+        terms = actions.chain_terms(store, result)
+
+        assert self.last_head(terms) == result.components
+        # And specifically not where laying out the raw sources would land.
+        assert self.last_head(terms) != (6.0, 9.0, 12.0)
+
+    def test_the_subtracted_term_points_the_other_way(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 0.0, 0.0))
+        actions.create_vector(store, (2.0, 3.0, 0.0))
+        result = actions.compute_difference(store, "A", "B")
+
+        terms = actions.chain_terms(store, result)
+
+        assert terms[0].components == (5.0, 0.0, 0.0)
+        assert terms[1].components == (-2.0, -3.0, 0.0)
+
+    def test_the_reversed_term_is_labelled_with_a_minus(self) -> None:
+        # Drawing B's letter on an arrow pointing away from B would be a
+        # second way of saying something untrue.
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 0.0, 0.0))
+        actions.create_vector(store, (2.0, 0.0, 0.0))
+        result = actions.compute_difference(store, "A", "B")
+
+        terms = actions.chain_terms(store, result)
+
+        assert terms[0].label == "A"
+        assert terms[1].label == "\u2212B"
+
+    def test_terms_keep_the_name_of_the_vector_they_came_from(self) -> None:
+        # So the arrow keeps that vector's colour: it is still B, reversed.
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 0.0, 0.0))
+        actions.create_vector(store, (2.0, 0.0, 0.0))
+        result = actions.compute_difference(store, "A", "B")
+
+        assert [term.source for term in actions.chain_terms(store, result)] == [
+            "A",
+            "B",
+        ]
+
+    def test_a_deleted_vector_gives_no_chain(self) -> None:
+        store = VectorStore()
+        actions.create_vector(store, (5.0, 0.0, 0.0))
+        actions.create_vector(store, (2.0, 0.0, 0.0))
+        result = actions.compute_difference(store, "A", "B")
+        store.remove("B")
+
+        assert actions.chain_terms(store, result) == ()
