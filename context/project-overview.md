@@ -30,7 +30,7 @@ In every case: **one person, sitting or standing in front of a laptop's built-in
 - Lock / unlock vectors so they cannot be changed accidentally.
 - Resolve a vector into its x, y, z components and show them in 3D alongside the original vector.
 - Select multiple vectors and compute / display their resultant, with a head-to-tail animation showing how they add.
-- Vector subtraction and scalar multiplication.
+- Vector subtraction. (Scalar multiplication was moved to post-MVP on 2026-09-23; see `features.md` P-06.)
 - Direction angles (α, β, γ) and the unit vector for every vector.
 - Projections ("shadows") of a vector on the XY, YZ, and XZ planes.
 - Typed input in either components (x, y, z) or magnitude + angles, with a toggle.

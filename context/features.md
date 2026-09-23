@@ -29,7 +29,7 @@ The group order is finalized in `build-plan.md`, which adds the tasks for each g
 |---|---|---|---|
 | G1 | Foundation | F-01, F-04, F-10, F-11 (basic), global vector rules | Manual, with typed vectors. No camera. |
 | G2 | Vector math and display | F-05a, F-08, F-09a, F-11 (full), F-12, F-13a, F-14, F-19 (panel) | Automated math tests + manual visual checks. No camera. |
-| G3 | Operations | F-15, F-16, F-17, global result rules | Automated math tests + manual visual checks. No camera. |
+| G3 | Operations | F-15, F-16, global result rules (F-17 moved to post-MVP) | Automated math tests + manual visual checks. No camera. |
 | G4 | Hand tracking | F-02, F-21 | Manual: webcam, landmarks, and gesture names shown. Does not touch vectors yet. |
 | G5 | Gesture control | F-03, F-05b, F-06, F-07, F-09b, F-13b, F-19 (gestures), F-20 | Manual, following the gesture checks in `interaction-spec.md`. |
 | G6 | Packaging | F-18 | Run the `.exe` on a Windows machine without Python, offline. |
@@ -169,17 +169,15 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-16 Subtraction
 **Group:** G3 · **Depends on:** F-05a, F-11 full
-- [ ] The panel has two dropdowns forming `[ A ] − [ B ]`, where the student picks each vector.
-- [ ] Picking the same vector in both dropdowns is allowed and gives the zero vector with a note.
-- [ ] Automated tests pass, including `A − B = −(B − A)`.
-- [ ] The result follows the global rules for operation results.
+- [x] The panel has two dropdowns forming `[ A ] − [ B ]`, where the student picks each vector.
+- [x] Picking the same vector in both dropdowns is allowed and gives the zero vector with a note.
+- [x] Automated tests pass, including `A − B = −(B − A)`.
+- [x] The result follows the global rules for operation results.
 
-### F-17 Scalar multiplication
-**Group:** G3 · **Depends on:** F-05a, F-11 full
-- [ ] The panel has a vector dropdown and a number field for the scalar `k`.
-- [ ] Negative values are allowed and visibly reverse the direction; `k = 0` gives the zero vector with a note.
-- [ ] Automated tests pass for positive, negative, fractional, and zero `k`.
-- [ ] The result follows the global rules for operation results.
+### F-17 Scalar multiplication — **moved to post-MVP (2026-09-23)**
+Removed from the MVP at the user's decision when G3 was closed. See P-06 below
+and the decisions log in `progress-tracker.md`. The maths already exists and is
+tested (`core/operations.py`, G3.1); only the panel was never built.
 
 ### F-18 Packaged Windows app
 **Group:** G6 · **Depends on:** all MVP features
@@ -215,6 +213,15 @@ MediaPipe sends anonymous performance statistics to Google when online (see `arc
 
 ## Post-MVP features (do NOT build until instructed)
 Each will be added as its own group, built and tested the same way as the MVP groups.
+
+### P-06 Scalar multiplication
+Multiply a vector by a number `k`, with a vector dropdown and a field for `k`.
+Negative `k` reverses the direction; `k = 0` gives the zero vector with a note.
+**Was an MVP feature (F-17) and was moved here on 2026-09-23** when G3 was
+closed, so this is not a new idea: `core/operations.py` already has `scale`,
+tested at G3.1 for positive, negative, fractional and zero `k`, and the result
+machinery it would use is finished. What is missing is the panel, and the
+overflow message noted against it in Known issues.
 
 ### P-01 Dot product
 Dot product of two vectors, with the angle between them shown as an arc in the 3D view.

@@ -107,7 +107,7 @@ If the same problem persists after one corrective prompt, **stop and run `/recov
 | G3.2 | Global result rules + F-15 Resultant | Temporary result, reserved color, expression label, Save as vector, live updates with transition. |
 | G3.3 | F-15 Head-to-tail animation | Separate step: the animation must never change real vector values. |
 | G3.4 | F-16 Subtraction | |
-| G3.5 | F-17 Scalar multiplication | |
+| ~~G3.5~~ | ~~F-17 Scalar multiplication~~ | **Dropped 2026-09-23** at the user's decision; F-17 moved to post-MVP as P-06. |
 
 **Don't do yet:** dot or cross product (post-MVP), camera.
 **Checkpoint:** every G3 criterion passes; all tests pass. **At this point the entire app works without a camera.**
