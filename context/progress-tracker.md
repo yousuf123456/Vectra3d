@@ -6,7 +6,7 @@ Updated after every approved step. Read this at the start of every session to se
 
 ## Current status
 - **Current group:** G3 — Operations. In progress
-- **Next step:** G3.3 — F-15 head-to-tail animation, in its own step because the animation must never change real vector values
+- **Next step:** G3.4 — F-16 Subtraction: two dropdowns forming `[ A ] − [ B ]`, reusing the result machinery from G3.2
 - **Blocked on:** nothing
 
 ## Completed steps
@@ -44,6 +44,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G3.1 | Operation maths: `core/operations.py` | 2026-09-22 | `G3.1: operation maths` | Pure maths, no visible surface until G3.2 - the same shape as G2.1. The maths halves of F-15, F-16 and F-17 pass; nothing ticked in `features.md`, because each of those criteria also needs the panel from G3.2-G3.5. The approved plan's justification for `math.fsum` was wrong and failed twice, so `/recover` was run: the decision survived on corrected grounds (see the decisions log). 36 new tests; suite now 478 passing. |
 | G3.2 | Global result rules + F-15 Resultant: `state/models.py` `Result`, `render/result_actor.py`, `render/animations.py`, result actions, the Operations box and the result card | 2026-09-22 | `G3.2: the temporary result and the resultant` | All seven global result rules, F-15's first three criteria and F-11's last one pass; the user drove the whole story in the real window and found nothing wrong. The `Result` is its own type rather than a `Vector`, which makes "no letter, not one of the ten, cannot be locked or ticked" structural instead of a rule every caller has to keep. Live updates go through one `_refresh_result` that every vector-changing action calls, so G5's gestures get them free. First animation in the app. `render/overlays.py` did **not** need splitting after all. 42 new tests; suite now 520 passing. Found, and did not fix, a pre-existing crash in `extent_for`. |
 | Fix | The scene refuses what it cannot draw: `render/scene.py` bounds, nine `norm` calls moved to `magnitude`, the cap in `parse_number` | 2026-09-23 | `Fix: refuse vectors the scene cannot draw` | Not a `build-plan.md` step. A crash found while testing G3.2's overflow path and reported rather than quietly fixed; the user chose to fix it before G3.3. Typing 1e308 into the create form sized the world to infinity and took the window down from inside VTK. Three faults underneath, all measured (see the decisions log). Proven in the real window: 1e308, 1e300, 1e200 and 1e40 now refuse in the panel, 1e30 and 1e37 still draw. 18 new tests; suite now 538 passing. |
+| G3.3 | F-15 head-to-tail animation: `chain_tails` and `HeadToTail` in `render/animations.py`, the Show how button, window wiring | 2026-09-23 | `G3.3: show how the vectors add up` | **F-15 is now closed entirely.** The animation draws copies with shifted tails and never touches the store, so "does not permanently move or change any vector" is true by construction; a test plays a whole run and compares every vector against a snapshot. The pause was lengthened 0.7 s -> 1.5 s after the user watched it (first entry in Tuning changes). One real bug reached the user: Show how did nothing, because the slot called its Qt signal instead of emitting it and Qt swallowed the exception. 14 new tests; suite now 552 passing. |
 
 
 ## Groups
@@ -53,7 +54,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G0 | Project setup | Complete — `/review` run, findings fixed |
 | G1 | Foundation | Complete — `/review` run, findings fixed |
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
-| G3 | Operations | In progress — G3.1, G3.2 done |
+| G3 | Operations | In progress — G3.1, G3.2, G3.3 done; F-15 closed |
 | G4 | Hand tracking | Not started |
 | G5 | Gesture control | Not started |
 | G6 | Packaging | Not started |
@@ -187,6 +188,11 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-23 | Nine `np.linalg.norm` calls in `render/` moved to `core.vector_math.magnitude` | G2.1 moved `core` off `norm` because it squares before taking a root and overflows above about 1e154, and wrote that up. The render layer never picked the rule up, so every arrow, component and shadow measured its own length the overflowing way. **Two of the nine were written at G3.2**, by copying `vector_actor.py` into `result_actor.py` - the bug was propagated a day after it was documented. The three uses on camera and view directions are unit vectors and were left alone. |
 | 2026-09-23 | `extent_for` raises past the last step rather than clamping to it | It is now unreachable from typed input, so this is a backstop for values arriving by another route - saving a result, and G5's gestures. A loud failure beats silently drawing a world at the wrong size. |
 | 2026-09-23 | A G1-review test was **replaced**, not loosened | `test_very_large_but_finite_numbers_are_still_allowed` asserted 1e300 was fine, on the belief that only values which are not numbers could hurt. That belief was wrong, and the test failed the moment the cap arrived. Two tests took its place - what is allowed up to the cap, and what is refused past it - each carrying the reason. The same tripwire pattern as G1.5's "It cannot be undone", which G2.8 caught the same way. |
+| 2026-09-23 | The animation draws `replace(vector, tail=...)` copies and never touches the store | This is F-15's "the animation does not permanently move or change any vector", made structural rather than a thing to be careful about. It works because `Vector` has stored a tail since G1.1 - always the origin, kept only so free vectors could be added after the MVP. A head-to-tail chain is exactly "these vectors with different tails", so a field added for a future feature is what makes this one honest. A test plays a full run and compares every vector, and every tail, against a snapshot taken before. |
+| 2026-09-23 | Anything that changes the store cancels the animation | Chosen over disabling the panels for the run. An app that stops responding for three and a half seconds feels broken, and a student who has just realised they ticked the wrong vector should not have to wait. It also removes a class of problems rather than handling them: deleting a source vector mid-slide, or an undo that removes the very result being explained, all end the same way. One rule - the store wins. |
+| 2026-09-23 | Components and shadows are hidden while the animation plays | They are drawn at a vector's real position, so a vector showing its parts would slide away and leave them at the origin. Restored when the run ends or is cancelled. |
+| 2026-09-23 | **Qt widget tests are now written where the fault can only live in the widget**, revising the G2.2 decision | G2.2 recorded that no test opens a `QApplication`, because panel logic is lifted into plain functions and the widgets hold no rules. That reasoning still holds for rules - but it cannot see a button wired to nothing, which is exactly what happened here. `tests/ui/test_result_card.py` presses the actual buttons. It was checked against the bug before being kept: with the fault reintroduced the regression test fails, so it is not decoration. |
+| 2026-09-23 | The four phases are a `QSequentialAnimationGroup`, and the pause is a real phase | Rather than a timer that jumps ahead. The hold is the part of the animation the student is meant to *read*, so it is modelled as a phase like the others and its duration is a section 9 tunable - which is what let it be changed from 0.7 s to 1.5 s in one place after watching it. |
 
 
 ---
@@ -196,7 +202,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 
 | Date | Value | Old | New | Reason |
 |---|---|---|---|---|
-| | | | | |
+| 2026-09-23 | `HEAD_TO_TAIL_PAUSE_S` (`interaction-spec.md` section 9, head-to-tail pause) | 0.7 s | 1.5 s | The first tuning change of the project, and the first made the way section 9 intends: the user played the finished animation in the real window at G3.3 and found the hold too short to take in. The chain is the one moment of the animation that is *meant* to be read rather than watched - three arrows laid end to end with the resultant closing the triangle - and 0.7 s is barely long enough to find it before it comes apart. Changed in `config.py` and in `interaction-spec.md` sections 9 and 10 together, since the spec outranks the code when they disagree. The other three phases were left alone; only the still one was too quick. |
 
 ---
 

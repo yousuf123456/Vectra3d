@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -205,6 +205,10 @@ def card_note(vector: Vector) -> str | None:
 class InfoPanel(QWidget):
     """The list of vectors currently in the scene."""
 
+    # Raised when Show how is pressed. The panel does not play the animation
+    # itself: what moves is in the 3D view, which the window owns.
+    show_how_requested = Signal()
+
     def __init__(self, store: VectorStore) -> None:
         super().__init__()
         self._store = store
@@ -239,6 +243,7 @@ class InfoPanel(QWidget):
         result: Result | None = None,
         result_error: str | None = None,
         can_save_result: bool = True,
+        can_show_result: bool = True,
     ) -> None:
         """Rebuild the list to match the store."""
         while self._cards_layout.count():
@@ -253,7 +258,11 @@ class InfoPanel(QWidget):
         if result is not None:
             self._cards_layout.addWidget(
                 _build_result_card(
-                    result, on_save=self._save_result, can_save=can_save_result
+                    result,
+                    on_save=self._save_result,
+                    on_show=self._show_how,
+                    can_save=can_save_result,
+                    can_show=can_show_result,
                 )
             )
         elif result_error is not None:
@@ -304,6 +313,15 @@ class InfoPanel(QWidget):
 
     def _save_result(self) -> None:
         actions.save_result_as_vector(self._store)
+
+    def _show_how(self) -> None:
+        """Ask the window to play the head-to-tail animation (F-15).
+
+        The panel does not own the animation, because what it moves lives in
+        the 3D view. It raises a request and the window decides; nothing here
+        touches a vector, which is the promise F-15 makes.
+        """
+        self.show_how_requested.emit()
 
 
 class _Card(QFrame):
@@ -491,6 +509,11 @@ def _value(text: str, *, align_right: bool = True) -> QLabel:
 # names the rule rather than just refusing, because a disabled button with no
 # explanation reads as a broken one.
 SAVE_TEXT = "Save as vector"
+# Plays the head-to-tail explanation (F-15). Disabled while one is running,
+# so a second press cannot start an overlapping run.
+SHOW_TEXT = "Show how"
+SHOW_TOOLTIP = "Watch how these vectors add up, head to tail"
+SHOW_BUSY_TOOLTIP = "Already playing"
 SAVE_TOOLTIP = "Keep this result as a vector of its own, with the next free letter"
 SAVE_FULL_TOOLTIP = (
     f"There are already {naming.MAX_VECTORS} vectors. "
@@ -502,7 +525,9 @@ def _build_result_card(
     result: Result,
     *,
     on_save: Callable[[], None],
+    on_show: Callable[[], None],
     can_save: bool,
+    can_show: bool,
 ) -> QWidget:
     """The temporary result's card: its expression, its numbers, and Save.
 
@@ -556,6 +581,20 @@ def _build_result_card(
         values.addWidget(_value(value_text, align_right=False), row, 4)
     outer.addLayout(values)
 
+    buttons = QHBoxLayout()
+    buttons.setSpacing(theme.GAP_SMALL)
+
+    # Show how comes first: it explains the result the student is looking at,
+    # where Save is what they do once they believe it.
+    show = QToolButton()
+    show.setText(SHOW_TEXT)
+    show.setEnabled(can_show)
+    show.setToolTip(SHOW_TOOLTIP if can_show else SHOW_BUSY_TOOLTIP)
+    show.setAutoRaise(True)
+    show.setStyleSheet(f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER};")
+    show.clicked.connect(lambda: on_show())
+    buttons.addWidget(show)
+
     save = QToolButton()
     save.setText(SAVE_TEXT)
     save.setEnabled(can_save)
@@ -563,7 +602,10 @@ def _build_result_card(
     save.setAutoRaise(True)
     save.setStyleSheet(f"{HEADER_BUTTON_STYLE} color: {theme.ACTIVE_BORDER};")
     save.clicked.connect(lambda: on_save())
-    outer.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
+    buttons.addWidget(save)
+
+    buttons.addStretch(1)
+    outer.addLayout(buttons)
 
     return card
 

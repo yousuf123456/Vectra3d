@@ -71,7 +71,7 @@ SCENE_RESCALE_MS: int = 300  # milliseconds
 # The four phases of the head-to-tail animation (spec section 10).
 HEAD_TO_TAIL_SLIDE_S: float = 1.0  # seconds
 HEAD_TO_TAIL_DRAW_S: float = 0.5  # seconds
-HEAD_TO_TAIL_PAUSE_S: float = 0.7  # seconds
+HEAD_TO_TAIL_PAUSE_S: float = 1.5  # seconds (was 0.7; see progress-tracker)
 HEAD_TO_TAIL_RETURN_S: float = 0.5  # seconds
 
 # --- Default user settings (spec section 8) ---

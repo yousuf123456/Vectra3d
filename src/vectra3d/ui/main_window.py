@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vectra3d.render.animations import ComponentTransition
+from vectra3d.render.animations import ComponentTransition, HeadToTail
 from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
 from vectra3d.state import actions, naming
 from vectra3d.render.result_actor import ResultActor
@@ -130,6 +130,9 @@ class VectraMainWindow(MainWindow):
         # fit them. It redraws whenever the store changes, which is exactly
         # when `interaction-spec.md` section 3 allows the scene to rescale.
         self._result = None
+        # What the head-to-tail animation is currently explaining, if anything.
+        self._chain_vectors: list = []
+        self._chain_result = None
         self.scene = Scene(self.plotter)
         self.vectors = VectorActors(self.plotter)
         # What a vector is made of, drawn only for the vectors that asked
@@ -146,6 +149,16 @@ class VectraMainWindow(MainWindow):
         # When an input vector changes, the result arrow slides to its new
         # value over 150 ms rather than jumping (`interaction-spec.md` 10).
         self._result_transition = ComponentTransition(self._draw_result_at, self)
+        # The head-to-tail explanation (F-15). It reports where each vector
+        # should be *drawn* and how much of the resultant to show; nothing it
+        # does reaches the store, which is what makes "the animation does not
+        # permanently move or change any vector" true by construction.
+        self._head_to_tail = HeadToTail(
+            on_frame=self._draw_chain_frame,
+            on_finished=self._on_animation_finished,
+            parent=self,
+        )
+        self.info_panel.show_how_requested.connect(self._play_head_to_tail)
         self._store.subscribe(self._on_store_changed)
 
         self._build_toolbar()
@@ -198,6 +211,71 @@ class VectraMainWindow(MainWindow):
 
         self.addToolBar(toolbar)
 
+    def _play_head_to_tail(self) -> None:
+        """Start the explanation for the result currently showing (F-15)."""
+        result = self._store.result
+        if result is None:
+            return
+
+        vectors = [self._store.get(name) for name in result.sources]
+        if any(vector is None for vector in vectors):
+            return
+
+        self._chain_vectors = [vector for vector in vectors if vector is not None]
+        self._chain_result = result
+        # The overlays are drawn at a vector's real position, so a vector
+        # showing its components would slide away and leave them behind at the
+        # origin. They come back when the animation ends.
+        self.overlays.draw((), None)
+        self.projections.draw((), None)
+        self._head_to_tail.play(
+            [vector.components for vector in self._chain_vectors]
+        )
+        self.info_panel.refresh(
+            self._store.vectors,
+            self._store.active_name,
+            self._store.selected,
+            None,
+            None,
+            result,
+            self._store.result_error,
+            can_save_result=self._store.count < naming.MAX_VECTORS,
+            can_show_result=False,
+        )
+
+    def _draw_chain_frame(
+        self, tails: tuple[tuple[float, float, float], ...], drawn: float
+    ) -> None:
+        """Draw one frame of the chain: the vectors moved, the sum part-grown.
+
+        The vectors drawn here are `replace`d copies carrying a different
+        tail. `Vector` has stored a tail since G1.1 so that free vectors could
+        be added after the MVP; that field is what lets the chain be drawn
+        without the store ever holding a moved vector.
+        """
+        if self._chain_result is None:
+            return
+
+        moved = [
+            replace(vector, tail=tail)
+            for vector, tail in zip(self._chain_vectors, tails)
+        ]
+        self.vectors.draw(moved, None)
+
+        # The resultant grows from the origin along its own line.
+        grown = tuple(value * drawn for value in self._chain_result.components)
+        self.result.draw(
+            None if drawn <= 0.0 else replace(self._chain_result, components=grown)
+        )
+        self.plotter.render()
+
+    def _on_animation_finished(self) -> None:
+        """Put the real scene back once the animation stops or is cancelled."""
+        self._chain_vectors = []
+        self._chain_result = None
+        self._result_transition.cancel()
+        self._on_store_changed()
+
     def _draw_result_at(self, components: tuple[float, float, float]) -> None:
         """Draw the result arrow partway through its transition.
 
@@ -240,6 +318,13 @@ class VectraMainWindow(MainWindow):
         # The world is resized first, then the vectors are drawn into it, so
         # a vector that made the scene grow is never drawn against the old
         # grid even for one frame.
+        # Anything that changes the vectors ends the explanation. Rather
+        # than teaching the animation about edits, deletions and undo, the
+        # rule is that the store wins and the real scene is redrawn.
+        if self._head_to_tail.is_playing:
+            self._head_to_tail.cancel()
+            return
+
         vectors = self._store.vectors
         active = self._store.active_name
         result = self._store.result
@@ -271,6 +356,7 @@ class VectraMainWindow(MainWindow):
             result,
             self._store.result_error,
             can_save_result=self._store.count < naming.MAX_VECTORS,
+            can_show_result=not self._head_to_tail.is_playing,
         )
         self.action_panel.refresh()
         self._undo.setEnabled(self._store.history.can_undo)

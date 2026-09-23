@@ -224,7 +224,15 @@ When the arrow moves it **slides** over 150 ms rather than jumping (`config.RESU
 
 **Save as vector** turns the result into a real vector with the next free letter and colour, and the result goes, because the new vector is the same arrow. That is the one thing about a result that undo covers, so undoing the save removes the vector and puts the result back where it was.
 
-*The head-to-tail animation is added in G3.3.*
+**Show how (G3.3).** The button on the result card plays the explanation in four phases, timed in `config.py`: the vectors slide from the origin into a head-to-tail chain (1.0 s), the resultant grows from the origin to the last head (0.5 s), everything holds still so it can be read (1.5 s), and the vectors slide home (0.5 s).
+
+The interesting part is how it keeps its promise not to change anything. `chain_tails()` works out where each vector's tail belongs — each one starts where the previous vector ended, so every tail is the running sum of the ones before it, and the last head lands exactly on the resultant. The window then draws *copies* of the vectors carrying those tails, using `dataclasses.replace`. The store is never told, so the numbers in the info panel sit perfectly still while the arrows move, and stopping the animation at any moment leaves nothing behind.
+
+That works because every vector has stored a `tail` since the very first step, always the origin, kept so that free vectors could be added after the MVP. A head-to-tail chain is exactly "these vectors with different tails", so a field added for a future feature is what makes this one honest by construction rather than by care.
+
+Anything that changes the vectors — an edit, a delete, an undo — cancels the animation immediately and the real scene is redrawn. The alternative, freezing the window for three and a half seconds, would have meant a student who spotted a mistake had to sit and wait. Components and shadows are hidden while it plays, because they are drawn at a vector's real position and would otherwise be left behind at the origin.
+
+**The hold was lengthened from the 0.7 s originally specified to 1.5 s**, after watching it: the still moment is the one part of the animation meant to be read rather than watched, and 0.7 s was barely enough to find the chain before it came apart.
 
 ### Likely questions
 - **Does the order of vectors matter?** No. Any order ends at the same point; the animation's path changes shape, but the resultant doesn't. The app takes some care to keep this literally true down to the last decimal place — see "How it's implemented" above.

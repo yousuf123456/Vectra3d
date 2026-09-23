@@ -202,7 +202,7 @@ Starting values. Change only after real testing, and record every change in `pro
 | Hold confidence | 0.6 | 7 |
 | Live result transition | 150 ms | 10 |
 | Scene rescale transition | 300 ms | 3 |
-| Head-to-tail animation (slide / draw / pause / return) | 1.0 / 0.5 / 0.7 / 0.5 s | 10 |
+| Head-to-tail animation (slide / draw / pause / return) | 1.0 / 0.5 / **1.5** / 0.5 s | 10 |
 
 ---
 
@@ -212,7 +212,7 @@ Starting values. Change only after real testing, and record every change in `pro
 - **During STEERING:** the camera preview shows the anchor point, the dead zone ring, and a line to the current pinch point. The 3D view shows θ and φ changing live.
 - **Snap:** a brief visual cue (the vector or target axis flashes) when a snap engages.
 - **Live result updates:** when an input vector changes, the result moves to its new value with a short smooth transition (150 ms), not a jump.
-- **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (0.7 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.
+- **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (1.5 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.
 
 ---
 
