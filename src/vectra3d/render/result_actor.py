@@ -30,6 +30,7 @@ from vectra3d.render.vector_actor import (
     TIP_LENGTH,
     TIP_RADIUS,
 )
+from vectra3d.core.vector_math import magnitude as magnitude_of
 from vectra3d.state import naming
 from vectra3d.state.models import Result
 
@@ -52,7 +53,7 @@ def label_position(result: Result) -> tuple[float, float, float]:
     tail = np.array(result.tail, dtype=float)
     head = tail + np.array(result.components, dtype=float)
     along = head - tail
-    length = float(np.linalg.norm(along))
+    length = magnitude_of(tuple(along))
     if length == 0.0:
         return tuple(float(value) for value in head)
     return tuple(float(value) for value in head + along * LETTER_OFFSET)
@@ -77,7 +78,7 @@ class ResultActor:
             return
 
         components = np.array(result.components, dtype=float)
-        length = float(np.linalg.norm(components))
+        length = magnitude_of(result.components)
         if length == 0.0:
             # A resultant of vectors that cancel is the zero vector, which has
             # no direction to draw (`interaction-spec.md` 2.4). This is an

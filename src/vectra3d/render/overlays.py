@@ -41,6 +41,7 @@ import pyvista as pv
 from vectra3d.core.formatting import format_number
 from vectra3d.render.scene import AXIS_COLORS
 from vectra3d.render.vector_actor import SHAFT_RADIUS, TIP_LENGTH, TIP_RADIUS
+from vectra3d.core.vector_math import magnitude as magnitude_of
 from vectra3d.state import naming
 from vectra3d.state.models import Point, Vector
 
@@ -193,7 +194,7 @@ def dash_segments(
     """
     first = np.array(start, dtype=float)
     last = np.array(end, dtype=float)
-    length = float(np.linalg.norm(last - first))
+    length = magnitude_of(tuple(last - first))
     if length == 0.0 or dash <= 0.0:
         return ()
 
@@ -327,7 +328,7 @@ class ProjectionOverlays:
 
     def _draw_one(self, vector: Vector) -> None:
         tail = np.array(vector.tail, dtype=float)
-        magnitude = float(np.linalg.norm(np.array(vector.components, dtype=float)))
+        magnitude = magnitude_of(vector.components)
         if magnitude == 0.0:
             self._remove(vector.name)
             return
@@ -347,7 +348,7 @@ class ProjectionOverlays:
     ) -> None:
         for plane, offset in zip(PROJECTION_PLANES, shadows):
             name = f"shadow-{plane}-{vector.name}"
-            length = float(np.linalg.norm(np.array(offset, dtype=float)))
+            length = magnitude_of(offset)
             if length == 0.0:
                 # The vector is perpendicular to this plane, so its shadow
                 # there is a point. Nothing to draw.
@@ -462,7 +463,7 @@ class ComponentOverlays:
     def _draw_one(self, vector: Vector) -> None:
         tail = np.array(vector.tail, dtype=float)
         components = vector.components
-        magnitude = float(np.linalg.norm(np.array(components, dtype=float)))
+        magnitude = magnitude_of(components)
         if magnitude == 0.0:
             # A zero vector has no parts to show. It can exist - an operation
             # result of A - A can be saved as one (F-16).
@@ -477,7 +478,7 @@ class ComponentOverlays:
         offsets = component_offsets(vector.components)
         for (axis, color), offset in zip(AXIS_COLORS.items(), offsets):
             name = f"component-{axis}-{vector.name}"
-            length = float(np.linalg.norm(np.array(offset, dtype=float)))
+            length = magnitude_of(offset)
             if length == 0.0:
                 # A component of zero is a real answer, and an arrow of no
                 # length is not a way of saying it. The label still does.

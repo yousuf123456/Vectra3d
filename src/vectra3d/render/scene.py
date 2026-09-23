@@ -30,6 +30,25 @@ from vectra3d.state.models import Result, Vector
 # The smallest the world ever gets (`interaction-spec.md` section 3).
 MIN_EXTENT = 10.0
 
+# The largest the world can get, and the largest component a vector may have.
+#
+# This is not a matter of taste. **VTK stores point coordinates as 32-bit
+# floats**, whose largest value is about 3.4e38, so geometry built beyond that
+# silently becomes infinity and then fails: `pv.Arrow` was measured producing
+# non-finite points at 1e39 and raising "matrix must have finite values" from
+# 1e155 upwards, where its own normalisation overflows.
+#
+# MAX_COMPONENT is set two orders below the float32 ceiling on purpose. The
+# scene reaches about 1.3 extents past the longest vector, for arrowheads,
+# axis letters and the camera, and a resultant can be the sum of ten vectors -
+# so the drawn world is a good deal larger than any one component.
+#
+# Nothing a student does goes anywhere near this. It exists so that the app
+# refuses what it cannot draw instead of crashing, which is what it used to do
+# when a value of 1e308 was typed into the create form.
+MAX_COMPONENT = 1e37
+MAX_EXTENT = 1e38
+
 # Grid lines and tick marks every extent/10; numbers every extent/5, so the
 # numbers stay readable instead of crowding into each other.
 DIVISIONS = 10
@@ -101,13 +120,26 @@ def extent_steps() -> Iterable[float]:
 
     The 1, 2, 5 pattern repeats through every power of ten, so the grid always
     divides into a round number of squares and the numbers on the axes stay
-    easy to read.
+    easy to read. The sequence stops at `MAX_EXTENT`, because past that there
+    is nothing the renderer could do with the answer.
+
+    Each step is built as `multiplier * 10.0 ** power` rather than by
+    multiplying a running decade by ten. Repeated multiplication compounds its
+    rounding error: it reached 1e100 as 1.0000000000000006e+100, and by 1e308
+    the drift was enough that the step meant to be 1e308 landed just under it.
+    `extent_for` then rejected it, took the next step, 2e308, and returned
+    **infinity** - from input that was perfectly finite. A power of ten is
+    correctly rounded, so the sequence is now exactly the one documented.
     """
-    decade = MIN_EXTENT
+    power = 1  # 10.0 ** 1 is MIN_EXTENT
     while True:
+        decade = 10.0**power
         for multiplier in (1, 2, 5):
-            yield multiplier * decade
-        decade *= 10
+            step = multiplier * decade
+            if step > MAX_EXTENT:
+                return
+            yield step
+        power += 1
 
 
 def extent_for(max_abs: float) -> float:
@@ -119,9 +151,12 @@ def extent_for(max_abs: float) -> float:
     A value that is not finite is refused rather than searched for. There is
     no extent that fits infinity, and every comparison against a nan is
     false, so looking for one would walk the sequence forever and freeze the
-    window with nothing to show for it. Typed input is already turned away
-    in the panel; this is the backstop for values that arrive by any other
-    route, and it fails loudly instead of hanging.
+    window with nothing to show for it.
+
+    A value too large for the renderer is refused the same way. Typed input is
+    turned away in the panel before it gets here, so this is the backstop for
+    values arriving by any other route; it fails loudly rather than handing
+    back a world that cannot be drawn.
     """
     if not math.isfinite(max_abs):
         raise ValueError(f"the scene cannot be sized to fit {max_abs}")
@@ -129,7 +164,7 @@ def extent_for(max_abs: float) -> float:
     for step in extent_steps():
         if step >= max_abs:
             return step
-    raise AssertionError("extent_steps never runs out")  # pragma: no cover
+    raise ValueError(f"the scene cannot be sized to fit {max_abs}")
 
 
 def extent_for_vectors(vectors: Sequence[Vector], result: Result | None = None) -> float:

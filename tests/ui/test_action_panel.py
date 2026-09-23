@@ -13,6 +13,7 @@ import math
 import pytest
 
 from vectra3d.state.models import Vector
+from vectra3d.render.scene import MAX_COMPONENT
 from vectra3d.ui.action_panel import (
     angle_fields,
     component_fields,
@@ -157,9 +158,23 @@ def test_an_angle_form_with_nan_creates_nothing() -> None:
     assert parsed.error is not None
 
 
-def test_very_large_but_finite_numbers_are_still_allowed() -> None:
-    # The rule is about values that are not numbers, not about big vectors.
-    assert parse_components("1e300", "0", "0").components == (1e300, 0.0, 0.0)
+def test_large_numbers_are_allowed_up_to_what_can_be_drawn() -> None:
+    # The rule is not a dislike of big vectors: anything the scene can draw is
+    # accepted, which is far beyond any exercise.
+    assert parse_components("1e30", "0", "0").components == (1e30, 0.0, 0.0)
+    assert parse_components(str(MAX_COMPONENT), "0", "0").error is None
+
+
+def test_numbers_too_large_to_draw_are_refused() -> None:
+    # This replaces a test that asserted 1e300 was allowed, written at the G1
+    # review on the belief that only values which are not numbers could hurt.
+    # That belief was wrong: VTK holds point coordinates as 32-bit floats, so
+    # 1e300 builds geometry of infinity and takes the window down. The test
+    # fired the moment the refusal arrived, exactly as it should have.
+    parsed = parse_components("1e300", "0", "0")
+    assert parsed.components is None
+    assert parsed.error is not None
+    assert "too large" in parsed.error
 
 
 # --- What the edit fields show (F-08) ---

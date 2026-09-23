@@ -51,6 +51,7 @@ from vectra3d.core.spherical import THETA_MAX, THETA_MIN, to_components, to_sphe
 from vectra3d.state import actions, naming
 from vectra3d.state.models import Point, Vector
 from vectra3d.state.store import VectorStore
+from vectra3d.render.scene import MAX_COMPONENT
 from vectra3d.ui import theme
 from vectra3d.ui.dialogs import confirm_clear_all
 
@@ -94,6 +95,13 @@ def parse_number(text: str, name: str) -> tuple[float | None, str | None]:
     happily. None of them is a length a vector can have, and letting one
     through reaches the scene sizing, which has no extent that fits it.
     They are turned away here, at the only place typed numbers enter.
+
+    A number that is merely *very large* is turned away here too, above
+    `MAX_COMPONENT`. VTK holds point coordinates as 32-bit floats, so a
+    vector beyond about 3.4e38 cannot be drawn at all: its geometry becomes
+    infinity and the render fails. Typing 1e308 used to take the window down
+    this way. Nothing a student does comes near the limit; it is here so the
+    app says no instead of crashing.
     """
     text = text.strip()
     if not text:
@@ -106,7 +114,7 @@ def parse_number(text: str, name: str) -> tuple[float | None, str | None]:
 
     if math.isnan(value):
         return None, f"{name} must be a number. Use a dot for decimals, like 3.5."
-    if math.isinf(value):
+    if math.isinf(value) or abs(value) > MAX_COMPONENT:
         return None, f"{name} is too large to use."
 
     return value, None

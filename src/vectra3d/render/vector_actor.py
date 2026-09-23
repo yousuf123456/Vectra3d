@@ -16,6 +16,7 @@ from collections.abc import Sequence
 import numpy as np
 import pyvista as pv
 
+from vectra3d.core.vector_math import magnitude as magnitude_of
 from vectra3d.state import naming
 from vectra3d.state.models import Vector
 
@@ -50,7 +51,7 @@ def letter_position(vector: Vector) -> tuple[float, float, float]:
     tail = np.array(vector.tail, dtype=float)
     head = tail + np.array(vector.components, dtype=float)
     along = head - tail
-    length = float(np.linalg.norm(along))
+    length = magnitude_of(tuple(along))
     if length == 0.0:
         return tuple(float(v) for v in head)
     return tuple(float(v) for v in head + along * LETTER_OFFSET)
@@ -91,7 +92,7 @@ class VectorActors:
     def _draw_one(self, vector: Vector, is_active: bool) -> None:
         tail = np.array(vector.tail, dtype=float)
         head = tail + np.array(vector.components, dtype=float)
-        length = float(np.linalg.norm(head - tail))
+        length = magnitude_of(tuple(head - tail))
         color = naming.color_for(vector.name)
 
         if length == 0.0:
