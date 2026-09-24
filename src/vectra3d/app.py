@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vectra3d.paths import GESTURE_MODEL, resource_path  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
+from vectra3d.tracking.tracker_thread import create_recognizer  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
@@ -36,8 +37,6 @@ def check_model() -> int:
 
     Returns 0 if the model loaded, 1 if it did not.
     """
-    import mediapipe as mp
-
     model = resource_path(GESTURE_MODEL)
     print(f"model path: {model}")
 
@@ -45,12 +44,10 @@ def check_model() -> int:
         print("FAILED: the model file is not there")
         return 1
 
-    options = mp.tasks.vision.GestureRecognizerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=str(model)),
-        running_mode=mp.tasks.vision.RunningMode.VIDEO,
-    )
+    # The same recognizer the camera uses, so this proves the app's real
+    # setup rather than a copy of it that could drift.
     try:
-        with mp.tasks.vision.GestureRecognizer.create_from_options(options):
+        with create_recognizer():
             print("OK: gesture recognizer created from the bundled model")
     except Exception as exc:
         # A missing file is caught above; this catches a file that is present
@@ -95,6 +92,10 @@ def main(argv: list[str] | None = None) -> int:
     store = VectorStore()
 
     window = VectraMainWindow(store)
-    window.show()
+    window.show_on_screen()
+    # Started only once the window is up, so the student sees the app at
+    # once and the camera catches up. A separate call rather than part of
+    # building the window, so tests can build one without opening a camera.
+    window.start_camera()
 
     return app.exec()

@@ -127,7 +127,19 @@ Reading the camera and finding hands takes time. If the app did that while also 
 - If MediaPipe is slower than the camera, old frames are dropped rather than queued, so the app always reacts to the hand's *current* position.
 
 ### How it's implemented
-*To be filled in by the agent after step G4.1.*
+Built in G4.1.
+
+- `TrackerThread` (`tracking/tracker_thread.py`) is a `QThread` whose `run()` method is the loop itself. The other common Qt pattern — a worker object moved onto a thread — was not used, because it relies on the thread's own event loop, which a loop that never stops would never let run.
+- It talks to the rest of the app through three Qt signals: `frame_ready` (the picture and a `HandFrame`), `camera_unavailable` and `camera_lost`. A signal emitted on one thread and connected to a widget on another is **queued** by Qt and delivered on the widget's thread, which is what makes it safe for the preview to draw what the tracker sends. A test sends real frames from a real thread to a real preview widget to prove the connection works, because Qt silently swallows an error raised inside a slot.
+- **Frames are dropped, not queued**, in two places. The loop reads, recognizes and sends in order, so a frame that arrives while one is being recognized is simply never read. And the preview keeps only the latest picture: if several arrive before the window next repaints, Qt merges the repaint requests and only the last is drawn.
+- The window owns the tracker and starts it with `start_camera()`, called from `app.py` once the window is showing. It is a separate call so tests can build a window without opening a camera. Closing the window stops the thread and waits for it before the 3D view shuts down.
+- No camera, or a camera that stops sending pictures, ends the thread and puts a plain message in the preview; everything else carries on.
+
+**What it costs.** Measured on the target laptop (Intel HD Graphics 620) with ten vectors and the view rotating continuously, camera off and on in alternation: about 54 fps without the camera and 47 with it, an 11-13% drop. Almost all of that is MediaPipe itself competing for the processor — with recognition replaced by a stub the drop disappears — and painting the preview costs about 1 ms a picture. Recognition takes about 16 ms per frame with no hands in view and about 35 ms with hands, whether the picture is 640x480 or 320x240. The drop is above the 10% line set for F-02 and is carried into G5 to be measured again under full gesture load.
+
+One effect runs the other way. While the 3D view is redrawing continuously — as it does while being dragged with the mouse — the tracker slows from about 30 frames a second to about 10. The likely cause is that VTK holds Python's global lock while it draws, so the tracker thread waits for it. This matters in G5, when steering redraws the view on every frame.
+
+**Screen space.** Adding the preview strip exposed an older fault: with all three form boxes open, the right-hand column made the window's minimum height 830px, taller than the 728px a common 1366x768 laptop has free, so the window grew off the bottom of the screen. The forms now sit in a `FittedScrollArea` (`ui/fitted_scroll_area.py`) that asks for exactly its contents' height and scrolls only when there is not room; the vector list keeps at least 300px, about two cards; and the window opens maximized when its default size does not fit.
 
 ### Likely questions
 - **What happens if the computer is slow?** Tracking updates less often, but the 3D view and panels stay responsive.
@@ -154,6 +166,8 @@ Tests live in `tests/`, mirroring the layer they cover, and run with `uv run pyt
 - `tests/state/` (G1.1) covers the vector rules: that names are handed out lowest-first and reused after a deletion, that the ten colors are all different and none of them reads as an axis color, that the eleventh vector is refused, that every new vector stores its tail at the origin, and that each action reports exactly one change.
 
 - `tests/render/` (G1.2) covers the scene's sizing rules: the 1-2-5 sequence, that a value exactly on the boundary still fits, that the world never shrinks below 10, and that the largest component decides the size.
+
+- `tests/tracking/` (G4.1) runs the tracker thread against a **fake camera** that produces black pictures, with the real MediaPipe recognizer: pictures arrive and stopping releases the camera, a missing camera is reported, and a camera that stops sending is reported and released. It also checks the conversion from MediaPipe's result to plain hand data using fake results, and that timestamps always increase. `tests/ui/test_camera_preview.py` checks the plain-word gesture names against every label in the bundled model, and reads the drawn picture back pixel by pixel to confirm the image and a hand point land where they should. `tests/ui/test_fitted_scroll_area.py` checks that the forms can never again set the window's minimum height, and that folding a box frees its space — a test confirmed to fail when the part that makes folding work is removed.
 
 The state tests need no window and no camera, which is the point of keeping Qt out of that layer. The scene tests cover its arithmetic only — whether a grid reads clearly is a question no test can answer, so that part is checked by eye.
 

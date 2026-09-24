@@ -17,7 +17,14 @@ The webcam takes many pictures per second. For each picture, a machine-learning 
 - Up to 2 hands are tracked. Either hand can do every gesture, so handedness labels aren't used.
 
 ### How it's implemented
-*To be filled in by the agent after step G4.1.*
+Built in G4.1, in two small modules under `src/vectra3d/tracking/`.
+
+- `camera.py` opens the webcam with `open_camera()`, using Windows' **DirectShow** backend (`cv2.CAP_DSHOW`). OpenCV's default on Windows, Media Foundation, was measured taking 2.5 s to open this laptop's camera; DirectShow took 0.8 s. A camera that is missing or will not open comes back as `None` rather than an error, because running without one is an ordinary situation for this app.
+- `tracker_thread.py` holds the loop. Each pass reads one frame, mirrors it with `cv2.flip`, converts it to RGB with `cv2.cvtColor`, and hands it to MediaPipe's `GestureRecognizer.recognize_for_video` with a millisecond timestamp. `create_recognizer()` is the one place the recognizer's options are set; it asks for **two hands**, because MediaPipe's own default is one, which would have made every two-hand gesture impossible. The packaged app's `--check-model` self-test uses the same function, so it proves the exact setup the camera runs with.
+- `to_hand_frame()` turns MediaPipe's result into a plain `HandFrame` (`gestures/hand_frame.py`): for each hand, its 21 points as (x, y) and its gesture label. Depth and the left/right label are dropped on purpose — depth because single-camera depth is unreliable (section 2), left/right because either hand can do every gesture. Nothing after this point ever holds a MediaPipe object, which is what lets the gesture logic in G5 be tested with hand-written fake hands.
+- Timestamps come from a monotonic clock and are nudged forward by a millisecond if two frames land in the same one, because VIDEO mode rejects a timestamp that does not increase.
+- The preview under the 3D view (`ui/camera_preview.py`) draws the picture and, over it, each hand as white lines along the fingers with a blue dot at every point. MediaPipe used to ship a drawing helper for this, but it went with the old `mp.solutions` interface, so the app keeps its own list of which of the 21 points join which. Beside the picture it names each hand's gesture in plain words ("Thumb up", "No gesture"), with two hands labelled by which side of the picture they are on, or says "No hand detected".
+- MediaPipe's label for a hand that is visible but not making a known sign is `None` — read from the label file inside the bundled model. Some older documentation calls it `Unknown`.
 
 ### Likely questions
 - **Does it need a special camera or a GPU?** No. It runs on an ordinary laptop webcam and CPU.
@@ -111,7 +118,11 @@ Your camera images never leave the laptop and are never saved. The hand-tracking
 - The app works fully with the internet disconnected; the model file is bundled inside the app.
 
 ### How it's implemented
-*To be filled in by the agent after steps G4.1 and G4.2.*
+*G4.1 part below; the first-launch notice is not built.*
+
+- A frame exists only inside one pass of the tracker's loop and in the preview, which keeps just the latest picture to draw. Nothing writes a frame to disk and nothing sends one anywhere; the app has no code that could.
+- The model file is loaded from inside the app through `paths.resource_path()`, so no network access is involved in starting the camera.
+- When the window closes, the tracker is stopped and waited for, and the webcam is released in a `finally` block, so the camera light goes off with the app even if the loop ended on an error.
 
 ### Likely questions
 - **Does it work offline?** Yes, fully.

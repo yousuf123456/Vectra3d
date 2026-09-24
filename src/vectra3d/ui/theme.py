@@ -44,6 +44,15 @@ MUTED_TEXT = "#6B7280"
 # too large to show. Dark enough to read on white, and not the axis red.
 ERROR_TEXT = "#C2185B"
 
+# The camera preview. The picture area is dark while there is no picture, so
+# an empty preview reads as "no camera" rather than as a blank panel. The hand
+# is drawn in white lines with accent-blue points: both stand out against skin,
+# clothing and most rooms, and the white outline keeps each point visible on a
+# dark background too.
+PREVIEW_BACKGROUND = "#2B3138"
+HAND_LINE = "#FFFFFF"
+HAND_POINT = ACTIVE_BORDER
+
 # Spacing, so padding is consistent across the panels instead of each widget
 # inventing its own.
 GAP_SMALL = 6

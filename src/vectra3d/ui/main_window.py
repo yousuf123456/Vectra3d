@@ -34,14 +34,20 @@ from vectra3d.render.result_actor import ResultActor
 from vectra3d.render.scene import Scene
 from vectra3d.render.vector_actor import VectorActors
 from vectra3d.state.store import VectorStore
+from vectra3d.tracking.tracker_thread import TrackerThread
 from vectra3d.ui import theme
 from vectra3d.ui.action_panel import ActionPanel
+from vectra3d.ui.camera_preview import CameraPreview
+from vectra3d.ui.fitted_scroll_area import FittedScrollArea
 from vectra3d.ui.info_panel import InfoPanel
 
 WINDOW_TITLE = "Vectra3D"
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 PANEL_WIDTH = 300
+# The least height the vector list is given when the forms want more than the
+# screen has: about two cards (a card measured 141px) and the list's title.
+VECTOR_LIST_MIN_HEIGHT = 300
 
 # Anti-aliasing settings, chosen by measuring on the integrated graphics this
 # app targets (Intel HD Graphics 620) against a scene of thin lines, which is
@@ -92,7 +98,20 @@ class VectraMainWindow(MainWindow):
         )
         self.plotter.enable_anti_aliasing("fxaa")
         self.plotter.set_background(theme.SCENE_BACKGROUND)
-        layout.addWidget(self.plotter.interactor)
+        layout.addWidget(self.plotter.interactor, 1)
+
+        # The camera strip sits under the 3D view rather than in the panel
+        # column, where height is what the vector list competes for. It is
+        # not floated over the view: the view is a native OpenGL window, and
+        # Qt widgets laid over one on Windows tend to flicker.
+        self.camera_preview = CameraPreview(frame)
+        layout.addWidget(self.camera_preview)
+        self._tracker = TrackerThread(parent=self)
+        # Emitted on the tracker's thread and delivered on this one: Qt
+        # queues a signal across threads, so these slots may touch widgets.
+        self._tracker.frame_ready.connect(self.camera_preview.show_frame)
+        self._tracker.camera_unavailable.connect(self.camera_preview.show_no_camera)
+        self._tracker.camera_lost.connect(self.camera_preview.show_camera_lost)
 
         # The 3D view on the left, the panels on the right. A splitter lets
         # the student widen either side but never lose the panel, which
@@ -106,12 +125,23 @@ class VectraMainWindow(MainWindow):
         # takes exactly the height of its forms and the vector list takes
         # everything that is left - which is all the old splitter handle was
         # ever dragged to do.
+        #
+        # The action panel sits in a scroll area that is as tall as its forms
+        # whenever there is room, and scrolls only when there is not. Without
+        # it the forms set the window's minimum height: 830px with all three
+        # boxes open, against 728px of usable height on a 1366x768 laptop, so
+        # the window grew past the bottom of the screen and took the camera
+        # strip with it.
+        #
+        # When there is not room for both, the vector list keeps a floor and
+        # the forms scroll: the list is where the maths is always visible.
         self.action_panel = ActionPanel(self._store)
         self.info_panel = InfoPanel(self._store)
+        self.info_panel.setMinimumHeight(VECTOR_LIST_MIN_HEIGHT)
         panels = QWidget(self)
         panels_layout = QVBoxLayout(panels)
         panels_layout.setContentsMargins(0, 0, 0, 0)
-        panels_layout.addWidget(self.action_panel)
+        panels_layout.addWidget(FittedScrollArea(self.action_panel, panels))
         panels_layout.addWidget(self.info_panel, 1)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -164,8 +194,28 @@ class VectraMainWindow(MainWindow):
         self._build_toolbar()
         self._on_store_changed()
 
-        # Shut the plotter down as the window closes, not after.
+        # Stop the camera, then shut the plotter down, as the window closes
+        # rather than after. The thread is waited for, so the webcam is
+        # released and no picture can arrive at a closed window.
+        self.signal_close.connect(self._tracker.stop)
         self.signal_close.connect(self.plotter.close)
+
+    def show_on_screen(self) -> None:
+        """Show the window at its default size, or maximized if that won't fit.
+
+        1200x800 is taller than the 728px a 1366x768 laptop leaves free
+        under its taskbar, and a window opened that tall starts with its
+        bottom off the screen.
+        """
+        available = self.screen().availableGeometry()
+        if WINDOW_WIDTH > available.width() or WINDOW_HEIGHT > available.height():
+            self.showMaximized()
+        else:
+            self.show()
+
+    def start_camera(self) -> None:
+        """Start watching the camera. The app runs fully without it (F-02)."""
+        self._tracker.start()
 
     def _build_toolbar(self) -> None:
         """The view controls, and undo.
