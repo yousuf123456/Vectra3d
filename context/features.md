@@ -30,7 +30,7 @@ The group order is finalized in `build-plan.md`, which adds the tasks for each g
 | G1 | Foundation | F-01, F-04, F-10, F-11 (basic), global vector rules | Manual, with typed vectors. No camera. |
 | G2 | Vector math and display | F-05a, F-08, F-09a, F-11 (full), F-12, F-13a, F-14, F-19 (panel) | Automated math tests + manual visual checks. No camera. |
 | G3 | Operations | F-15, F-16, global result rules (F-17 moved to post-MVP) | Automated math tests + manual visual checks. No camera. |
-| G4 | Hand tracking | F-02, F-21 | Manual: webcam, landmarks, and gesture names shown. Does not touch vectors yet. |
+| G4 | Hand tracking | F-02 (F-21 deleted 2026-09-24) | Manual: webcam, landmarks, and gesture names shown. Does not touch vectors yet. |
 | G5 | Gesture control | F-03, F-05b, F-06, F-07, F-09b, F-13b, F-19 (gestures), F-20 | Manual, following the gesture checks in `interaction-spec.md`. |
 | G6 | Packaging | F-18 | Run the `.exe` on a Windows machine without Python, offline. |
 
@@ -201,13 +201,6 @@ Keep this simple: store a snapshot of all vectors before each change. Do not bui
 - [ ] The action panel has a **Snapping** on/off toggle (default on). Turning it off stops all snapping while steering.
 - [ ] The action panel has a **Magnitude sensitivity** setting: how many units a full hand stretch equals, default 25, range 5 to 50 in steps of 5 (see `interaction-spec.md` section 8).
 - [ ] Changing sensitivity immediately affects creating and resizing by hand.
-
-### F-21 First-launch privacy notice
-**Group:** G4 · **Depends on:** F-02
-MediaPipe sends anonymous performance statistics to Google when online (see `architecture.md` section 6). Students must be told.
-- [ ] On the first launch, a short plain-language notice appears before the camera starts, stating that: hand tracking runs entirely on the computer; camera images are never saved or sent anywhere; the hand-tracking library sends anonymous performance statistics to Google when the computer is online.
-- [ ] The notice is shown once; the app remembers it has been shown using Qt's standard settings storage.
-- [ ] The notice can be viewed again at any time from a **Privacy** item in the app's menu or help area.
 
 ---
 

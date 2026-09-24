@@ -63,7 +63,7 @@ In every case: **one person, sitting or standing in front of a laptop's built-in
 - **Hardware:** modern laptops from roughly the last 5 years, with a built-in or standard USB webcam. Integrated graphics only; no dedicated GPU may be assumed.
 - **Interface language:** English only.
 - **Network:** works offline by default. Network access is acceptable only if a specific feature truly requires it. The hand-tracking model file must be bundled with the app, not downloaded at runtime.
-- **Privacy:** webcam frames are processed in memory only. They are never saved to disk and never sent anywhere. The hand-tracking library (MediaPipe) sends anonymous performance statistics to Google when online; this is disclosed to students in a first-launch notice.
+- **Privacy:** webcam frames are processed in memory only. They are never saved to disk and never sent anywhere. The hand-tracking library (MediaPipe) sends anonymous performance statistics to Google when online. The in-app notice that was to disclose this (F-21) was deleted on 2026-09-24 at the user's decision; see `architecture.md` section 6.
 - **Timeline:** no fixed deadline. The goal is a complete MVP with every feature in its scope, not a fast partial version.
 
 ## Success criteria

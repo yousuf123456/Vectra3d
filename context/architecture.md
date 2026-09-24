@@ -92,7 +92,7 @@ vectra3d/
 │           ├── info_panel.py
 │           ├── action_panel.py
 │           ├── camera_preview.py
-│           └── dialogs.py              ← confirmations, first-launch notice
+│           └── dialogs.py              ← confirmations
 ├── tests/
 │   ├── core/                           ← math tests
 │   ├── state/                          ← actions, naming, undo tests
@@ -140,7 +140,8 @@ Webcam frame
 ## 6. Privacy and network
 - Webcam frames are processed in memory only. They are never saved to disk and never sent anywhere.
 - **MediaPipe Tasks sends performance and usage metrics to Google** when a network is available. Google's privacy notice (updated June 5, 2026) says input images are processed on-device and not sent, but performance and utilization metrics are, and that apps are responsible for informing users. No off switch is documented.
-- Therefore the app shows a **first-launch notice** (see `features.md` F-21) in plain language, and the packaging phase verifies the app works fully with the internet disconnected.
+- The app was to show a first-launch notice saying so (F-21). **That notice was deleted on 2026-09-24 at the user's decision**, so the app itself does not tell students. This was done knowing that Google's notice puts the duty to inform users on the app; the decision is recorded in `progress-tracker.md`.
+- The packaging phase still verifies the app works fully with the internet disconnected.
 
 ---
 

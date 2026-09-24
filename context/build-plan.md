@@ -120,7 +120,7 @@ If the same problem persists after one corrective prompt, **stop and run `/recov
 | Step | Features | Notes |
 |---|---|---|
 | G4.1 | F-02 Camera preview | Tracker thread, mirrored preview, landmarks drawn, gesture name shown, no-webcam fallback. The 3D view must stay smooth. |
-| G4.2 | F-21 First-launch privacy notice | Shown before the camera starts; viewable again from a Privacy item. |
+| ~~G4.2~~ | ~~F-21 First-launch privacy notice~~ | **Deleted 2026-09-24** at the user's decision; see the decisions log in `progress-tracker.md`. |
 
 **Don't do yet:** anything that changes vectors from hand input.
 **Checkpoint:** every G4 criterion passes; the user confirms all 3D and panel features still work normally with the camera running.

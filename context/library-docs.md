@@ -32,7 +32,7 @@ Training data is wrong about parts of this stack. These libraries change often, 
 - Mirror the frame **before** recognition, so landmark positions match the mirrored preview.
 - Image coordinates: x grows right, **y grows down**.
 - The app does not use MediaPipe's left/right handedness labels.
-- MediaPipe Tasks sends performance and usage metrics to Google when online (see `architecture.md` section 6). This is disclosed in the first-launch notice; do not try to disable it without being asked.
+- MediaPipe Tasks sends performance and usage metrics to Google when online (see `architecture.md` section 6). The first-launch notice that was to disclose this (F-21) was deleted on 2026-09-24 at the user's decision. Do not try to disable the metrics without being asked.
 
 ### Model file and PyInstaller
 - The `gesture_recognizer.task` model is downloaded **once during setup** from the link in Google's current official docs, into `assets/models/`, and committed. The app never downloads it at runtime.

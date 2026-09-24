@@ -5,12 +5,13 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G4 — Hand tracking. G4.1 complete, with two F-02 criteria carried
-  into G5 (joystick feedback, and performance at 11-13% against a 10% line).
-- **Next step:** the user has asked to remove G4.2 (F-21 first-launch privacy notice) and
-  move to G5. Pending confirmation of how, since F-21 is the disclosure `architecture.md`
-  section 6 requires.
-- **Blocked on:** that decision.
+- **Current group:** G4 — Hand tracking. **Complete.** F-21 (the privacy notice) was
+  deleted at the user's decision, so G4.2 does not exist. Two F-02 criteria are carried
+  into G5: joystick feedback (tick at G5.5) and performance (11-13% against a 10% line).
+- **Next step:** G5.1 — hand metrics: hand scale, pinch detection with hysteresis,
+  smoothing, tested with synthetic hand data. **Start a fresh session** (`build-plan.md`
+  section 3 asks for one session per group).
+- **Blocked on:** nothing. G4 was closed **without `/review`**, as G2 and G3 were.
 
 ## Completed steps
 
@@ -51,6 +52,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G3.4 | F-16 Subtraction: `Operation` on `Result`, `compute_difference`, the `[ A ] − [ B ]` row, the zero-vector note | 2026-09-23 | `G3.4: subtract one vector from another` | All four F-16 criteria pass. Two bugs of the same kind found and fixed, one before the user saw it and one after: **a result did not remember which operation made it**, so editing an input of `A − B` would have recomputed it as `A + B`; and the **Show how** animation laid out the raw source vectors, so a difference's chain ended at `A + B`, a point the answer is not. The user reported the second. Both kinds of per-operation knowledge now sit in one place in `actions.py`. Also nearly shipped a second wording for the zero-vector note before finding `card_note` already existed with the wording section 2.4 fixes. 21 new tests; suite now 573 passing. |
 | G3 close | F-17 moved to post-MVP; group closed | 2026-09-23 | `G3 closed: subtraction, and F-17 moved to post-MVP` | The user's decision at the G3.4 review. F-17 was an MVP feature named in `project-overview.md`, so the change was made in `features.md`, `project-overview.md` and `build-plan.md` together rather than only in the plan. Moved rather than deleted, because `core/operations.py` already has `scale`, tested at G3.1. **The whole app now works without a camera**, which is what the G3 checkpoint asks for. |
 | G4.1 | F-02 camera preview: `gestures/hand_frame.py`, `tracking/camera.py`, `tracking/tracker_thread.py`, `ui/camera_preview.py`, `ui/fitted_scroll_area.py`, window wiring | 2026-09-24 | `G4.1: camera preview` | Three of F-02's five criteria pass; the user confirmed hands and gestures are recognized in the real window. **Two are carried into G5**: the joystick feedback (needs the state machine) and performance, measured at an 11-13% frame-rate drop against the 10% line agreed at planning, closed by the user without a verdict. One real bug reached the user: the camera strip dropped half off the screen when a hand appeared - an overflow dating from G3.2, when the Operations box made the window's minimum height 830px against 728px free on this laptop. Fixed in this step. 23 new tests; suite now 596 passing. |
+| G4 close | F-21 deleted; group closed | 2026-09-24 | `G4 closed: privacy notice deleted` | The user's decision after G4.1. F-21 was deleted outright rather than moved to post-MVP, after the point was raised that it is the disclosure `architecture.md` section 6 calls for. Changed in `features.md`, `build-plan.md`, `project-overview.md`, `architecture.md`, `library-docs.md` and `docs/02` together, so nothing still promises a notice. |
 
 
 ## Groups
@@ -61,8 +63,8 @@ Updated after every approved step. Read this at the start of every session to se
 | G1 | Foundation | Complete — `/review` run, findings fixed |
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
-| G4 | Hand tracking | In progress — G4.1 done |
-| G5 | Gesture control | Not started |
+| G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
+| G5 | Gesture control | Next |
 | G6 | Packaging | Not started |
 
 ---
@@ -215,6 +217,8 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-24 | The tracker subclasses `QThread.run()`, and frames are dropped at two points | A blocking loop is what `run()` is for; a worker object depends on an event loop the loop would starve. Read-recognize-send in order means the camera cannot get ahead, and the preview keeps only the latest picture, so a slow repaint skips pictures rather than queueing them. |
 | 2026-09-24 | **The forms scroll when the screen is too short; the vector list keeps at least 300px** | Found by the user at G4.1: when a hand appeared, the window grew off the bottom of the screen and took half the camera strip with it. The cause predates G4: since G3.2 added the Operations box, the forms made the window's minimum height 830px, and this laptop has 728px free. The user chose scrolling over folding boxes by default or shrinking the forms. A first attempt let both halves of the column ask for their full height and share the shortfall; Qt then squeezed the vector list to its title alone, so the rule is now explicit - about two cards for the list, the rest for the forms. |
 | 2026-09-24 | The window opens maximized when 1200x800 does not fit the screen | Opening at a fixed 1200x800 on a 1366x768 laptop starts the window with its bottom already off screen. |
+| 2026-09-24 | **F-21, the first-launch privacy notice, deleted entirely**, at the user's decision | Asked for at the G4.1 close. Raised first: F-21 existed because MediaPipe Tasks sends usage metrics to Google when online, Google's notice puts the duty to inform users on the app, and `architecture.md` section 6, the project brief and `docs/02` all promised students would be told. Offered moving it to post-MVP (as F-17 was) or keeping it for before G6; the user chose deletion with no post-MVP entry. **Consequence: the app does not tell students about the metrics.** If the trial needs that disclosure, it has to be made outside the app. The documents were edited so none of them still claims the app tells anyone. |
+| 2026-09-24 | **G4 closed without running `/review`**, the third group in a row | The user's choice. The whole-app `/review` before the student trial remains the first review of G2, G3 and G4 code - now including the tracker thread G5 builds on. |
 
 
 ---

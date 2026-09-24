@@ -110,15 +110,15 @@ Even a steady hand shakes slightly, and the tracking adds its own small jitter. 
 ## 6. Privacy
 
 ### In plain words
-Your camera images never leave the laptop and are never saved. The hand-tracking library does send anonymous performance statistics to Google when the laptop is online, and the app tells you this the first time you open it.
+Your camera images never leave the laptop and are never saved. The hand-tracking library does send anonymous performance statistics to Google when the laptop is online.
 
 ### Technically
 - Frames are processed in memory by the tracker thread and discarded; only the 21 landmark positions per hand are passed on.
-- Google's MediaPipe privacy notice states that input images are processed on-device and not sent, but that the Tasks APIs send performance and utilization metrics to Google. No off switch is documented, so the app discloses this in a first-launch notice, viewable again from a Privacy item.
+- Google's MediaPipe privacy notice states that input images are processed on-device and not sent, but that the Tasks APIs send performance and utilization metrics to Google. No off switch is documented. A first-launch notice telling students this was planned and then removed from the project, so the app itself does not display it.
 - The app works fully with the internet disconnected; the model file is bundled inside the app.
 
 ### How it's implemented
-*G4.1 part below; the first-launch notice is not built.*
+Built in G4.1.
 
 - A frame exists only inside one pass of the tracker's loop and in the preview, which keeps just the latest picture to draw. Nothing writes a frame to disk and nothing sends one anywhere; the app has no code that could.
 - The model file is loaded from inside the app through `paths.resource_path()`, so no network access is involved in starting the camera.
