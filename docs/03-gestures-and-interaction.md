@@ -15,9 +15,14 @@ Hands are used for things you'd naturally do by feel: stretching and aiming an a
 - **Every gesture has a panel equivalent,** so the app stays usable in poor lighting or without a webcam.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.2.*
+Built in G5.2, in `gestures/state_machine.py`.
+
+- The clutch is made strict: a gesture starts only when a pinch **begins**. A pinch that is still held when a gesture ends - for example the second hand after a two-hand create - starts nothing until that hand lets go and pinches again. Without this rule, finishing a create while still holding one pinch would immediately start steering the new vector.
+- When the pinch ends, the gesture freezes at once: no more updates reach the vector, even during the short wait before it is confirmed (section 2).
+- The state machine outputs intents, not changes, so the same gesture code will drive the same actions the panel uses (from G5.3).
 
 ### Likely questions
+- **Which way should I hold my hands?** Palms toward the camera, fingers pointing up. Measured at G5.2: held like that, both hands were tracked reliably; with the hands pointing at the camera or overlapping, the tracker usually saw only one of them, and a two-hand pinch could only become steering.
 - **Why not control everything with hands?** Some actions are simply faster and more accurate with a click. The aim is learning vectors, not fighting the interface.
 
 ---
@@ -29,16 +34,27 @@ The app is always in exactly one "mode": idle, creating, resizing, steering, or 
 
 ### Technically
 A finite state machine with states IDLE, CREATING, RESIZING, STEERING, and HOLDING.
-- A two-hand pinch (second hand pinching within 0.3 s of the first) beats a one-hand pinch.
+- A two-hand pinch (second hand pinching within 0.5 s of the first) beats a one-hand pinch. (The spec started at 0.3 s; it was lengthened after real testing showed people pinch their two hands up to half a second apart.)
 - Hold gestures are recognized only in IDLE.
-- An open palm during any pinch gesture cancels it and restores the vector exactly.
+- An open palm from a hand that is not pinching cancels a pinch gesture and restores the vector exactly. When a pinch ends, the gesture waits 0.3 s before it is confirmed, so the hand that just opened has time to be seen as a palm.
 - Losing a hand for more than 0.3 s counts as a normal release.
 - The state machine outputs **intents** ("begin create," "update," "commit," "cancel") rather than changing vectors itself; the app turns intents into the same actions the panel uses.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.2.*
+Built in G5.2, in `gestures/state_machine.py` and `gestures/intents.py`.
+
+- `GestureStateMachine.update(hands, now_ms)` is called once per camera frame with the hands measured by `hand_metrics` (see `02-hand-tracking.md`). It returns the current state, any intents, and the progress of a hold gesture. It knows nothing about vectors; until G5.3 the window only shows its state under the camera picture.
+- Besides the spec's five states it has two short phases. **Waiting**: one hand has pinched, and for up to 0.5 s it is not known whether a second hand will join, so nothing begins yet. The steering anchor is still where the pinch began, so no movement is lost. **Releasing**: a pinch has ended, the gesture is frozen, and it waits 0.3 s for an open palm before committing.
+- **Why the release waits.** As first written, cancel could hardly ever happen: in a two-hand gesture both hands are pinching, so the palm can only come from opening a pinching hand - and opening it ends the pinch, which is a release, before the tracker has even recognised a palm. The wait gives it time. This was found at planning and changed in the spec before building.
+- **Why only a hand that is not pinching can cancel.** Found with real hands: a pinch with the other three fingers stretched out is often classified as an open palm, which cancelled three gestures by itself in 30 seconds. A hand that is pinching cannot really be showing a palm, so it is not listened to.
+- Intents carry the hands' geometry - which gesture, which hands, the start and current pinch points, the hand scale - and nothing about vectors. Turning them into magnitudes and directions is the job of each gesture's own step.
+- Hold gestures (thumbs up, pointing up, victory) must be recognised at a confidence of at least 0.6 for 0.5 s, fire once, and cannot fire again from the same hand until it shows a different shape.
+- Losing a hand: the hand metrics keep a missing hand's memory for 0.3 s, so one that reappears in time carries on with its pinch intact. The state machine pauses the gesture while the hand is missing and commits it once the hand has been gone for longer. A slow frame is not a missing hand: only a hand actually absent from a frame can expire.
+- All timings are compared in whole milliseconds from the frames' own timestamps, never the wall clock, which is what lets the tests play any sequence of hand frames at any pace. The two-hand window, the release wait, the hand-lost timeout and the hold duration all come from `config.py`.
 
 ### Likely questions
+- **Why does steering take half a second to start?** Because until then the app cannot know whether a second hand is about to pinch and turn it into a create or resize.
+- **Why doesn't a vector update the instant I let go?** It does freeze instantly; it is only *confirmed* 0.3 s later, in case an open palm follows to cancel it.
 - **What's a state machine?** A model where a system is always in one of a fixed set of states and moves between them according to clear rules. Traffic lights are a classic example.
 - **How was it tested without hands?** By feeding it recorded sequences of fake hand data and checking its output.
 

@@ -70,7 +70,7 @@ Built in G5.1, in `gestures/hand_metrics.py`.
 - `hand_scale()` is the distance from point 0 to point 9, measured with `math.hypot`.
 - **The picture's shape has to be corrected first.** MediaPipe gives each point as 0-1 across the width and 0-1 down the height separately, so on a 640x480 picture one unit of x is a third longer than one unit of y. Measured naively, a hand would change size by up to a third just by turning it from upright to sideways. Each frame therefore carries the picture's `aspect` (width divided by height, read from the actual picture rather than assumed), and `to_picture_units()` multiplies x by it, so every distance is in units of the picture's height. A test holds the same hand upright and sideways and gets 0.2 both times.
 - The scale is measured from the smoothed points (section 5), so it does not jitter either.
-- The average of two hands' scales, for two-hand gestures, is added with the first gesture that uses it (G5.3).
+- `average_scale()` gives the mean of two hands' scales, for two-hand measurements. It arrived in G5.2, where the state machine first uses it to decide whether two pinching hands are close enough together to create rather than resize.
 
 ### Likely questions
 - **Why the wrist to the middle knuckle?** Those points don't move when fingers bend, so the measurement stays stable during gestures.
@@ -94,7 +94,7 @@ Built in G5.1, in `gestures/hand_metrics.py`.
 
 - `pinch_distance_hs()` divides the thumb-to-index distance by the hand scale. A hand with a scale of zero - which only made-up test data can produce - has no pinch distance rather than a division by zero, and counts as not pinching.
 - `next_pinch(was_pinching, distance)` is the hysteresis, as one small function: a pinch starts only below `PINCH_START_HS` and ends only above `PINCH_END_HS`, and landing exactly on either keeps the current state. The thresholds come from `config.py`.
-- Because a pinch depends on the frame before, each hand needs a memory. `HandMetrics` keeps one per hand and gives each hand an id. MediaPipe lists hands in no stable order, so every frame the hands are paired with the previous frame's by the nearest wrist, trying both pairings when there are two hands and taking the one where they moved least in total. A hand that disappears is forgotten at once; the 0.3 s grace before a lost hand ends a gesture (spec section 4.4) belongs to the gesture state machine in G5.2.
+- Because a pinch depends on the frame before, each hand needs a memory. `HandMetrics` keeps one per hand and gives each hand an id. MediaPipe lists hands in no stable order, so every frame the hands are paired with the previous frame's by the nearest wrist, trying both pairings when there are two hands and taking the one where they moved least in total. A hand that disappears is remembered for 0.3 s (spec section 4.4, added in G5.2), so one that reappears in time is matched to its old memory and carries on pinching; after that it is forgotten and comes back as a new hand. A slow frame does not count: only a hand actually missing from a frame can expire.
 - `pinch_point()` is the midpoint of the two fingertips.
 - The camera preview shows the result: each hand's line says "Pinching" (or, for example, "Victory, pinching", since a pinch is measured from the fingertips and is separate from MediaPipe's gestures).
 

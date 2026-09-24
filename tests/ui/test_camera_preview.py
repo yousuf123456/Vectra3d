@@ -5,8 +5,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from vectra3d import config
 from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
 from vectra3d.gestures.hand_metrics import TrackedHand
+from vectra3d.gestures.intents import Cancel, Commit, HoldTriggered
+from vectra3d.gestures.state_machine import GestureState, HoldStatus, MachineOutput
 
 pytest.importorskip("PySide6.QtWidgets")
 
@@ -17,6 +20,8 @@ from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
 from vectra3d.ui.camera_preview import (  # noqa: E402
     CAMERA_LOST_TEXT,
+    CANCELLED_TEXT,
+    COMMITTED_TEXT,
     GESTURE_NAMES,
     NO_CAMERA_TEXT,
     NO_HAND_TEXT,
@@ -25,11 +30,14 @@ from vectra3d.ui.camera_preview import (  # noqa: E402
     PINCHING_TEXT,
     CameraPreview,
     gesture_text,
+    machine_text,
+    outcome_text,
     status_text,
 )
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 ASPECT = 4 / 3
+IDLE = MachineOutput(GestureState.IDLE, (), None)
 
 # Every label in the bundled model's `labels.txt`.
 MODEL_LABELS = (
@@ -125,6 +133,48 @@ def test_each_of_two_hands_shows_its_own_pinch() -> None:
     assert status_text((right, left)) == "Left: Pinching\nRight: Open palm"
 
 
+def test_the_gesture_line_names_what_is_happening() -> None:
+    steering = MachineOutput(GestureState.STEERING, (), None)
+    waiting = MachineOutput(GestureState.WAITING, (), None)
+
+    assert machine_text(steering, "") == "Steering"
+    assert machine_text(waiting, "") == "Waiting for a second hand"
+
+
+def test_a_hold_shows_its_progress() -> None:
+    holding = MachineOutput(GestureState.HOLDING, (), HoldStatus("Thumb_Up", 0.6))
+
+    assert machine_text(holding, "") == "Holding Thumb up: 60%"
+
+
+def test_idle_says_how_the_last_gesture_ended() -> None:
+    assert machine_text(IDLE, "") == ""
+    assert machine_text(IDLE, CANCELLED_TEXT) == CANCELLED_TEXT
+
+
+def test_each_way_a_gesture_ends_has_its_own_words() -> None:
+    def ended(intent) -> MachineOutput:
+        return MachineOutput(GestureState.IDLE, (intent,), None)
+
+    assert outcome_text(ended(Commit())) == COMMITTED_TEXT
+    assert outcome_text(ended(Cancel())) == CANCELLED_TEXT
+    assert outcome_text(ended(HoldTriggered("Victory"))) == (
+        "Last gesture: Victory held"
+    )
+    assert outcome_text(IDLE) is None
+
+
+def test_the_last_outcome_stays_until_the_next_gesture(app: QApplication) -> None:
+    preview = CameraPreview()
+    pixels = np.zeros((480, 640, 3), dtype=np.uint8)
+    cancelled = MachineOutput(GestureState.IDLE, (Cancel(),), None)
+
+    preview.show_frame(pixels, empty_frame(), (), cancelled)
+    preview.show_frame(pixels, empty_frame(), (), IDLE)
+
+    assert preview.status == f"{NO_HAND_TEXT}\n{CANCELLED_TEXT}"
+
+
 # --- The widget ---
 
 
@@ -142,7 +192,7 @@ def test_a_frame_with_no_hands_says_so(app: QApplication) -> None:
     preview = CameraPreview()
     pixels = np.zeros((480, 640, 3), dtype=np.uint8)
 
-    preview.show_frame(pixels, empty_frame(), ())
+    preview.show_frame(pixels, empty_frame(), (), IDLE)
 
     assert preview.status == NO_HAND_TEXT
 
@@ -159,7 +209,7 @@ def test_the_picture_and_the_hand_are_drawn(app: QApplication) -> None:
     pixels[:, :, 0] = 255
     hand = hand_at(0.25, 0.25)
     frame = HandFrame(hands=(hand,), timestamp_ms=0, aspect=ASPECT)
-    preview.show_frame(pixels, frame, (tracked(0.25),))
+    preview.show_frame(pixels, frame, (tracked(0.25),), IDLE)
 
     image = picture_of(preview)
 
@@ -175,7 +225,7 @@ def test_a_message_clears_the_last_picture(app: QApplication) -> None:
     # A frozen frame would look like a camera that is still working.
     preview = CameraPreview()
     pixels = np.full((480, 640, 3), 255, dtype=np.uint8)
-    preview.show_frame(pixels, empty_frame(), ())
+    preview.show_frame(pixels, empty_frame(), (), IDLE)
 
     preview.show_camera_lost()
 
@@ -213,6 +263,16 @@ def test_the_window_measures_each_frame_and_the_preview_says_pinching(
     try:
         frame = HandFrame(hands=(pinching_hand(),), timestamp_ms=0, aspect=ASPECT)
         window._on_hand_frame(pixels, frame)
-        assert window.camera_preview.status == PINCHING_TEXT
+        assert window.camera_preview.status == (
+            f"{PINCHING_TEXT}\nWaiting for a second hand"
+        )
+
+        # Held past the two-hand window: the state machine ran too.
+        past_window_ms = round(config.TWO_HAND_PINCH_WINDOW_S * 1000) + 100
+        later = HandFrame(
+            hands=(pinching_hand(),), timestamp_ms=past_window_ms, aspect=ASPECT
+        )
+        window._on_hand_frame(pixels, later)
+        assert window.camera_preview.status == f"{PINCHING_TEXT}\nSteering"
     finally:
         window.close()

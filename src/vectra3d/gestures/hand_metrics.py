@@ -20,9 +20,11 @@ Three things make this more than arithmetic:
   not steady.
 - **Which hand is which.** MediaPipe lists hands in no stable order, and
   smoothing and pinch state both belong to one particular hand. Each hand is
-  matched to the nearest wrist in the previous frame and keeps an id while it
-  stays in view. A hand that goes missing is forgotten at once; the grace
-  period of section 4.4 belongs to the state machine (G5.2).
+  matched to the nearest wrist last seen and keeps an id while it stays in
+  view. A hand that goes missing is remembered for the hand-lost timeout of
+  section 4.4, so one that comes back in time carries on with its id and its
+  pinch; after that it is forgotten. What a missing hand means for a gesture
+  is the state machine's business.
 
 Pure logic: no Qt, OpenCV or MediaPipe, so it is tested with made-up hands.
 """
@@ -168,11 +170,18 @@ class TrackedHand:
     pinch_point: Point
 
 
+def average_scale(first: TrackedHand, second: TrackedHand) -> float:
+    """The hand scale for a two-hand measurement: the mean of both (4.1)."""
+    return (first.scale + second.scale) / 2
+
+
 class _HandMemory:
     """What is remembered about one hand between frames."""
 
-    def __init__(self, hand_id: int) -> None:
+    def __init__(self, hand_id: int, time_s: float) -> None:
         self.hand_id = hand_id
+        self.last_seen_s = time_s
+        self.in_view = True
         # Two filters - x and y - for each landmark used.
         self.filters = {
             index: (_landmark_filter(), _landmark_filter())
@@ -189,6 +198,7 @@ class _HandMemory:
 
         scale = hand_scale(points[WRIST], points[MIDDLE_BASE])
         distance_hs = pinch_distance_hs(points[THUMB_TIP], points[INDEX_TIP], scale)
+        self.last_seen_s = time_s
         self.wrist = points[WRIST]
         self.pinching = next_pinch(self.pinching, distance_hs)
         return TrackedHand(
@@ -214,29 +224,49 @@ class HandMetrics:
         self._next_id = 0
 
     def update(self, frame: HandFrame) -> tuple[TrackedHand, ...]:
+        """Measure the hands in `frame`. Only hands in view are returned."""
+        time_s = frame.timestamp_ms / 1000.0
+        # A hand out of view is kept until it has been missing for longer
+        # than the hand-lost timeout. Dropped before matching, so a hand that
+        # comes back too late is a new hand rather than the old one resumed.
+        # A hand that was in the last frame is never dropped: a gap between
+        # frames - the tracker stalling - is not the hand going missing.
+        self._memories = [
+            memory
+            for memory in self._memories
+            if memory.in_view
+            or time_s - memory.last_seen_s <= config.HAND_LOST_TIMEOUT_S
+        ]
         wrists = [
             to_picture_units(hand.landmarks[WRIST], frame.aspect)
             for hand in frame.hands
         ]
         matched = _match(wrists, [memory.wrist for memory in self._memories])
 
-        memories = []
+        present = []
         for new_index in range(len(frame.hands)):
             old_index = matched.get(new_index)
             if old_index is None:
-                memories.append(_HandMemory(self._next_id))
+                present.append(_HandMemory(self._next_id, time_s))
                 self._next_id += 1
             else:
-                memories.append(self._memories[old_index])
-        # Hands that were not matched are gone, and so is what was known
-        # about them.
-        self._memories = memories
+                present.append(self._memories[old_index])
 
-        time_s = frame.timestamp_ms / 1000.0
-        return tuple(
+        measured = tuple(
             memory.measure(hand, frame.aspect, time_s)
-            for memory, hand in zip(memories, frame.hands)
+            for memory, hand in zip(present, frame.hands)
         )
+        missing = [
+            memory
+            for index, memory in enumerate(self._memories)
+            if index not in matched.values()
+        ]
+        for memory in present:
+            memory.in_view = True
+        for memory in missing:
+            memory.in_view = False
+        self._memories = present + missing
+        return measured
 
 
 def _match(new: list[Point], old: list[Point]) -> dict[int, int]:

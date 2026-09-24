@@ -23,6 +23,8 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from vectra3d.gestures.hand_frame import NO_GESTURE, HandFrame
 from vectra3d.gestures.hand_metrics import TrackedHand
+from vectra3d.gestures.intents import Cancel, Commit, HoldTriggered
+from vectra3d.gestures.state_machine import GestureState, MachineOutput
 from vectra3d.ui import theme
 
 # 4:3, the shape of the picture a laptop webcam delivers (640x480), so the
@@ -32,6 +34,18 @@ PICTURE_HEIGHT = 180
 
 NO_HAND_TEXT = "No hand detected"
 PINCHING_TEXT = "Pinching"
+
+# What the gesture state machine is doing, in words. Idle says nothing, or
+# how the last gesture ended.
+STATE_NAMES = {
+    GestureState.WAITING: "Waiting for a second hand",
+    GestureState.CREATING: "Creating",
+    GestureState.RESIZING: "Resizing",
+    GestureState.STEERING: "Steering",
+    GestureState.RELEASING: "Releasing...",
+}
+COMMITTED_TEXT = "Last gesture: done"
+CANCELLED_TEXT = "Last gesture: cancelled"
 STARTING_TEXT = "Starting the camera..."
 NO_CAMERA_TEXT = "No webcam found. Everything still works from the panels."
 CAMERA_LOST_TEXT = (
@@ -100,6 +114,26 @@ def status_text(hands: tuple[TrackedHand, ...]) -> str:
         return hand_text(hands[0])
     left, right = sorted(hands, key=lambda hand: hand.wrist[0])
     return f"Left: {hand_text(left)}\nRight: {hand_text(right)}"
+
+
+def outcome_text(output: MachineOutput) -> str | None:
+    """How a gesture ended this frame, if one did."""
+    for intent in output.intents:
+        if isinstance(intent, Commit):
+            return COMMITTED_TEXT
+        if isinstance(intent, Cancel):
+            return CANCELLED_TEXT
+        if isinstance(intent, HoldTriggered):
+            return f"Last gesture: {gesture_text(intent.gesture)} held"
+    return None
+
+
+def machine_text(output: MachineOutput, last_outcome: str) -> str:
+    """The gesture line: what is happening now, or how the last one ended."""
+    if output.hold is not None:
+        percent = round(output.hold.progress * 100)
+        return f"Holding {gesture_text(output.hold.gesture)}: {percent}%"
+    return STATE_NAMES.get(output.state, last_outcome)
 
 
 class _Picture(QWidget):
@@ -180,6 +214,8 @@ class CameraPreview(QWidget):
         self._picture = _Picture(self)
         self._status = QLabel(STARTING_TEXT, self)
         self._status.setWordWrap(True)
+        # How the last gesture ended, shown while nothing is happening.
+        self._last_outcome = ""
         self._status.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
@@ -195,16 +231,25 @@ class CameraPreview(QWidget):
         return self._status.text()
 
     def show_frame(
-        self, pixels: np.ndarray, frame: HandFrame, hands: tuple[TrackedHand, ...]
+        self,
+        pixels: np.ndarray,
+        frame: HandFrame,
+        hands: tuple[TrackedHand, ...],
+        output: MachineOutput,
     ) -> None:
         """Show one picture, the raw hands drawn on it, and what they are doing.
 
-        `hands` are the same hands as `frame.hands`, measured. The raw points
-        are drawn, not the smoothed ones, so the picture shows exactly what
-        the tracker saw.
+        `hands` are the same hands as `frame.hands`, measured, and `output` is
+        what the gesture state machine made of them. The raw points are drawn,
+        not the smoothed ones, so the picture shows exactly what the tracker
+        saw.
         """
         self._picture.show_frame(pixels, frame)
+        self._last_outcome = outcome_text(output) or self._last_outcome
         text = status_text(hands)
+        gesture_line = machine_text(output, self._last_outcome)
+        if gesture_line:
+            text = f"{text}\n{gesture_line}"
         # Set only on a change: 30 times a second, a label that is told its
         # text again still re-lays itself out.
         if text != self._status.text():

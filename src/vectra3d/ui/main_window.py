@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from vectra3d.gestures.hand_frame import HandFrame
 from vectra3d.gestures.hand_metrics import HandMetrics
+from vectra3d.gestures.state_machine import GestureStateMachine
 from vectra3d.render.animations import ComponentTransition, HeadToTail
 from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
 from vectra3d.state import actions, naming
@@ -114,6 +115,7 @@ class VectraMainWindow(MainWindow):
         # the gesture logic built on these measurements drives the store and
         # the scene, which only this thread may touch (`architecture.md` 4.3).
         self._hand_metrics = HandMetrics()
+        self._gestures = GestureStateMachine()
         # Emitted on the tracker's thread and delivered on this one: Qt
         # queues a signal across threads, so these slots may touch widgets.
         self._tracker.frame_ready.connect(self._on_hand_frame)
@@ -225,7 +227,11 @@ class VectraMainWindow(MainWindow):
         self._tracker.start()
 
     def _on_hand_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
-        self.camera_preview.show_frame(pixels, frame, self._hand_metrics.update(frame))
+        hands = self._hand_metrics.update(frame)
+        # The intents are not acted on yet: gestures reach the vectors from
+        # G5.3. Until then the preview shows what the machine decided.
+        output = self._gestures.update(hands, frame.timestamp_ms)
+        self.camera_preview.show_frame(pixels, frame, hands, output)
 
     def _build_toolbar(self) -> None:
         """The view controls, and undo.

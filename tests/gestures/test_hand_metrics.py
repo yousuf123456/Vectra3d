@@ -20,6 +20,7 @@ from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
 from vectra3d.gestures.hand_metrics import (
     HandMetrics,
     OneEuroFilter,
+    average_scale,
     hand_scale,
     next_pinch,
     pinch_distance_hs,
@@ -317,19 +318,65 @@ def test_a_second_hand_gets_a_new_id_and_the_first_keeps_its_own() -> None:
     assert newcomer.hand_id != only.hand_id
 
 
-def test_a_hand_that_goes_missing_comes_back_as_a_new_hand() -> None:
-    # Pinched, then gone for a frame, then back with the fingers between the
-    # two thresholds. A remembered hand would still be pinching; this one
-    # starts afresh and is not. (The grace period of spec section 4.4 is the
-    # state machine's, in G5.2.)
+LOST_MS = round(config.HAND_LOST_TIMEOUT_S * 1000)
+
+
+def test_a_hand_back_within_the_timeout_is_the_same_hand_still_pinching() -> None:
+    # Pinched, then out of view for exactly the hand-lost timeout, then back
+    # with the fingers between the two thresholds. Section 4.4 says a hand is
+    # lost only after *more* than the timeout, so this one is remembered - and
+    # being remembered as pinching, it still is.
     metrics = HandMetrics()
     (before,) = metrics.update(frame(upright_hand(gap_hs=BELOW_START)))
     metrics.update(frame(time_ms=FRAME_MS))
 
-    (after,) = metrics.update(frame(upright_hand(gap_hs=BETWEEN), time_ms=2 * FRAME_MS))
+    (after,) = metrics.update(frame(upright_hand(gap_hs=BETWEEN), time_ms=LOST_MS))
+
+    assert after.hand_id == before.hand_id
+    assert after.pinching is True
+
+
+def test_a_hand_back_after_the_timeout_is_a_new_hand() -> None:
+    # The same, one millisecond later. A fresh hand between the thresholds
+    # has never closed below the start threshold, so it is not pinching.
+    metrics = HandMetrics()
+    (before,) = metrics.update(frame(upright_hand(gap_hs=BELOW_START)))
+    metrics.update(frame(time_ms=FRAME_MS))
+
+    (after,) = metrics.update(frame(upright_hand(gap_hs=BETWEEN), time_ms=LOST_MS + 1))
 
     assert after.hand_id != before.hand_id
     assert after.pinching is False
+
+
+def test_a_slow_frame_does_not_lose_a_hand_that_was_in_view() -> None:
+    # The hand is in both frames, but the second arrives well past the
+    # timeout - the tracker stalled. It was never missing, so it is the same
+    # hand, still pinching.
+    metrics = HandMetrics()
+    (before,) = metrics.update(frame(upright_hand(gap_hs=BELOW_START)))
+
+    (after,) = metrics.update(frame(upright_hand(gap_hs=BETWEEN), time_ms=3 * LOST_MS))
+
+    assert after.hand_id == before.hand_id
+    assert after.pinching is True
+
+
+def test_a_missing_hand_is_not_returned() -> None:
+    metrics = HandMetrics()
+    metrics.update(frame(upright_hand()))
+
+    assert metrics.update(frame(time_ms=FRAME_MS)) == ()
+
+
+def test_average_scale_is_the_mean_of_two_hands() -> None:
+    # One hand 0.2 across (upright_hand), one 0.3: 0.25.
+    small = HandMetrics().update(frame(upright_hand()))[0]
+    big_points = [(0.5, 0.8)] * 21
+    big_points[9] = (0.5, 0.5)
+    big = HandMetrics().update(frame(Hand(tuple(big_points), NO_GESTURE, 0.9)))[0]
+
+    assert average_scale(small, big) == pytest.approx(0.25)
 
 
 def test_no_hands_gives_nothing() -> None:

@@ -5,12 +5,14 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G5 — Gesture control. G5.1 done. Two F-02 criteria are carried
-  into G5: joystick feedback (tick at G5.5) and performance (11-13% against a 10% line).
-- **Next step:** G5.2 — gesture state machine: all states, priority rules, cancel,
-  hand-lost release, tested with synthetic hand frame sequences. It inherits one job from
-  G5.1: the metrics forget a missing hand at once, so the 0.3 s grace needs the metrics
-  to hold a missing hand's memory that long.
+- **Current group:** G5 — Gesture control. G5.1 and G5.2 done. Two F-02 criteria are
+  carried into G5: joystick feedback (tick at G5.5) and performance (11-13% against a
+  10% line).
+- **Next step:** G5.3 — F-03 create by gesture: turn `BeginTwoHand(create)` /
+  `UpdateTwoHand` / `Commit` / `Cancel` into a live vector through `state/actions.py`,
+  with the head/tail choice and the 10-vector limit. The intents are produced every frame
+  already; the window's `_on_hand_frame` ignores them until then. Revisit the pinch
+  thresholds with real hands here (see Tuning changes).
 - **Blocked on:** nothing.
 
 ## Completed steps
@@ -54,6 +56,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G4.1 | F-02 camera preview: `gestures/hand_frame.py`, `tracking/camera.py`, `tracking/tracker_thread.py`, `ui/camera_preview.py`, `ui/fitted_scroll_area.py`, window wiring | 2026-09-24 | `G4.1: camera preview` | Three of F-02's five criteria pass; the user confirmed hands and gestures are recognized in the real window. **Two are carried into G5**: the joystick feedback (needs the state machine) and performance, measured at an 11-13% frame-rate drop against the 10% line agreed at planning, closed by the user without a verdict. One real bug reached the user: the camera strip dropped half off the screen when a hand appeared - an overflow dating from G3.2, when the Operations box made the window's minimum height 830px against 728px free on this laptop. Fixed in this step. 23 new tests; suite now 596 passing. |
 | G4 close | F-21 deleted; group closed | 2026-09-24 | `G4 closed: privacy notice deleted` | The user's decision after G4.1. F-21 was deleted outright rather than moved to post-MVP, after the point was raised that it is the disclosure `architecture.md` section 6 calls for. Changed in `features.md`, `build-plan.md`, `project-overview.md`, `architecture.md`, `library-docs.md` and `docs/02` together, so nothing still promises a notice. |
 | G5.1 | Hand metrics: `gestures/hand_metrics.py` (hand scale, pinch hysteresis, One Euro smoothing, hand ids), `HandFrame.aspect`, pinch readout in the preview | 2026-09-24 | `G5.1: hand metrics` | No `features.md` criteria of its own; it is the base for F-03, F-06 and F-07. Three smoothing values added to `interaction-spec.md` section 9 at the user's decision. Found at planning: landmarks are 0-1 per side, so on 4:3 every measured distance was off by up to a third depending on the hand's angle - corrected with the picture's aspect. The user checked pinch detection with real hands in the real window: "working well". Two expected values in the filter tests were the agent's arithmetic, not the code (0.17320 for 0.17317). 31 new tests; suite now 627 passing. |
+| G5.2 | Gesture state machine: `gestures/state_machine.py`, `gestures/intents.py`, the metrics' 0.3 s memory for a missing hand, the gesture line in the preview | 2026-09-24 | `G5.2: gesture state machine` | No `features.md` criteria of its own; F-03, F-05b, F-06, F-07, F-09b, F-13b and F-19 (gestures) are built on it. Found at planning: cancel as specified could almost never happen, since opening a pinching hand releases before a palm is seen - section 5 amended with a release confirm window. Real-hand testing then found MediaPipe mostly losing two hands held close or pointing at the camera (palms-to-camera works), gestures cancelled by pinching hands misread as `Open_Palm` (fixed: only a non-pinching hand cancels), and two-hand pinches arriving 328 and 469 ms apart (window 0.3 -> 0.5 s). Two metrics bugs caught by tests: a late-returning hand resumed as the old one, and a slow frame losing a visible hand. User confirmed with real hands: "now working fine". 45 new tests; suite now 672 passing. |
 
 
 ## Groups
@@ -65,7 +68,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | In progress — G5.1 done |
+| G5 | Gesture control | In progress — G5.1, G5.2 done |
 | G6 | Packaging | Not started |
 
 ---
@@ -227,7 +230,15 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-24 | Hands are told apart by nearest wrist to the previous frame; a missing hand is forgotten at once | MediaPipe lists hands in no stable order, and smoothing and pinch state belong to one hand. The 0.3 s grace of spec section 4.4 is left to G5.2, which owns that rule, at the user's choice - so a one-frame dropout mid-pinch resets that hand until then. Nothing acts on pinches before G5.2. |
 | 2026-09-24 | Hands are measured on the main thread, in the window's `frame_ready` slot | `architecture.md` 4.2 puts the gesture logic on the main thread, and it will drive the store and scene. Measured at 30 microseconds per frame, so it costs the main thread nothing. The tracker's cross-thread test now goes through the real window, which builds offscreen in about 3 s. |
 | 2026-09-24 | A pinch readout was added to the preview in G5.1, ahead of any gesture | The user's choice. It let pinch detection - the first item of `interaction-spec.md` section 11 - be checked with real hands before G5.3 depends on it. |
-| 2026-09-24 | `average_scale` was left out of G5.1 although the approved plan listed it | Nothing calls it until two-hand gestures arrive (G5.3), and `code-standards.md` forbids unused functions. Reported at the step review. |
+| 2026-09-24 | `average_scale` was left out of G5.1 although the approved plan listed it | Nothing calls it until two-hand gestures arrive (G5.3), and `code-standards.md` forbids unused functions. Reported at the step review. Added at G5.2, where the create-or-resize decision first uses it. |
+| 2026-09-24 | **Section 5 amended: a pinch gesture's release waits a 0.3 s confirm window, and an open palm in it cancels** (new tunable `RELEASE_CONFIRM_S`) | Found at G5.2 planning. In CREATING and RESIZING both hands pinch, so the palm can only come from opening a pinching hand - and opening it crosses the pinch end threshold first, which is a release. As written, only the free hand while steering could ever cancel. The user chose this over dropping two-hand cancel. A release by losing a hand commits without waiting, since it is never a cancel. |
+| 2026-09-24 | Steering waits out the two-hand window before starting, rather than starting at once and converting | The spec's wording, and the user's choice. Starting at once would open every create and resize with a hidden begin-and-cancel of a steer, which the app and undo would both have to absorb. The anchor is still the pinch point at the moment the pinch began. |
+| 2026-09-24 | A gesture starts only when a pinch **begins** | Added to section 5. Otherwise the hand still pinching after a two-hand create - or the second pinch ignored during steering - would start steering the moment the gesture ended. |
+| 2026-09-24 | Only a hand that is **not pinching** can cancel with an open palm | Measured with real hands: three gestures cancelled themselves in 30 s, each with only pinching hands in view, because MediaPipe labels a pinch with the other fingers extended as `Open_Palm`. The released hand in the confirm window, and the free hand while steering, still cancel. Section 5 says so. |
+| 2026-09-24 | HOLDING was built fully in G5.2, not left to G5.8 | The user's choice. Hold timing, firing once and re-arming on a shape change are state machine rules; G5.8 connects them to next vector, lock and components, and draws the progress ring. Hold progress is a status returned each frame, not an intent - a small departure from the approved plan, reported at review. |
+| 2026-09-24 | The state machine compares time in whole milliseconds | Frame timestamps are whole milliseconds; float seconds put boundaries a hair either side depending on the numbers (0.334 - 0.034 is not exactly 0.3). Config seconds are converted once. |
+| 2026-09-24 | A hand is lost only if it is actually missing from a frame | Found by a test: a 400 ms gap between two frames that both showed the hand made the metrics treat it as lost and drop the gesture. A tracker stall is not a hand leaving. |
+| 2026-09-24 | Palms toward the camera is the working hand pose, recorded for students | Measured: hands held close or pointing at the camera were tracked as one hand or none. Written into `docs/03` as a likely question; worth putting in front of students before the trial. |
 
 
 ---
@@ -238,6 +249,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 | Date | Value | Old | New | Reason |
 |---|---|---|---|---|
 | 2026-09-23 | `HEAD_TO_TAIL_PAUSE_S` (`interaction-spec.md` section 9, head-to-tail pause) | 0.7 s | 1.5 s | The first tuning change of the project, and the first made the way section 9 intends: the user played the finished animation in the real window at G3.3 and found the hold too short to take in. The chain is the one moment of the animation that is *meant* to be read rather than watched - three arrows laid end to end with the resultant closing the triangle - and 0.7 s is barely long enough to find it before it comes apart. Changed in `config.py` and in `interaction-spec.md` sections 9 and 10 together, since the spec outranks the code when they disagree. The other three phases were left alone; only the still one was too quick. |
+| 2026-09-24 | `TWO_HAND_PINCH_WINDOW_S` (`interaction-spec.md` section 9, two-hand pinch window) | 0.3 s | 0.5 s | Measured with real hands at G5.2, in a recording of the tracker, metrics and state machine while the user did two-hand pinches. The gap between the first and second hand's pinch beginning was 250 ms (became a create), then 328 ms and 469 ms (both became steering, which the user reported as "pinching both close together shows steering"). 0.5 s covers all three. Cost, accepted: one-hand steering starts 0.5 s after the pinch instead of 0.3. Changed in `config.py` and in sections 5 and 9 together. The pinch thresholds were also looked at - pinched distances read 0.14-0.27 hs, often right at the 0.25 start line - and deliberately left alone on one recording's evidence, at the user's choice; revisit with G5.3 testing. |
 
 ---
 

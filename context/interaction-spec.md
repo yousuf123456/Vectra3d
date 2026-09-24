@@ -95,11 +95,15 @@ Only one gesture is active at a time.
 | HOLDING | A hold gesture (section 7) is recognized while IDLE | It triggers, or the hand shape changes |
 
 **Priority rules**
-- Two-hand pinch beats one-hand pinch. If a second hand pinches within **0.3 s** (tunable) of the first, it is a two-hand gesture; otherwise the first hand starts STEERING, and a later second pinch is ignored until STEERING ends.
-- Hold gestures are only recognized in IDLE. They are ignored during any pinch gesture.
+- Two-hand pinch beats one-hand pinch. If a second hand pinches within **0.5 s** (tunable; started at 0.3) of the first, it is a two-hand gesture; otherwise the first hand starts STEERING once the window has passed, and a later second pinch is ignored until STEERING ends. The steering anchor is still the pinch point at the moment the first pinch began.
+- A gesture starts only when a pinch **begins**. A pinch still held when a gesture ends, or a second pinch that was ignored, starts nothing until that hand lets go and pinches again.
+- Hold gestures are only recognized in IDLE. They are ignored during any pinch gesture, and a pinch beginning during HOLDING abandons the hold.
 
 **Cancel (Open_Palm)**
-- Showing an open palm during CREATING, RESIZING, or STEERING cancels the gesture. The vector returns exactly to its state before the gesture started (a vector being created is discarded). No undo step is recorded.
+- Showing an open palm during CREATING, RESIZING, or STEERING cancels the gesture. Only a hand that is **not pinching** counts: a pinch with the other fingers stretched out is often classified as `Open_Palm`, which cancelled gestures at random in real testing (G5.2). The vector returns exactly to its state before the gesture started (a vector being created is discarded). No undo step is recorded.
+- In CREATING and RESIZING both hands are pinching, so the palm can only come from opening a pinching hand, and opening it ends the pinch first. So when a pinch gesture's pinch ends, the gesture **freezes and waits a release confirm window of 0.3 s** (tunable) before committing. An open palm from either hand within that window cancels instead. (Amended 2026-09-24, G5.2: as first written, cancel could only ever happen with the free hand while steering.)
+- While STEERING, an open palm from the free hand cancels at once.
+- A release caused by losing a hand (section 4.4) commits without waiting, since it is never a cancel.
 - Open palm in IDLE does nothing.
 
 **Undo**
@@ -191,7 +195,8 @@ Starting values. Change only after real testing, and record every change in `pro
 | Smoothing speed coefficient (β) | 0.0 | 4.3 |
 | Smoothing derivative cutoff | 1.0 Hz | 4.3 |
 | Hand-lost timeout | 0.3 s | 4.4 |
-| Two-hand pinch window | 0.3 s | 5 |
+| Two-hand pinch window | **0.5 s** (was 0.3; see `progress-tracker.md`) | 5 |
+| Release confirm window | 0.3 s | 5 |
 | "Hands together" distance for create | 1.0 hs | 6.2 |
 | Full stretch | 8 hs | 6.2 |
 | Minimum magnitude | 0.1 | 6.2, 6.3 |
