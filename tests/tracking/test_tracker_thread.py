@@ -26,11 +26,9 @@ from vectra3d.tracking.tracker_thread import (  # noqa: E402
     next_timestamp_ms,
     to_hand_frame,
 )
-from vectra3d.ui.camera_preview import (  # noqa: E402
-    NO_HAND_TEXT,
-    STARTING_TEXT,
-    CameraPreview,
-)
+from vectra3d.state.store import VectorStore  # noqa: E402
+from vectra3d.ui.camera_preview import NO_HAND_TEXT, STARTING_TEXT  # noqa: E402
+from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 WAIT_S = 10.0
 
@@ -81,7 +79,9 @@ def wait_until(condition, app: QApplication) -> None:
 def test_no_hands_gives_an_empty_frame() -> None:
     result = SimpleNamespace(hand_landmarks=[], gestures=[])
 
-    assert to_hand_frame(result, 1234) == HandFrame(hands=(), timestamp_ms=1234)
+    assert to_hand_frame(result, 1234, 4 / 3) == HandFrame(
+        hands=(), timestamp_ms=1234, aspect=4 / 3
+    )
 
 
 def test_two_hands_keep_their_points_and_gestures_in_order() -> None:
@@ -92,7 +92,7 @@ def test_two_hands_keep_their_points_and_gestures_in_order() -> None:
         gestures=[[category("Thumb_Up", 0.9)], [category("Victory", 0.7)]],
     )
 
-    frame = to_hand_frame(result, 5)
+    frame = to_hand_frame(result, 5, 4 / 3)
 
     assert len(frame.hands) == 2
     assert frame.hands[0].gesture == "Thumb_Up"
@@ -107,7 +107,7 @@ def test_two_hands_keep_their_points_and_gestures_in_order() -> None:
 def test_a_hand_with_no_gesture_is_kept_as_no_gesture() -> None:
     result = SimpleNamespace(hand_landmarks=[[point(0.5, 0.5)] * 21], gestures=[[]])
 
-    hand = to_hand_frame(result, 0).hands[0]
+    hand = to_hand_frame(result, 0, 4 / 3).hands[0]
 
     assert hand.gesture == NO_GESTURE
     assert hand.gesture_score == 0.0
@@ -173,6 +173,8 @@ def test_frames_arrive_and_stop_releases_the_camera(app: QApplication) -> None:
     pixels, frame = frames[0]
     # Converted, not the camera's own array: RGB, same size.
     assert pixels.shape == (480, 640, 3)
+    # The shape is read from the picture, not assumed.
+    assert frame.aspect == 640 / 480
     assert frame.hands == ()
     stamps = [frame.timestamp_ms for _, frame in frames]
     assert all(later > earlier for earlier, later in zip(stamps, stamps[1:]))
@@ -193,17 +195,21 @@ def test_a_camera_that_stops_is_reported_and_released(app: QApplication) -> None
     assert camera.released
 
 
-def test_pictures_reach_a_preview_across_threads(app: QApplication) -> None:
+def test_pictures_reach_the_preview_through_the_window_across_threads(
+    app: QApplication,
+) -> None:
     # The connection the window makes: default, so Qt queues it from the
-    # tracker's thread to the widget's. A slot that failed here would be
-    # swallowed by Qt, which is why this goes through a real widget.
+    # tracker's thread to the window's, where the hands are measured and the
+    # preview updated. A slot that failed here would be swallowed by Qt,
+    # which is why this goes through the real window and not a stand-in.
+    window = VectraMainWindow(VectorStore())
     tracker = TrackerThread(camera_opener=lambda: FakeCamera())
-    preview = CameraPreview()
-    tracker.frame_ready.connect(preview.show_frame)
-    assert preview.status == STARTING_TEXT
+    tracker.frame_ready.connect(window._on_hand_frame)
+    assert window.camera_preview.status == STARTING_TEXT
 
     tracker.start()
     try:
-        wait_until(lambda: preview.status == NO_HAND_TEXT, app)
+        wait_until(lambda: window.camera_preview.status == NO_HAND_TEXT, app)
     finally:
         tracker.stop()
+        window.close()

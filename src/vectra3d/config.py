@@ -22,6 +22,15 @@ from __future__ import annotations
 PINCH_START_HS: float = 0.25  # hand-scale units
 PINCH_END_HS: float = 0.35  # hand-scale units
 
+# --- Smoothing (spec section 4.3) ---
+# One Euro filter on the landmark positions. It smooths hard when the hand is
+# still (down to the minimum cutoff) and follows closely when it moves fast
+# (the cutoff rises by beta for every unit of speed). Starting values are the
+# filter authors' defaults; their tuning procedure begins with beta at 0.
+SMOOTHING_MIN_CUTOFF_HZ: float = 1.0  # hertz
+SMOOTHING_BETA: float = 0.0  # hertz per (picture height per second)
+SMOOTHING_DERIVATIVE_CUTOFF_HZ: float = 1.0  # hertz
+
 # --- Losing a hand (spec section 4.4) ---
 # A tracked hand missing for longer than this ends the gesture as a normal
 # release, not a cancel.

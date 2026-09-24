@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from pyvistaqt import MainWindow, QtInteractor
@@ -27,6 +28,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vectra3d.gestures.hand_frame import HandFrame
+from vectra3d.gestures.hand_metrics import HandMetrics
 from vectra3d.render.animations import ComponentTransition, HeadToTail
 from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
 from vectra3d.state import actions, naming
@@ -107,9 +110,13 @@ class VectraMainWindow(MainWindow):
         self.camera_preview = CameraPreview(frame)
         layout.addWidget(self.camera_preview)
         self._tracker = TrackerThread(parent=self)
+        # Measures hands here, on the main thread, rather than in the tracker:
+        # the gesture logic built on these measurements drives the store and
+        # the scene, which only this thread may touch (`architecture.md` 4.3).
+        self._hand_metrics = HandMetrics()
         # Emitted on the tracker's thread and delivered on this one: Qt
         # queues a signal across threads, so these slots may touch widgets.
-        self._tracker.frame_ready.connect(self.camera_preview.show_frame)
+        self._tracker.frame_ready.connect(self._on_hand_frame)
         self._tracker.camera_unavailable.connect(self.camera_preview.show_no_camera)
         self._tracker.camera_lost.connect(self.camera_preview.show_camera_lost)
 
@@ -216,6 +223,9 @@ class VectraMainWindow(MainWindow):
     def start_camera(self) -> None:
         """Start watching the camera. The app runs fully without it (F-02)."""
         self._tracker.start()
+
+    def _on_hand_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
+        self.camera_preview.show_frame(pixels, frame, self._hand_metrics.update(frame))
 
     def _build_toolbar(self) -> None:
         """The view controls, and undo.

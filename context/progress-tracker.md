@@ -5,13 +5,13 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G4 — Hand tracking. **Complete.** F-21 (the privacy notice) was
-  deleted at the user's decision, so G4.2 does not exist. Two F-02 criteria are carried
+- **Current group:** G5 — Gesture control. G5.1 done. Two F-02 criteria are carried
   into G5: joystick feedback (tick at G5.5) and performance (11-13% against a 10% line).
-- **Next step:** G5.1 — hand metrics: hand scale, pinch detection with hysteresis,
-  smoothing, tested with synthetic hand data. **Start a fresh session** (`build-plan.md`
-  section 3 asks for one session per group).
-- **Blocked on:** nothing. G4 was closed **without `/review`**, as G2 and G3 were.
+- **Next step:** G5.2 — gesture state machine: all states, priority rules, cancel,
+  hand-lost release, tested with synthetic hand frame sequences. It inherits one job from
+  G5.1: the metrics forget a missing hand at once, so the 0.3 s grace needs the metrics
+  to hold a missing hand's memory that long.
+- **Blocked on:** nothing.
 
 ## Completed steps
 
@@ -53,6 +53,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G3 close | F-17 moved to post-MVP; group closed | 2026-09-23 | `G3 closed: subtraction, and F-17 moved to post-MVP` | The user's decision at the G3.4 review. F-17 was an MVP feature named in `project-overview.md`, so the change was made in `features.md`, `project-overview.md` and `build-plan.md` together rather than only in the plan. Moved rather than deleted, because `core/operations.py` already has `scale`, tested at G3.1. **The whole app now works without a camera**, which is what the G3 checkpoint asks for. |
 | G4.1 | F-02 camera preview: `gestures/hand_frame.py`, `tracking/camera.py`, `tracking/tracker_thread.py`, `ui/camera_preview.py`, `ui/fitted_scroll_area.py`, window wiring | 2026-09-24 | `G4.1: camera preview` | Three of F-02's five criteria pass; the user confirmed hands and gestures are recognized in the real window. **Two are carried into G5**: the joystick feedback (needs the state machine) and performance, measured at an 11-13% frame-rate drop against the 10% line agreed at planning, closed by the user without a verdict. One real bug reached the user: the camera strip dropped half off the screen when a hand appeared - an overflow dating from G3.2, when the Operations box made the window's minimum height 830px against 728px free on this laptop. Fixed in this step. 23 new tests; suite now 596 passing. |
 | G4 close | F-21 deleted; group closed | 2026-09-24 | `G4 closed: privacy notice deleted` | The user's decision after G4.1. F-21 was deleted outright rather than moved to post-MVP, after the point was raised that it is the disclosure `architecture.md` section 6 calls for. Changed in `features.md`, `build-plan.md`, `project-overview.md`, `architecture.md`, `library-docs.md` and `docs/02` together, so nothing still promises a notice. |
+| G5.1 | Hand metrics: `gestures/hand_metrics.py` (hand scale, pinch hysteresis, One Euro smoothing, hand ids), `HandFrame.aspect`, pinch readout in the preview | 2026-09-24 | `G5.1: hand metrics` | No `features.md` criteria of its own; it is the base for F-03, F-06 and F-07. Three smoothing values added to `interaction-spec.md` section 9 at the user's decision. Found at planning: landmarks are 0-1 per side, so on 4:3 every measured distance was off by up to a third depending on the hand's angle - corrected with the picture's aspect. The user checked pinch detection with real hands in the real window: "working well". Two expected values in the filter tests were the agent's arithmetic, not the code (0.17320 for 0.17317). 31 new tests; suite now 627 passing. |
 
 
 ## Groups
@@ -64,7 +65,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | Next |
+| G5 | Gesture control | In progress — G5.1 done |
 | G6 | Packaging | Not started |
 
 ---
@@ -219,6 +220,14 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-24 | The window opens maximized when 1200x800 does not fit the screen | Opening at a fixed 1200x800 on a 1366x768 laptop starts the window with its bottom already off screen. |
 | 2026-09-24 | **F-21, the first-launch privacy notice, deleted entirely**, at the user's decision | Asked for at the G4.1 close. Raised first: F-21 existed because MediaPipe Tasks sends usage metrics to Google when online, Google's notice puts the duty to inform users on the app, and `architecture.md` section 6, the project brief and `docs/02` all promised students would be told. Offered moving it to post-MVP (as F-17 was) or keeping it for before G6; the user chose deletion with no post-MVP entry. **Consequence: the app does not tell students about the metrics.** If the trial needs that disclosure, it has to be made outside the app. The documents were edited so none of them still claims the app tells anyone. |
 | 2026-09-24 | **G4 closed without running `/review`**, the third group in a row | The user's choice. The whole-app `/review` before the student trial remains the first review of G2, G3 and G4 code - now including the tracker thread G5 builds on. |
+| 2026-09-24 | `HandFrame` carries the picture's `aspect`, and every hand distance is measured in picture heights | MediaPipe's landmarks are 0-1 across each side separately, so on a 640x480 picture a unit of x is a third longer than a unit of y, and a hand's scale changed by up to a third just from turning it. The aspect is read from the actual picture, not assumed, and has no default: a guessed 4:3 would quietly mis-measure on any other camera. Landmarks stay 0-1, so the preview's drawing did not change. |
+| 2026-09-24 | **Three smoothing values added to `interaction-spec.md` section 9**: minimum cutoff 1.0 Hz, β 0.0, derivative cutoff 1.0 Hz | Section 4.3 called the parameters tunable but section 9 did not list them, and `CLAUDE.md` puts every tunable in `config.py`. The user approved the spec change. They are the filter authors' defaults: their tuning procedure starts β at 0 because the right value depends on the units measured, so any other start would be a guess. Known cost until tuned: about 0.15 s of lag. |
+| 2026-09-24 | The One Euro filter is written in the project, not the authors' PyPI package | About 25 lines against a new dependency, which `code-standards.md` would need asking for. Checked line by line against the authors' reference implementation. |
+| 2026-09-24 | Only the four landmarks the metrics use are smoothed; the preview draws the raw points | Wrist, middle-finger base, thumb tip, index tip - eight filters per hand. The preview shows exactly what the tracker saw. |
+| 2026-09-24 | Hands are told apart by nearest wrist to the previous frame; a missing hand is forgotten at once | MediaPipe lists hands in no stable order, and smoothing and pinch state belong to one hand. The 0.3 s grace of spec section 4.4 is left to G5.2, which owns that rule, at the user's choice - so a one-frame dropout mid-pinch resets that hand until then. Nothing acts on pinches before G5.2. |
+| 2026-09-24 | Hands are measured on the main thread, in the window's `frame_ready` slot | `architecture.md` 4.2 puts the gesture logic on the main thread, and it will drive the store and scene. Measured at 30 microseconds per frame, so it costs the main thread nothing. The tracker's cross-thread test now goes through the real window, which builds offscreen in about 3 s. |
+| 2026-09-24 | A pinch readout was added to the preview in G5.1, ahead of any gesture | The user's choice. It let pinch detection - the first item of `interaction-spec.md` section 11 - be checked with real hands before G5.3 depends on it. |
+| 2026-09-24 | `average_scale` was left out of G5.1 although the approved plan listed it | Nothing calls it until two-hand gestures arrive (G5.3), and `code-standards.md` forbids unused functions. Reported at the step review. |
 
 
 ---

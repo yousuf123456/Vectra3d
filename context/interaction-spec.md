@@ -76,7 +76,7 @@ Along the z axis (θ = 0° or 180°), φ is undefined; display it as `—` and t
 - The gap between these two values prevents flickering between pinched and not pinched.
 
 ### 4.3 Smoothing
-- Landmark positions are smoothed before use to remove shake. Use a One Euro filter (preferred, because it smooths strongly when the hand is still but reacts quickly when it moves) or, if that proves problematic, an exponential moving average. Parameters are tunable.
+- Landmark positions are smoothed before use to remove shake. Use a One Euro filter (preferred, because it smooths strongly when the hand is still but reacts quickly when it moves) or, if that proves problematic, an exponential moving average. Parameters are tunable (section 9); the starting values are the filter authors' own defaults, and β starts at 0 as their tuning procedure prescribes.
 
 ### 4.4 Losing the hand
 - If a hand involved in an active gesture is lost for more than **0.3 s** (tunable), the gesture ends as a normal **release**: the vector keeps its current state and one undo step is recorded. It is not treated as a cancel.
@@ -187,6 +187,9 @@ Starting values. Change only after real testing, and record every change in `pro
 |---|---|---|
 | Pinch start threshold | 0.25 hs | 4.2 |
 | Pinch end threshold | 0.35 hs | 4.2 |
+| Smoothing minimum cutoff | 1.0 Hz | 4.3 |
+| Smoothing speed coefficient (β) | 0.0 | 4.3 |
+| Smoothing derivative cutoff | 1.0 Hz | 4.3 |
 | Hand-lost timeout | 0.3 s | 4.4 |
 | Two-hand pinch window | 0.3 s | 5 |
 | "Hands together" distance for create | 1.0 hs | 6.2 |

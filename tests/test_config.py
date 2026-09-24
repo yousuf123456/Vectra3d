@@ -13,6 +13,8 @@ from vectra3d import config
 SECTION_9_VALUES = [
     "PINCH_START_HS",
     "PINCH_END_HS",
+    "SMOOTHING_MIN_CUTOFF_HZ",
+    "SMOOTHING_DERIVATIVE_CUTOFF_HZ",
     "HAND_LOST_TIMEOUT_S",
     "TWO_HAND_PINCH_WINDOW_S",
     "HANDS_TOGETHER_HS",
@@ -44,6 +46,13 @@ def test_every_section_9_value_is_present_and_positive() -> None:
 def test_pinch_thresholds_leave_room_for_hysteresis() -> None:
     # A pinch must end at a wider distance than it starts, or it flickers.
     assert config.PINCH_END_HS > config.PINCH_START_HS
+
+
+def test_smoothing_beta_is_not_negative() -> None:
+    # Unlike every other section 9 value, beta may be zero: that is where the
+    # filter authors' tuning procedure starts. A negative beta would lower the
+    # cutoff as the hand speeds up - the opposite of the filter's purpose.
+    assert config.SMOOTHING_BETA >= 0
 
 
 def test_snap_releases_wider_than_it_engages() -> None:

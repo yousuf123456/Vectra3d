@@ -44,7 +44,10 @@ A single webcam sees the world flat, like a photo. It's good at telling left fro
 - This is a deliberate design choice, recorded as a non-goal in the project overview.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.1.*
+Built in G4.1 and G5.1.
+
+- Depth is dropped at the boundary: `to_hand_frame()` keeps only each point's x and y, so nothing after the tracker can use it even by accident.
+- Every distance in `gestures/hand_metrics.py` is measured in the picture's two dimensions only. A vector's depth comes later from steering (G5.5), never from the hand's distance to the camera.
 
 ### Likely questions
 - **Couldn't you use two cameras or a depth camera?** Yes, but the goal is to work on any student's laptop with no extra hardware.
@@ -62,7 +65,12 @@ Your hand looks bigger when you lean toward the camera and smaller when you sit 
 - For two-hand gestures, the average of both hands' scales is used.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.1.*
+Built in G5.1, in `gestures/hand_metrics.py`.
+
+- `hand_scale()` is the distance from point 0 to point 9, measured with `math.hypot`.
+- **The picture's shape has to be corrected first.** MediaPipe gives each point as 0-1 across the width and 0-1 down the height separately, so on a 640x480 picture one unit of x is a third longer than one unit of y. Measured naively, a hand would change size by up to a third just by turning it from upright to sideways. Each frame therefore carries the picture's `aspect` (width divided by height, read from the actual picture rather than assumed), and `to_picture_units()` multiplies x by it, so every distance is in units of the picture's height. A test holds the same hand upright and sideways and gets 0.2 both times.
+- The scale is measured from the smoothed points (section 5), so it does not jitter either.
+- The average of two hands' scales, for two-hand gestures, is added with the first gesture that uses it (G5.3).
 
 ### Likely questions
 - **Why the wrist to the middle knuckle?** Those points don't move when fingers bend, so the measurement stays stable during gestures.
@@ -82,7 +90,13 @@ A pinch is detected when your thumb tip and index fingertip come close together.
 - Pinch isn't in MediaPipe's built-in gesture list, so it's computed directly from landmarks.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.1.*
+Built in G5.1, in `gestures/hand_metrics.py`.
+
+- `pinch_distance_hs()` divides the thumb-to-index distance by the hand scale. A hand with a scale of zero - which only made-up test data can produce - has no pinch distance rather than a division by zero, and counts as not pinching.
+- `next_pinch(was_pinching, distance)` is the hysteresis, as one small function: a pinch starts only below `PINCH_START_HS` and ends only above `PINCH_END_HS`, and landing exactly on either keeps the current state. The thresholds come from `config.py`.
+- Because a pinch depends on the frame before, each hand needs a memory. `HandMetrics` keeps one per hand and gives each hand an id. MediaPipe lists hands in no stable order, so every frame the hands are paired with the previous frame's by the nearest wrist, trying both pairings when there are two hands and taking the one where they moved least in total. A hand that disappears is forgotten at once; the 0.3 s grace before a lost hand ends a gesture (spec section 4.4) belongs to the gesture state machine in G5.2.
+- `pinch_point()` is the midpoint of the two fingertips.
+- The camera preview shows the result: each hand's line says "Pinching" (or, for example, "Victory, pinching", since a pinch is measured from the fingertips and is separate from MediaPipe's gestures).
 
 ### Likely questions
 - **What if it doesn't detect my pinch?** The thresholds are tunable values, adjusted after real testing. Lighting also matters: the model needs to see your fingers clearly.
@@ -100,7 +114,12 @@ Even a steady hand shakes slightly, and the tracking adds its own small jitter. 
 - An exponential moving average is the fallback if the One Euro filter causes problems.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.1.*
+Built in G5.1, in `gestures/hand_metrics.py`.
+
+- `OneEuroFilter` is written in the project (about 25 lines) rather than taken from the authors' PyPI package, which would have been a new dependency for very little code. It follows the authors' reference implementation, including that the first value passes through unchanged. It is timed by each frame's own timestamp, because the frame rate is not steady - it drops from about 30 to about 10 frames a second while the 3D view is busy.
+- Only the four points the measurements use are smoothed - the wrist, the middle-finger base, and the thumb and index tips - x and y separately, so eight filters per hand. The preview still draws the raw points, showing exactly what the tracker saw.
+- The three settings - minimum cutoff 1.0 Hz, speed coefficient β 0.0, derivative cutoff 1.0 Hz - are in `config.py` and the spec's section 9 table. They are the authors' own defaults; their tuning procedure starts β at 0 and raises it with real hands. Until it is tuned, a pinch registers about 0.15 s late.
+- Measured on a still point with random shake: the filter leaves 0.295 of the shake, against 0.31 predicted. It costs about 30 microseconds per frame with two hands, against 33 ms between camera frames.
 
 ### Likely questions
 - **Why not just average the last few frames?** A plain average always lags behind fast movements. The adaptive filter lags much less when you move quickly.

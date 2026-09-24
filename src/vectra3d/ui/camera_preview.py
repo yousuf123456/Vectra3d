@@ -1,8 +1,8 @@
 """The camera preview strip under the 3D view (F-02).
 
 Shows the mirrored webcam picture with every detected hand drawn on it, and
-beside it the name of the gesture each hand is making - or a plain message
-when there is no camera. It only displays what the tracker thread sends; it
+beside it the name of the gesture each hand is making and whether it is
+pinching - or a plain message when there is no camera. It only displays what the tracker thread sends; it
 changes nothing.
 
 The hands are drawn with `QPainter` over the picture, because MediaPipe's own
@@ -22,6 +22,7 @@ from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from vectra3d.gestures.hand_frame import NO_GESTURE, HandFrame
+from vectra3d.gestures.hand_metrics import TrackedHand
 from vectra3d.ui import theme
 
 # 4:3, the shape of the picture a laptop webcam delivers (640x480), so the
@@ -30,6 +31,7 @@ PICTURE_WIDTH = 240
 PICTURE_HEIGHT = 180
 
 NO_HAND_TEXT = "No hand detected"
+PINCHING_TEXT = "Pinching"
 STARTING_TEXT = "Starting the camera..."
 NO_CAMERA_TEXT = "No webcam found. Everything still works from the panels."
 CAMERA_LOST_TEXT = (
@@ -71,19 +73,33 @@ def gesture_text(label: str) -> str:
     return GESTURE_NAMES.get(label, label)
 
 
-def status_text(frame: HandFrame) -> str:
+def hand_text(hand: TrackedHand) -> str:
+    """One hand's gesture in plain words, and whether it is pinching.
+
+    A pinch is not one of MediaPipe's gestures - it is measured from the
+    fingertips - so a hand can be both. When it is only pinching, "No gesture,
+    pinching" would bury the one thing it is doing, so it just says so.
+    """
+    if not hand.pinching:
+        return gesture_text(hand.gesture)
+    if hand.gesture == NO_GESTURE:
+        return PINCHING_TEXT
+    return f"{gesture_text(hand.gesture)}, pinching"
+
+
+def status_text(hands: tuple[TrackedHand, ...]) -> str:
     """What the strip says about the hands in one frame.
 
     With two hands, each is named by the side of the picture it is on, so the
     student can tell which line is which. MediaPipe lists hands in no stable
-    order, so they are sorted by where the wrist (point 0) is.
+    order, so they are sorted by where the wrist is.
     """
-    if not frame.hands:
+    if not hands:
         return NO_HAND_TEXT
-    if len(frame.hands) == 1:
-        return gesture_text(frame.hands[0].gesture)
-    left, right = sorted(frame.hands, key=lambda hand: hand.landmarks[0][0])
-    return f"Left: {gesture_text(left.gesture)}\nRight: {gesture_text(right.gesture)}"
+    if len(hands) == 1:
+        return hand_text(hands[0])
+    left, right = sorted(hands, key=lambda hand: hand.wrist[0])
+    return f"Left: {hand_text(left)}\nRight: {hand_text(right)}"
 
 
 class _Picture(QWidget):
@@ -178,10 +194,17 @@ class CameraPreview(QWidget):
     def status(self) -> str:
         return self._status.text()
 
-    def show_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
-        """Show one picture from the tracker and the hands found in it."""
+    def show_frame(
+        self, pixels: np.ndarray, frame: HandFrame, hands: tuple[TrackedHand, ...]
+    ) -> None:
+        """Show one picture, the raw hands drawn on it, and what they are doing.
+
+        `hands` are the same hands as `frame.hands`, measured. The raw points
+        are drawn, not the smoothed ones, so the picture shows exactly what
+        the tracker saw.
+        """
         self._picture.show_frame(pixels, frame)
-        text = status_text(frame)
+        text = status_text(hands)
         # Set only on a change: 30 times a second, a label that is told its
         # text again still re-lays itself out.
         if text != self._status.text():

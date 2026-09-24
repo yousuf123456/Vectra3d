@@ -67,12 +67,13 @@ def next_timestamp_ms(previous: int | None) -> int:
     return now
 
 
-def to_hand_frame(result: Any, timestamp_ms: int) -> HandFrame:
+def to_hand_frame(result: Any, timestamp_ms: int, aspect: float) -> HandFrame:
     """Turn a MediaPipe `GestureRecognizerResult` into a plain `HandFrame`.
 
     `result.hand_landmarks[i]` and `result.gestures[i]` describe the same
     hand. A hand whose gesture list comes back empty is treated as making no
     gesture, rather than being dropped: it is still a hand on screen.
+    `aspect` is the recognized picture's width over its height.
     """
     hands = []
     for index, points in enumerate(result.hand_landmarks):
@@ -85,7 +86,7 @@ def to_hand_frame(result: Any, timestamp_ms: int) -> HandFrame:
                 gesture_score=top.score if top is not None else 0.0,
             )
         )
-    return HandFrame(hands=tuple(hands), timestamp_ms=timestamp_ms)
+    return HandFrame(hands=tuple(hands), timestamp_ms=timestamp_ms, aspect=aspect)
 
 
 class TrackerThread(QThread):
@@ -142,6 +143,11 @@ class TrackerThread(QThread):
                         mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb),
                         timestamp,
                     )
-                    self.frame_ready.emit(rgb, to_hand_frame(result, timestamp))
+                    # Read from the picture itself: the camera, not the app,
+                    # decides its resolution.
+                    height, width = rgb.shape[:2]
+                    self.frame_ready.emit(
+                        rgb, to_hand_frame(result, timestamp, width / height)
+                    )
         finally:
             camera.release()

@@ -6,12 +6,14 @@ import numpy as np
 import pytest
 
 from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
+from vectra3d.gestures.hand_metrics import TrackedHand
 
 pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtGui import QColor  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
 from vectra3d.ui.camera_preview import (  # noqa: E402
     CAMERA_LOST_TEXT,
@@ -20,10 +22,14 @@ from vectra3d.ui.camera_preview import (  # noqa: E402
     NO_HAND_TEXT,
     PICTURE_HEIGHT,
     PICTURE_WIDTH,
+    PINCHING_TEXT,
     CameraPreview,
     gesture_text,
     status_text,
 )
+from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
+
+ASPECT = 4 / 3
 
 # Every label in the bundled model's `labels.txt`.
 MODEL_LABELS = (
@@ -47,6 +53,25 @@ def hand_at(x: float, y: float, gesture: str = NO_GESTURE) -> Hand:
     return Hand(landmarks=((x, y),) * 21, gesture=gesture, gesture_score=0.9)
 
 
+def tracked(
+    wrist_x: float, gesture: str = NO_GESTURE, pinching: bool = False
+) -> TrackedHand:
+    return TrackedHand(
+        hand_id=0,
+        gesture=gesture,
+        gesture_score=0.9,
+        wrist=(wrist_x, 0.5),
+        scale=0.2,
+        pinch_distance_hs=0.1 if pinching else 1.0,
+        pinching=pinching,
+        pinch_point=(wrist_x, 0.4),
+    )
+
+
+def empty_frame() -> HandFrame:
+    return HandFrame(hands=(), timestamp_ms=0, aspect=ASPECT)
+
+
 # --- Words ---
 
 
@@ -67,22 +92,37 @@ def test_an_unknown_label_is_shown_as_is() -> None:
 
 
 def test_no_hands() -> None:
-    assert status_text(HandFrame(hands=(), timestamp_ms=0)) == NO_HAND_TEXT
+    assert status_text(()) == NO_HAND_TEXT
 
 
 def test_one_hand_is_just_its_gesture() -> None:
-    frame = HandFrame(hands=(hand_at(0.5, 0.5, "Victory"),), timestamp_ms=0)
-
-    assert status_text(frame) == "Victory"
+    assert status_text((tracked(0.5, "Victory"),)) == "Victory"
 
 
 def test_two_hands_are_named_by_side_whatever_order_they_arrive_in() -> None:
-    left = hand_at(0.2, 0.5, "Thumb_Up")
-    right = hand_at(0.8, 0.5, "Open_Palm")
+    left = tracked(0.2, "Thumb_Up")
+    right = tracked(0.8, "Open_Palm")
     expected = "Left: Thumb up\nRight: Open palm"
 
-    assert status_text(HandFrame(hands=(left, right), timestamp_ms=0)) == expected
-    assert status_text(HandFrame(hands=(right, left), timestamp_ms=0)) == expected
+    assert status_text((left, right)) == expected
+    assert status_text((right, left)) == expected
+
+
+def test_a_pinch_with_no_gesture_just_says_pinching() -> None:
+    assert status_text((tracked(0.5, pinching=True),)) == PINCHING_TEXT
+
+
+def test_a_pinch_and_a_gesture_are_both_named() -> None:
+    assert status_text((tracked(0.5, "Victory", pinching=True),)) == (
+        "Victory, pinching"
+    )
+
+
+def test_each_of_two_hands_shows_its_own_pinch() -> None:
+    left = tracked(0.2, pinching=True)
+    right = tracked(0.8, "Open_Palm")
+
+    assert status_text((right, left)) == "Left: Pinching\nRight: Open palm"
 
 
 # --- The widget ---
@@ -102,7 +142,7 @@ def test_a_frame_with_no_hands_says_so(app: QApplication) -> None:
     preview = CameraPreview()
     pixels = np.zeros((480, 640, 3), dtype=np.uint8)
 
-    preview.show_frame(pixels, HandFrame(hands=(), timestamp_ms=0))
+    preview.show_frame(pixels, empty_frame(), ())
 
     assert preview.status == NO_HAND_TEXT
 
@@ -117,7 +157,9 @@ def test_the_picture_and_the_hand_are_drawn(app: QApplication) -> None:
     # way across and down, so the point colour lands on one known spot.
     pixels = np.zeros((480, 640, 3), dtype=np.uint8)
     pixels[:, :, 0] = 255
-    preview.show_frame(pixels, HandFrame(hands=(hand_at(0.25, 0.25),), timestamp_ms=0))
+    hand = hand_at(0.25, 0.25)
+    frame = HandFrame(hands=(hand,), timestamp_ms=0, aspect=ASPECT)
+    preview.show_frame(pixels, frame, (tracked(0.25),))
 
     image = picture_of(preview)
 
@@ -133,9 +175,44 @@ def test_a_message_clears_the_last_picture(app: QApplication) -> None:
     # A frozen frame would look like a camera that is still working.
     preview = CameraPreview()
     pixels = np.full((480, 640, 3), 255, dtype=np.uint8)
-    preview.show_frame(pixels, HandFrame(hands=(), timestamp_ms=0))
+    preview.show_frame(pixels, empty_frame(), ())
 
     preview.show_camera_lost()
 
     centre = picture_of(preview).pixelColor(PICTURE_WIDTH // 2, PICTURE_HEIGHT // 2)
     assert centre == QColor(theme.PREVIEW_BACKGROUND)
+
+
+# --- Through the window ---
+
+
+def pinching_hand() -> Hand:
+    """A hand held with the thumb and index tips 0.1 hs apart.
+
+    Wrist at (0.5, 0.8), middle-finger base 0.2 straight above it: 1 hs is
+    0.2 picture heights whatever the aspect, because the two differ only in y.
+    The fingertips are 0.02 apart in y, which is 0.1 hs - under the 0.25 hs a
+    pinch needs to start.
+    """
+    points = [(0.5, 0.5)] * 21
+    points[0] = (0.5, 0.8)
+    points[9] = (0.5, 0.6)
+    points[4] = (0.5, 0.40)
+    points[8] = (0.5, 0.42)
+    return Hand(landmarks=tuple(points), gesture=NO_GESTURE, gesture_score=0.9)
+
+
+def test_the_window_measures_each_frame_and_the_preview_says_pinching(
+    app: QApplication,
+) -> None:
+    # The window's own slot, called directly so that anything it raises
+    # reaches the test instead of being swallowed by Qt. That the tracker is
+    # connected to this slot is proven across threads in the tracker's tests.
+    window = VectraMainWindow(VectorStore())
+    pixels = np.zeros((480, 640, 3), dtype=np.uint8)
+    try:
+        frame = HandFrame(hands=(pinching_hand(),), timestamp_ms=0, aspect=ASPECT)
+        window._on_hand_frame(pixels, frame)
+        assert window.camera_preview.status == PINCHING_TEXT
+    finally:
+        window.close()

@@ -44,7 +44,14 @@ class HandFrame:
 
     `timestamp_ms` is the same increasing millisecond clock the recognizer
     was given, so G5's timeouts can be measured in frames' own time.
+
+    `aspect` is the picture's width divided by its height. Landmarks are 0-1
+    across each side separately, so on a 640x480 picture one unit of x is a
+    third longer than one unit of y; any distance measured between landmarks
+    has to multiply x by this first. There is no default, because a guessed
+    4:3 would quietly mis-measure on a camera of any other shape.
     """
 
     hands: tuple[Hand, ...]
     timestamp_ms: int
+    aspect: float
