@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence
 from pyvistaqt import MainWindow, QtInteractor
 from PySide6.QtWidgets import (
@@ -43,6 +43,7 @@ from vectra3d.ui import theme
 from vectra3d.ui.action_panel import ActionPanel
 from vectra3d.ui.camera_preview import CameraPreview
 from vectra3d.ui.fitted_scroll_area import FittedScrollArea
+from vectra3d.ui.gesture_controller import GestureController
 from vectra3d.ui.info_panel import InfoPanel
 
 WINDOW_TITLE = "Vectra3D"
@@ -116,6 +117,12 @@ class VectraMainWindow(MainWindow):
         # the scene, which only this thread may touch (`architecture.md` 4.3).
         self._hand_metrics = HandMetrics()
         self._gestures = GestureStateMachine()
+        # Turns what the machine decided into changes to the vectors, through
+        # the same actions the panel uses (`architecture.md` section 2).
+        self._gesture_controller = GestureController(self._store)
+        # Whether a redraw of the vector being moved by hand is already asked
+        # for; see `_on_store_changed`.
+        self._live_redraw_pending = False
         # Emitted on the tracker's thread and delivered on this one: Qt
         # queues a signal across threads, so these slots may touch widgets.
         self._tracker.frame_ready.connect(self._on_hand_frame)
@@ -228,10 +235,14 @@ class VectraMainWindow(MainWindow):
 
     def _on_hand_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
         hands = self._hand_metrics.update(frame)
-        # The intents are not acted on yet: gestures reach the vectors from
-        # G5.3. Until then the preview shows what the machine decided.
         output = self._gestures.update(hands, frame.timestamp_ms)
-        self.camera_preview.show_frame(pixels, frame, hands, output)
+        # The camera is read now, every frame: "right" is the screen's right
+        # as the student sees it at this moment (`interaction-spec.md` 6.1).
+        camera = self.plotter.camera
+        self._gesture_controller.apply(output.intents, camera.direction, camera.up)
+        self.camera_preview.show_frame(
+            pixels, frame, hands, output, self._gesture_controller.message
+        )
 
     def _build_toolbar(self) -> None:
         """The view controls, and undo.
@@ -360,6 +371,45 @@ class VectraMainWindow(MainWindow):
         self.result.draw(replace(self._result, components=components))
         self.plotter.render()
 
+    def _live_name(self) -> str | None:
+        """The vector a gesture is moving, if only it needs redrawing.
+
+        None when no gesture is moving a vector, and also when the moving
+        vector feeds the result: the result's arrow and card would then have
+        to follow it too, so the full redraw runs instead.
+        """
+        name = self._gesture_controller.live_name
+        if not self._store.gesture_in_progress or self._store.get(name) is None:
+            return None
+        result = self._store.result
+        if result is not None and name in result.sources:
+            return None
+        return name
+
+    def _redraw_live(self) -> None:
+        """Redraw the vector being moved by hand, and nothing else.
+
+        Everything else in the scene is as the last full redraw left it.
+        By the time this runs the gesture may have ended, in which case the
+        full redraw that its ending caused has already done the work.
+        """
+        self._live_redraw_pending = False
+        name = self._live_name()
+        if name is None:
+            return
+
+        vector = self._store.get(name)
+        vectors = self._store.vectors
+        label = self._gesture_controller.labels().get(name, name)
+        self.vectors.redraw(vector, name == self._store.active_name, label)
+        if self._store.components_shown == name:
+            self.overlays.draw(vectors, name)
+        if self._store.projections_shown == name:
+            self.projections.draw(vectors, name)
+        self.plotter.render()
+        self.info_panel.update_vector(vector)
+        self.action_panel.refresh()
+
     def _on_undo(self) -> None:
         """Undo, unless the student is typing.
 
@@ -396,14 +446,29 @@ class VectraMainWindow(MainWindow):
             self._head_to_tail.cancel()
             return
 
+        # A vector moved by hand changes on every camera frame. Redrawing the
+        # whole scene and panel each time measured about 300 ms against a
+        # frame of 33, so frames queued and the arrow fell ever further
+        # behind the hands. Instead, one redraw of just that vector is asked
+        # for; frames that arrive before it runs change the store but share
+        # the one redraw, which then shows the latest of them.
+        if self._live_name() is not None:
+            if not self._live_redraw_pending:
+                self._live_redraw_pending = True
+                QTimer.singleShot(0, self._redraw_live)
+            return
+
         vectors = self._store.vectors
         active = self._store.active_name
         result = self._store.result
         # The world is sized to the result as well as to the vectors: a
         # resultant is longer than either of its parts when they point the
         # same way (`interaction-spec.md` section 3).
-        self.scene.update_for(vectors, result)
-        self.vectors.draw(vectors, active)
+        # Never while a vector is being moved by hand: the world rescales
+        # once the gesture is released (`interaction-spec.md` section 3).
+        if not self._store.gesture_in_progress:
+            self.scene.update_for(vectors, result)
+        self.vectors.draw(vectors, active, self._gesture_controller.labels())
         self.overlays.draw(vectors, self._store.components_shown)
         self.projections.draw(vectors, self._store.projections_shown)
 
@@ -430,5 +495,8 @@ class VectraMainWindow(MainWindow):
             can_show_result=not self._head_to_tail.is_playing,
         )
         self.action_panel.refresh()
-        self._undo.setEnabled(self._store.history.can_undo)
-        self._redo.setEnabled(self._store.history.can_redo)
+        # Not mid-gesture: undo would put back a scene from under the hands,
+        # and the gesture would then commit on top of it.
+        idle = not self._store.gesture_in_progress
+        self._undo.setEnabled(idle and self._store.history.can_undo)
+        self._redo.setEnabled(idle and self._store.history.can_redo)

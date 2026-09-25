@@ -50,8 +50,22 @@ class VectorStore:
         # every action keeps its one-argument signature, and so that G5's
         # gesture engine records through the same place the panel does.
         self.history = History()
+        # The scene as it was when a hand gesture began, or None when no
+        # gesture is running. A gesture changes the vectors on every frame;
+        # this is what lets it become one undo step when it ends, or be put
+        # back exactly if it is cancelled (`interaction-spec.md` section 5).
+        self._gesture_before: Snapshot | None = None
 
     # --- Reading ---
+
+    @property
+    def gesture_in_progress(self) -> bool:
+        """Whether a hand gesture is changing the vectors right now.
+
+        While it is, changes are not recorded one by one, and the scene does
+        not rescale (`interaction-spec.md` section 3).
+        """
+        return self._gesture_before is not None
 
     @property
     def vectors(self) -> tuple[Vector, ...]:
@@ -283,3 +297,12 @@ class VectorStore:
 
     def clear_selection(self) -> None:
         self._selected.clear()
+
+    def start_gesture(self, before: Snapshot) -> None:
+        """Remember the scene as it was when a gesture began."""
+        self._gesture_before = before
+
+    def end_gesture(self) -> Snapshot | None:
+        """Forget the gesture, handing back the scene it began from."""
+        before, self._gesture_before = self._gesture_before, None
+        return before

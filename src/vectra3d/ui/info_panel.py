@@ -231,6 +231,9 @@ class InfoPanel(QWidget):
         title.setProperty("role", "title")
         outer.addWidget(title)
 
+        # Each vector's card by name, so one card's numbers can be changed in
+        # place while a hand moves that vector (`update_vector`).
+        self._card_by_name: dict[str, _Card] = {}
         self._cards = QWidget()
         self._cards_layout = QVBoxLayout(self._cards)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
@@ -257,6 +260,7 @@ class InfoPanel(QWidget):
         can_show_result: bool = True,
     ) -> None:
         """Rebuild the list to match the store."""
+        self._card_by_name = {}
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
             widget = item.widget()
@@ -288,21 +292,39 @@ class InfoPanel(QWidget):
 
         ticked = set(selected)
         for vector in vectors:
-            self._cards_layout.addWidget(
-                _build_card(
-                    vector,
-                    is_active=vector.name == active_name,
-                    is_selected=vector.name in ticked,
-                    on_delete=self._delete,
-                    on_activate=self._activate,
-                    on_toggle=self._toggle,
-                    on_toggle_lock=self._toggle_lock,
-                    on_toggle_components=self._toggle_components,
-                    on_toggle_projections=self._toggle_projections,
-                    shows_components=vector.name == components_shown,
-                    shows_projections=vector.name == projections_shown,
-                )
+            card = _build_card(
+                vector,
+                is_active=vector.name == active_name,
+                is_selected=vector.name in ticked,
+                on_delete=self._delete,
+                on_activate=self._activate,
+                on_toggle=self._toggle,
+                on_toggle_lock=self._toggle_lock,
+                on_toggle_components=self._toggle_components,
+                on_toggle_projections=self._toggle_projections,
+                shows_components=vector.name == components_shown,
+                shows_projections=vector.name == projections_shown,
             )
+            self._card_by_name[vector.name] = card
+            self._cards_layout.addWidget(card)
+
+    def update_vector(self, vector: Vector) -> None:
+        """Change the numbers on one vector's card, and nothing else.
+
+        For a vector moved by hand: rebuilding every card on every camera
+        frame measured 59 ms, against a frame of about 33. Only the numbers
+        and the zero-vector note can change mid-gesture, so only they are set.
+        """
+        card = self._card_by_name.get(vector.name)
+        if card is None:
+            return
+        left, right = card_values(vector)
+        for label, (_, text) in zip(card.value_labels, left + right):
+            if label.text() != text:
+                label.setText(text)
+        note = card_note(vector)
+        card.note_label.setText(note or "")
+        card.note_label.setVisible(note is not None)
 
     def _delete(self, name: str) -> None:
         actions.delete_vector(self._store, name)
@@ -349,6 +371,10 @@ class _Card(QFrame):
         self._name = name
         self._on_activate = on_activate
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Filled in by `_build_card`, for `InfoPanel.update_vector`: the value
+        # labels in the order `card_values` gives them, and the note line.
+        self.value_labels: list[QLabel] = []
+        self.note_label = QLabel()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -369,7 +395,7 @@ def _build_card(
     on_toggle_projections: Callable[[str], None],
     shows_components: bool,
     shows_projections: bool,
-) -> QWidget:
+) -> _Card:
     """One vector's card: a tick box, its name and colour, then its components."""
     color = naming.color_for(vector.name)
 
@@ -447,14 +473,18 @@ def _build_card(
     left, right = card_values(vector)
     for row, (name_text, value_text) in enumerate(left):
         values.addWidget(_key(name_text), row, 0)
-        values.addWidget(_value(value_text), row, 1)
+        label = _value(value_text)
+        card.value_labels.append(label)
+        values.addWidget(label, row, 1)
     for row, (name_text, value_text) in enumerate(right):
         values.addWidget(_key(name_text), row, 3)
         # Left-aligned, unlike the left column. The unit vector is far wider
         # than an angle, so right-aligning would size this column to the unit
         # vector and leave each angle stranded away from its own name. The
         # angles are all the same width, so they line up either way.
-        values.addWidget(_value(value_text, align_right=False), row, 4)
+        label = _value(value_text, align_right=False)
+        card.value_labels.append(label)
+        values.addWidget(label, row, 4)
 
     outer.addLayout(values)
 
@@ -484,12 +514,14 @@ def _build_card(
 
     outer.addLayout(toggles)
 
+    # Always built, and hidden when there is nothing to say, so a vector
+    # growing from zero by hand can lose its note without a rebuild.
     note = card_note(vector)
-    if note is not None:
-        text = QLabel(note)
-        text.setWordWrap(True)
-        text.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
-        outer.addWidget(text)
+    card.note_label.setText(note or "")
+    card.note_label.setWordWrap(True)
+    card.note_label.setStyleSheet(f"color: {theme.MUTED_TEXT}; border: none;")
+    card.note_label.setVisible(note is not None)
+    outer.addWidget(card.note_label)
 
     return card
 

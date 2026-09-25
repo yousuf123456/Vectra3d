@@ -1,0 +1,159 @@
+"""Creating by hand, through the real window (F-03, `interaction-spec.md` 3, 6.2).
+
+What only the window can get wrong: that a frame's intents reach the
+controller with the camera's directions, that the scene does not rescale
+while a vector is being pulled, that undo is out of reach mid-gesture, and
+that a refused gesture's message reaches the camera preview.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
+from vectra3d.gestures.intents import BeginTwoHand, Commit, TwoHandKind, UpdateTwoHand
+
+pytest.importorskip("PySide6.QtWidgets")
+
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+from vectra3d.state import actions, naming  # noqa: E402
+from vectra3d.state.store import VectorStore  # noqa: E402
+from vectra3d.ui.action_panel import LIMIT_TEXT  # noqa: E402
+from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
+
+ASPECT = 4 / 3
+PIXELS = np.zeros((480, 640, 3), dtype=np.uint8)
+
+START = ((0.5, 0.5), (0.625, 0.5))
+BEGIN = BeginTwoHand(TwoHandKind.CREATE, (0, 1), START, 0.25)
+# 12.5 long: past the starting extent of 10, so the scene will have to grow.
+PULLED = UpdateTwoHand(((0.5, 0.5), (1.625, 0.5)), 0.25)
+
+
+@pytest.fixture(scope="module")
+def app() -> QApplication:
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def window(app: QApplication):
+    window = VectraMainWindow(VectorStore())
+    yield window
+    window.close()
+
+
+def apply(window: VectraMainWindow, *intents) -> None:
+    camera = window.plotter.camera
+    window._gesture_controller.apply(intents, camera.direction, camera.up)
+
+
+def pinching_hand_at(x: float) -> Hand:
+    """A pinching hand, 1 hs = 0.2 picture heights, fingertips at `x`."""
+    points = [(x, 0.5)] * 21
+    points[0] = (x, 0.8)
+    points[9] = (x, 0.6)
+    points[4] = (x, 0.40)
+    points[8] = (x, 0.42)
+    return Hand(landmarks=tuple(points), gesture=NO_GESTURE, gesture_score=0.9)
+
+
+def test_two_hands_pinching_together_start_a_vector(window) -> None:
+    # Pinch points 0.1 of the width apart: 0.13 picture heights, 0.67 hs -
+    # hands together, so this is a create.
+    both = (pinching_hand_at(0.45), pinching_hand_at(0.55))
+    window._on_hand_frame(PIXELS, HandFrame(hands=both, timestamp_ms=0, aspect=ASPECT))
+    assert window._store.names == ("A",)
+    assert window._store.gesture_in_progress
+
+
+def test_the_scene_does_not_rescale_until_the_gesture_is_released(window) -> None:
+    assert window.scene.extent == 10
+    apply(window, BEGIN, PULLED)
+    assert window._store.active.components[0] != 0.0
+    assert window.scene.extent == 10
+
+    apply(window, Commit())
+    assert window.scene.extent == 20
+
+
+def test_undo_is_out_of_reach_during_a_gesture(window) -> None:
+    actions.create_vector(window._store, (1.0, 0.0, 0.0))
+    assert window._undo.isEnabled()
+
+    apply(window, BEGIN, PULLED)
+    assert not window._undo.isEnabled()
+    assert not window._redo.isEnabled()
+
+    apply(window, Commit())
+    assert window._undo.isEnabled()
+
+
+def test_the_limit_message_reaches_the_camera_preview(window) -> None:
+    for _ in range(naming.MAX_VECTORS):
+        actions.create_vector(window._store, (1.0, 0.0, 0.0))
+    both = (pinching_hand_at(0.45), pinching_hand_at(0.55))
+    window._on_hand_frame(PIXELS, HandFrame(hands=both, timestamp_ms=0, aspect=ASPECT))
+    assert window._store.count == naming.MAX_VECTORS
+    assert window.camera_preview.status.endswith(LIMIT_TEXT)
+
+
+# --- Redrawing only what moves ---
+
+
+def test_mid_gesture_only_the_moving_vectors_card_changes(app, window) -> None:
+    actions.create_vector(window._store, (1.0, 0.0, 0.0))
+    # Beginning rebuilds the list once, as any new vector does: B needs a
+    # card, and the highlight moves from A to B.
+    apply(window, BEGIN)
+    card_a = window.info_panel._card_by_name["A"]
+    card_b = window.info_panel._card_by_name["B"]
+    apply(window, PULLED)
+    app.processEvents()
+
+    # The same card widgets, not a rebuilt list...
+    assert window.info_panel._card_by_name["A"] is card_a
+    assert window.info_panel._card_by_name["B"] is card_b
+    # ...with B's numbers brought up to date in place. The window's camera is
+    # the default raised front-right view, so the pull is not along one axis;
+    # its length is 12.5 whichever way it points. |v| is the fourth value.
+    texts = [label.text() for label in card_b.value_labels]
+    assert texts[3] == "12.50"
+
+
+def test_the_zero_vector_note_goes_as_the_vector_grows(app, window) -> None:
+    apply(window, BEGIN)
+    card = window.info_panel._card_by_name["A"]
+    assert not card.note_label.isHidden()
+
+    apply(window, PULLED)
+    app.processEvents()
+    assert card.note_label.isHidden()
+
+
+def test_frames_that_arrive_together_share_one_redraw(app, window) -> None:
+    apply(window, BEGIN)
+    calls = []
+    original = window.vectors.redraw
+    window.vectors.redraw = lambda *args: (calls.append(args), original(*args))
+
+    nudged = UpdateTwoHand(((0.5, 0.5), (0.75, 0.5)), 0.25)
+    apply(window, nudged)
+    apply(window, PULLED)
+    app.processEvents()
+
+    # One redraw, of the latest position.
+    assert len(calls) == 1
+    assert calls[0][0] == window._store.get("A")
+    assert calls[0][2] == "|A| = 12.50"
+
+
+def test_after_release_the_whole_scene_is_redrawn(app, window) -> None:
+    apply(window, BEGIN, PULLED)
+    app.processEvents()
+    card = window.info_panel._card_by_name["A"]
+
+    apply(window, Commit())
+    # A full refresh rebuilds the list, as it always has.
+    assert window.info_panel._card_by_name["A"] is not card

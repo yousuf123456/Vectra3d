@@ -89,8 +89,8 @@ Only one gesture is active at a time.
 | State | Entered when | Ends when |
 |---|---|---|
 | IDLE | Nothing is happening | — |
-| CREATING | Both hands pinch, starting close together | Either pinch ends, or cancel |
-| RESIZING | Both hands pinch, starting apart | Either pinch ends, or cancel |
+| CREATING | Both hands pinch, starting close together | Either pinch ends |
+| RESIZING | Both hands pinch, starting apart | Either pinch ends |
 | STEERING | One hand pinches, the other does not | The pinch ends, or cancel |
 | HOLDING | A hold gesture (section 7) is recognized while IDLE | It triggers, or the hand shape changes |
 
@@ -99,12 +99,15 @@ Only one gesture is active at a time.
 - A gesture starts only when a pinch **begins**. A pinch still held when a gesture ends, or a second pinch that was ignored, starts nothing until that hand lets go and pinches again.
 - Hold gestures are only recognized in IDLE. They are ignored during any pinch gesture, and a pinch beginning during HOLDING abandons the hold.
 
-**Cancel (Open_Palm)**
-- Showing an open palm during CREATING, RESIZING, or STEERING cancels the gesture. Only a hand that is **not pinching** counts: a pinch with the other fingers stretched out is often classified as `Open_Palm`, which cancelled gestures at random in real testing (G5.2). The vector returns exactly to its state before the gesture started (a vector being created is discarded). No undo step is recorded.
-- In CREATING and RESIZING both hands are pinching, so the palm can only come from opening a pinching hand, and opening it ends the pinch first. So when a pinch gesture's pinch ends, the gesture **freezes and waits a release confirm window of 0.3 s** (tunable) before committing. An open palm from either hand within that window cancels instead. (Amended 2026-09-24, G5.2: as first written, cancel could only ever happen with the free hand while steering.)
-- While STEERING, an open palm from the free hand cancels at once.
-- A release caused by losing a hand (section 4.4) commits without waiting, since it is never a cancel.
+**Release**
+- Letting go of a pinch ends the gesture and commits it **at once**.
+
+**Cancel (Open_Palm) — steering only**
+- While STEERING, an open palm from the **free hand** cancels the gesture at once. The vector returns exactly to its state before the gesture started. No undo step is recorded.
+- Only the free hand counts, and only while it is not pinching. The steering hand opens as it lets go, and a pinch with the other fingers stretched out is often classified as `Open_Palm`; both cancelled gestures at random in real testing (G5.2, G5.3).
+- CREATING and RESIZING **cannot be cancelled**. Both hands are pinching, so a palm could only come from a hand that has just let go, and a hand letting go opens naturally and is read as `Open_Palm` - so a palm after a release says nothing about what the student meant. A create or resize is taken back with **Undo** instead, which removes the whole gesture in one step; a create released with almost no pull creates nothing (section 6.2).
 - Open palm in IDLE does nothing.
+- (Amended 2026-09-25, G5.3. The G5.2 version waited a 0.3 s release confirm window after every pinch gesture and let an open palm in it cancel; real testing showed ordinary releases being cancelled, because the releasing hand itself reads as an open palm. The confirm window was removed.)
 
 **Undo**
 - One complete gesture, from start to release, is recorded as **one** undo step. Cancelled gestures record nothing.
@@ -196,7 +199,6 @@ Starting values. Change only after real testing, and record every change in `pro
 | Smoothing derivative cutoff | 1.0 Hz | 4.3 |
 | Hand-lost timeout | 0.3 s | 4.4 |
 | Two-hand pinch window | **0.5 s** (was 0.3; see `progress-tracker.md`) | 5 |
-| Release confirm window | 0.3 s | 5 |
 | "Hands together" distance for create | 1.0 hs | 6.2 |
 | Full stretch | 8 hs | 6.2 |
 | Minimum magnitude | 0.1 | 6.2, 6.3 |
@@ -233,7 +235,7 @@ Test each at a normal laptop distance, then leaning in, then sitting back.
 - [ ] Steering: moving right always moves the head right on screen, even after rotating the 3D view to look from behind.
 - [ ] Snapping engages near each axis and plane and releases cleanly; turning it off in settings works.
 - [ ] Each hold gesture triggers once after 0.5 s and not again until the hand changes shape.
-- [ ] Open palm cancels each pinch gesture and restores the vector exactly.
+- [ ] Open palm with the free hand cancels steering and restores the vector exactly; releasing a create, resize or steer never cancels it.
 - [ ] Locked vectors ignore resize and steer, with the message shown.
 - [ ] One gesture = one undo step.
 - [ ] Changing the sensitivity setting changes how much a full stretch creates.

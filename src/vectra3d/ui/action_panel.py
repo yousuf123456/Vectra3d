@@ -74,6 +74,12 @@ ANGLES_MODE = 1
 
 PHI_NOTE = "φ has no effect while the vector points along z."
 NO_VECTOR_HINT = "Create a vector first, or click one to edit it."
+# What a student is told when an eleventh vector is asked for, by typing or by
+# hand (F-04, F-03).
+LIMIT_TEXT = (
+    f"The scene already has the most vectors allowed "
+    f"({naming.MAX_VECTORS}). Delete one to make room."
+)
 LOCKED_HINT = "Vector {name} is locked. Unlock it to edit."
 
 # What the short field labels leave out. The angle fields used to be labelled
@@ -668,10 +674,7 @@ class ActionPanel(QWidget):
 
         vector = actions.create_vector(self._store, parsed.components)
         if vector is None:
-            self._create_form.show_message(
-                f"The scene already has the most vectors allowed "
-                f"({naming.MAX_VECTORS}). Delete one to make room."
-            )
+            self._create_form.show_message(LIMIT_TEXT)
             return
 
         self._create_form.clear_message()

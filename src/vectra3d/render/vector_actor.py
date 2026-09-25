@@ -105,6 +105,18 @@ class VectorActors:
 
         self._plotter.render()
 
+    def redraw(self, vector: Vector, is_active: bool, label_text: str) -> None:
+        """Redraw one vector and leave every other actor alone. Does not render.
+
+        For a vector being moved by hand, which changes 30 times a second:
+        rebuilding all ten arrows each frame measured 90 ms, most of a frame
+        spent on arrows that had not moved. Its halo is replaced here too,
+        since the moving vector is the active one.
+        """
+        self._plotter.remove_actor(f"halo-{vector.name}", render=False)
+        self._drawn.add(vector.name)
+        self._draw_one(vector, is_active, label_text)
+
     def _draw_one(self, vector: Vector, is_active: bool, label_text: str) -> None:
         tail = np.array(vector.tail, dtype=float)
         head = tail + np.array(vector.components, dtype=float)

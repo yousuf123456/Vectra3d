@@ -39,10 +39,6 @@ HAND_LOST_TIMEOUT_S: float = 0.3  # seconds
 # --- Gesture state machine (spec section 5) ---
 # A second pinch within this window makes it a two-hand gesture.
 TWO_HAND_PINCH_WINDOW_S: float = 0.5  # seconds (was 0.3; see progress-tracker)
-# When a pinch gesture's pinch ends, it waits this long before committing, so
-# an open palm - which can only come after the pinching hand opens - can still
-# cancel it.
-RELEASE_CONFIRM_S: float = 0.3  # seconds
 
 # --- Creating a vector (spec section 6.2) ---
 # Pinch points closer than this count as "hands together", which starts

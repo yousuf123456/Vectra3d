@@ -18,8 +18,8 @@ Hands are used for things you'd naturally do by feel: stretching and aiming an a
 Built in G5.2, in `gestures/state_machine.py`.
 
 - The clutch is made strict: a gesture starts only when a pinch **begins**. A pinch that is still held when a gesture ends - for example the second hand after a two-hand create - starts nothing until that hand lets go and pinches again. Without this rule, finishing a create while still holding one pinch would immediately start steering the new vector.
-- When the pinch ends, the gesture freezes at once: no more updates reach the vector, even during the short wait before it is confirmed (section 2).
-- The state machine outputs intents, not changes, so the same gesture code will drive the same actions the panel uses (from G5.3).
+- When the pinch ends, the gesture ends and is confirmed at once (section 2).
+- The state machine outputs intents, not changes, and `ui/gesture_controller.py` turns them into the same actions the panel uses (from G5.3).
 
 ### Likely questions
 - **Which way should I hold my hands?** Palms toward the camera, fingers pointing up. Measured at G5.2: held like that, both hands were tracked reliably; with the hands pointing at the camera or overlapping, the tracker usually saw only one of them, and a two-hand pinch could only become steering.
@@ -36,7 +36,8 @@ The app is always in exactly one "mode": idle, creating, resizing, steering, or 
 A finite state machine with states IDLE, CREATING, RESIZING, STEERING, and HOLDING.
 - A two-hand pinch (second hand pinching within 0.5 s of the first) beats a one-hand pinch. (The spec started at 0.3 s; it was lengthened after real testing showed people pinch their two hands up to half a second apart.)
 - Hold gestures are recognized only in IDLE.
-- An open palm from a hand that is not pinching cancels a pinch gesture and restores the vector exactly. When a pinch ends, the gesture waits 0.3 s before it is confirmed, so the hand that just opened has time to be seen as a palm.
+- Letting go of a pinch confirms the gesture at once.
+- Only steering can be cancelled: an open palm from the free hand restores the vector exactly. A create or resize is taken back with Undo instead (see "Why a create cannot be cancelled" below).
 - Losing a hand for more than 0.3 s counts as a normal release.
 - The state machine outputs **intents** ("begin create," "update," "commit," "cancel") rather than changing vectors itself; the app turns intents into the same actions the panel uses.
 
@@ -44,17 +45,17 @@ A finite state machine with states IDLE, CREATING, RESIZING, STEERING, and HOLDI
 Built in G5.2, in `gestures/state_machine.py` and `gestures/intents.py`.
 
 - `GestureStateMachine.update(hands, now_ms)` is called once per camera frame with the hands measured by `hand_metrics` (see `02-hand-tracking.md`). It returns the current state, any intents, and the progress of a hold gesture. It knows nothing about vectors; until G5.3 the window only shows its state under the camera picture.
-- Besides the spec's five states it has two short phases. **Waiting**: one hand has pinched, and for up to 0.5 s it is not known whether a second hand will join, so nothing begins yet. The steering anchor is still where the pinch began, so no movement is lost. **Releasing**: a pinch has ended, the gesture is frozen, and it waits 0.3 s for an open palm before committing.
-- **Why the release waits.** As first written, cancel could hardly ever happen: in a two-hand gesture both hands are pinching, so the palm can only come from opening a pinching hand - and opening it ends the pinch, which is a release, before the tracker has even recognised a palm. The wait gives it time. This was found at planning and changed in the spec before building.
-- **Why only a hand that is not pinching can cancel.** Found with real hands: a pinch with the other three fingers stretched out is often classified as an open palm, which cancelled three gestures by itself in 30 seconds. A hand that is pinching cannot really be showing a palm, so it is not listened to.
+- Besides the spec's five states it has one short phase. **Waiting**: one hand has pinched, and for up to 0.5 s it is not known whether a second hand will join, so nothing begins yet. The steering anchor is still where the pinch began, so no movement is lost.
+- **Why a create cannot be cancelled.** In a two-hand gesture both hands are pinching, so an open palm can only come from a hand that has just let go. G5.2 made the release wait 0.3 s so such a palm could cancel it. Real testing at G5.3 showed the flaw: a hand letting go of a pinch opens naturally, and the tracker reads that as an open palm, so ordinary releases were being cancelled. No threshold can tell the two apart, since they are the same hand shape at the same moment. The wait was removed; a create is taken back with Undo, which removes it in one step.
+- **Why only the free hand can cancel steering.** Found with real hands: a pinch with the other three fingers stretched out is often classified as an open palm (three false cancels in 30 seconds at G5.2), and the steering hand opening as it lets go is too (G5.3). So only the other hand, and only while it is not pinching, is listened to.
 - Intents carry the hands' geometry - which gesture, which hands, the start and current pinch points, the hand scale - and nothing about vectors. Turning them into magnitudes and directions is the job of each gesture's own step.
 - Hold gestures (thumbs up, pointing up, victory) must be recognised at a confidence of at least 0.6 for 0.5 s, fire once, and cannot fire again from the same hand until it shows a different shape.
 - Losing a hand: the hand metrics keep a missing hand's memory for 0.3 s, so one that reappears in time carries on with its pinch intact. The state machine pauses the gesture while the hand is missing and commits it once the hand has been gone for longer. A slow frame is not a missing hand: only a hand actually absent from a frame can expire.
-- All timings are compared in whole milliseconds from the frames' own timestamps, never the wall clock, which is what lets the tests play any sequence of hand frames at any pace. The two-hand window, the release wait, the hand-lost timeout and the hold duration all come from `config.py`.
+- All timings are compared in whole milliseconds from the frames' own timestamps, never the wall clock, which is what lets the tests play any sequence of hand frames at any pace. The two-hand window, the hand-lost timeout and the hold duration all come from `config.py`.
 
 ### Likely questions
 - **Why does steering take half a second to start?** Because until then the app cannot know whether a second hand is about to pinch and turn it into a create or resize.
-- **Why doesn't a vector update the instant I let go?** It does freeze instantly; it is only *confirmed* 0.3 s later, in case an open palm follows to cancel it.
+- **How do I take back a vector I just made by hand?** Press Undo (Ctrl+Z). The whole gesture is one step. An open palm does not cancel a create, because letting go of a pinch already looks like an open palm to the tracker.
 - **What's a state machine?** A model where a system is always in one of a fixed set of states and moves between them according to clear rules. Traffic lights are a classic example.
 - **How was it tested without hands?** By feeding it recorded sequences of fake hand data and checking its output.
 
@@ -73,7 +74,19 @@ Pinch with both hands close together, then pull them apart. A new arrow grows fr
 - Releasing either pinch confirms it. Below a magnitude of 0.1, nothing is created.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.3.*
+Built in G5.3.
+
+- **The maths** is in `gestures/hand_to_vector.py`, as plain functions tested with hand-calculated values:
+  - `stretch_magnitude` applies the formula above. Each distance is divided by the hand scale *of its own moment*, so leaning in mid-gesture does not by itself stretch the vector. Bringing the hands closer than they started gives zero, not a vector pointing backwards.
+  - `head_index` picks the pulling hand, with the 10% margin and the right-of-screen fallback. It is re-run every frame, so the head settles as soon as one hand clearly leads.
+  - `screen_axes` works out which way "right" and "up" on the screen point in the 3D world. It cannot simply use the camera's `up` setting: PyVista keeps whatever that was set to (z, here), which is tilted away from the screen whenever the view looks down at the scene, and every vector would have tipped towards or away from the student. So right is worked out as *view direction × up*, and the screen's up as *right × view direction*. It is read from the camera on every frame.
+  - `create_components` puts these together: the line from the tail hand to the head hand, with the picture's y flipped because it grows downward, carried into 3D along those two directions.
+- **The vector is real from the first frame.** `ui/gesture_controller.py` turns the state machine's intents into actions. When a create begins it calls `actions.create_vector` with a zero vector, so the new vector already has its letter and colour, is active, and has a card in the info panel; every frame after that calls `actions.edit_vector`. On release, a vector shorter than 0.1 is discarded.
+- **One gesture, one undo step.** A gesture changes the vector 30 times a second, which would fill the 20-step history in under a second. So `actions.begin_gesture` remembers the scene as it was, the actions skip recording while a gesture runs, and `actions.commit_gesture` records that remembered scene once - only if something changed. A too-short create is put back by `actions.cancel_gesture` and records nothing. Undo and Redo are greyed out while a gesture runs.
+- **The scene does not rescale while you pull.** The window skips resizing the world while a gesture is in progress, and does it once, on release.
+- **The live magnitude** replaces the vector's letter while it is being created, as "|A| = 12.50", and the letter comes back on release.
+- **Keeping up with the hands.** Redrawing the whole scene and panel on every camera frame measured about 300 ms per frame against a frame of 33, so the arrow fell ever further behind. While a hand moves a vector, the window now redraws only that vector's arrow and label, and changes only the numbers on its card (`InfoPanel.update_vector`), instead of rebuilding everything. Frames that arrive during a redraw share the next one, which shows the newest position, so no backlog can build up. Measured at about 48 ms per redraw with ten vectors on screen: the arrow updates about 20 times a second, and never lags behind.
+- If ten vectors already exist, nothing is drawn and the camera strip shows the same message the panel uses.
 
 ### Likely questions
 - **Why does it always start flat against the screen?** A single webcam can't measure depth reliably, so depth is added by steering afterwards.

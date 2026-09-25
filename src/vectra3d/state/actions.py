@@ -72,7 +72,7 @@ def create_vector(
     if name is None:
         return None
 
-    store.history.record(store.snapshot())
+    _record(store)
     vector = Vector(name=name, components=components, tail=tail)
     store.put(vector)
     store.set_active(name)
@@ -100,7 +100,7 @@ def edit_vector(store: VectorStore, name: str, components: Point) -> bool:
     if vector is None or vector.locked:
         return False
 
-    store.history.record(store.snapshot())
+    _record(store)
     store.put(replace(vector, components=components))
     _refresh_result(store)
     store.notify()
@@ -125,7 +125,7 @@ def delete_vector(store: VectorStore, name: str) -> bool:
     if vector is None or vector.locked:
         return False
 
-    store.history.record(store.snapshot())
+    _record(store)
     was_active = store.active_name == name
     store.remove(name)
     if was_active:
@@ -155,7 +155,7 @@ def toggle_locked(store: VectorStore, name: str) -> bool:
     if vector is None:
         raise KeyError(f"no vector named {name!r}")
 
-    store.history.record(store.snapshot())
+    _record(store)
     now_locked = not vector.locked
     store.put(replace(vector, locked=now_locked))
     store.notify()
@@ -164,9 +164,47 @@ def toggle_locked(store: VectorStore, name: str) -> bool:
 
 def clear_all(store: VectorStore) -> None:
     """Remove every vector. The confirmation prompt is the panel's job (F-10)."""
-    store.history.record(store.snapshot())
+    _record(store)
     store.clear()
     store.set_active(None)
+    store.notify()
+
+
+def begin_gesture(store: VectorStore) -> None:
+    """A hand gesture is about to change the vectors frame by frame.
+
+    The scene is remembered, not recorded: a gesture that is cancelled must
+    leave no step behind (`interaction-spec.md` section 5). Until it ends,
+    the actions it calls change the vectors without recording each frame,
+    which would otherwise fill the twenty-step history in under a second.
+    """
+    store.start_gesture(store.snapshot())
+
+
+def commit_gesture(store: VectorStore) -> None:
+    """The gesture ended normally: keep what it did as **one** undo step.
+
+    Nothing is recorded if it changed nothing, for the same reason a refused
+    action records nothing - undo would appear to do nothing. Listeners are
+    told once it has ended, which is when the scene may rescale.
+    """
+    before = store.end_gesture()
+    if before is None:
+        return
+    if store.snapshot() != before:
+        store.history.record(before)
+    store.notify()
+
+
+def cancel_gesture(store: VectorStore) -> None:
+    """The gesture was cancelled: put the scene back exactly as it began.
+
+    No step is recorded. A vector the gesture was creating is simply gone.
+    """
+    before = store.end_gesture()
+    if before is None:
+        return
+    store.restore(before)
     store.notify()
 
 
@@ -333,7 +371,7 @@ def save_result_as_vector(store: VectorStore) -> Vector | None:
     if name is None:
         return None
 
-    store.history.record(store.snapshot())
+    _record(store)
     vector = Vector(name=name, components=result.components, tail=result.tail)
     store.put(vector)
     store.set_active(name)
@@ -445,6 +483,15 @@ _SIGNS = {
     Operation.SUM: _signs_for_sum,
     Operation.DIFFERENCE: _signs_for_difference,
 }
+
+
+def _record(store: VectorStore) -> None:
+    """Remember the scene before a change, unless a gesture is running.
+
+    A gesture is recorded once, as a whole, by `commit_gesture`.
+    """
+    if not store.gesture_in_progress:
+        store.history.record(store.snapshot())
 
 
 def _refresh_result(store: VectorStore) -> None:

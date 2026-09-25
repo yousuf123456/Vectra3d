@@ -75,9 +75,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-03 Create a vector by gesture
 **Group:** G5 · **Depends on:** F-02, F-04
-- [ ] Performing the create gesture produces a new vector that appears live in the 3D view while the gesture is in progress.
-- [ ] Releasing the gesture confirms the vector; it gets the next letter and color and becomes the active vector.
-- [ ] If 10 vectors already exist, the gesture does nothing and a message explains the limit.
+- [x] Performing the create gesture produces a new vector that appears live in the 3D view while the gesture is in progress.
+- [x] Releasing the gesture confirms the vector; it gets the next letter and color and becomes the active vector.
+- [x] If 10 vectors already exist, the gesture does nothing and a message explains the limit.
 
 ### F-04 Create a vector by typing
 **Group:** G1 · **Depends on:** F-01

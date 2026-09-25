@@ -30,7 +30,6 @@ from vectra3d.gestures.state_machine import (
 
 FRAME_MS = 33
 WINDOW_MS = round(config.TWO_HAND_PINCH_WINDOW_S * 1000)
-CONFIRM_MS = round(config.RELEASE_CONFIRM_S * 1000)
 LOST_MS = round(config.HAND_LOST_TIMEOUT_S * 1000)
 HOLD_MS = round(config.HOLD_DURATION_S * 1000)
 SCALE = 0.25
@@ -214,30 +213,22 @@ def test_a_two_hand_gesture_reports_both_hands_every_frame() -> None:
 # --- Releasing and committing ---
 
 
-def test_a_released_pinch_waits_the_confirm_window_then_commits() -> None:
+def test_letting_go_of_either_pinch_commits_at_once() -> None:
     machine = GestureStateMachine()
     create(machine)
-    released = FRAME_MS
-    open_hand = (hand(1, x=0.30, pinching=True), hand(2, x=0.35))
 
-    first = machine.update(open_hand, released)
-    almost = machine.update(open_hand, released + CONFIRM_MS - 1)
-    done = machine.update(open_hand, released + CONFIRM_MS)
+    output = machine.update((hand(1, x=0.30, pinching=True), hand(2, x=0.35)), FRAME_MS)
 
-    # Frozen while it waits: no updates, no commit yet.
-    assert first == MachineOutput(GestureState.RELEASING, (), None)
-    assert almost == MachineOutput(GestureState.RELEASING, (), None)
-    assert done == MachineOutput(GestureState.IDLE, (Commit(),), None)
+    assert output == MachineOutput(GestureState.IDLE, (Commit(),), None)
 
 
-def test_steering_releases_through_the_same_window() -> None:
+def test_letting_go_of_steering_commits_at_once() -> None:
     machine = GestureStateMachine()
     now = steer(machine)
-    machine.update((hand(1),), now + FRAME_MS)
 
-    output = machine.update((hand(1),), now + FRAME_MS + CONFIRM_MS)
+    output = machine.update((hand(1),), now + FRAME_MS)
 
-    assert output.intents == (Commit(),)
+    assert output == MachineOutput(GestureState.IDLE, (Commit(),), None)
 
 
 def test_a_pinch_still_held_after_a_gesture_ends_starts_nothing() -> None:
@@ -247,9 +238,8 @@ def test_a_pinch_still_held_after_a_gesture_ends_starts_nothing() -> None:
     create(machine)
     still = (hand(1, x=0.30), hand(2, x=0.35, pinching=True))
     machine.update(still, FRAME_MS)
-    machine.update(still, FRAME_MS + CONFIRM_MS)
 
-    later = FRAME_MS + CONFIRM_MS + WINDOW_MS + 100
+    later = FRAME_MS + WINDOW_MS + 100
     output = machine.update(still, later)
 
     assert output == MachineOutput(GestureState.IDLE, (), None)
@@ -259,8 +249,7 @@ def test_a_hand_that_lets_go_and_pinches_again_starts_afresh() -> None:
     machine = GestureStateMachine()
     create(machine)
     still = (hand(1, x=0.30), hand(2, x=0.35, pinching=True))
-    machine.update(still, FRAME_MS)
-    ended = FRAME_MS + CONFIRM_MS
+    ended = FRAME_MS
     machine.update(still, ended)
 
     machine.update((hand(1, x=0.30), hand(2, x=0.35)), ended + FRAME_MS)
@@ -278,9 +267,8 @@ def test_the_ignored_second_pinch_starts_nothing_when_steering_ends() -> None:
     machine.update(both, now + FRAME_MS)
     only_two = (hand(1), hand(2, x=0.6, pinching=True))
     machine.update(only_two, now + 2 * FRAME_MS)
-    machine.update(only_two, now + 2 * FRAME_MS + CONFIRM_MS)
 
-    output = machine.update(only_two, now + 2 * FRAME_MS + CONFIRM_MS + 500)
+    output = machine.update(only_two, now + 2 * FRAME_MS + 500)
 
     assert output == MachineOutput(GestureState.IDLE, (), None)
 
@@ -288,19 +276,29 @@ def test_the_ignored_second_pinch_starts_nothing_when_steering_ends() -> None:
 # --- Cancelling with an open palm ---
 
 
-def test_an_open_palm_in_the_confirm_window_cancels() -> None:
-    # The usual way to cancel a create: one hand opens (a release), and a
-    # moment later MediaPipe calls it an open palm.
+def test_a_create_released_into_an_open_palm_still_commits() -> None:
+    # Found with real hands at G5.3: a hand letting go of a pinch opens, and
+    # MediaPipe reads it as an open palm in the very frame it releases. That
+    # is a release, and it keeps the vector.
     machine = GestureStateMachine()
     create(machine)
-    machine.update((hand(1, x=0.30, pinching=True), hand(2, x=0.35)), FRAME_MS)
 
     output = machine.update(
         (hand(1, x=0.30, pinching=True), hand(2, x=0.35, gesture="Open_Palm")),
-        FRAME_MS + CONFIRM_MS - 1,
+        FRAME_MS,
     )
 
-    assert output == MachineOutput(GestureState.IDLE, (Cancel(),), None)
+    assert output == MachineOutput(GestureState.IDLE, (Commit(),), None)
+
+
+def test_steering_released_into_an_open_palm_still_commits() -> None:
+    # The same for the steering hand: only the *free* hand can cancel.
+    machine = GestureStateMachine()
+    now = steer(machine)
+
+    output = machine.update((hand(1, gesture="Open_Palm"),), now + FRAME_MS)
+
+    assert output == MachineOutput(GestureState.IDLE, (Commit(),), None)
 
 
 def test_the_free_hand_cancels_steering_at_once() -> None:
@@ -317,13 +315,11 @@ def test_the_free_hand_cancels_steering_at_once() -> None:
 def test_an_open_palm_after_the_commit_changes_nothing() -> None:
     machine = GestureStateMachine()
     create(machine)
-    open_hand = (hand(1, x=0.30, pinching=True), hand(2, x=0.35))
-    machine.update(open_hand, FRAME_MS)
-    machine.update(open_hand, FRAME_MS + CONFIRM_MS)
+    machine.update((hand(1, x=0.30, pinching=True), hand(2, x=0.35)), FRAME_MS)
 
     output = machine.update(
         (hand(1, x=0.30), hand(2, x=0.35, gesture="Open_Palm")),
-        FRAME_MS + CONFIRM_MS + FRAME_MS,
+        2 * FRAME_MS,
     )
 
     assert output == MachineOutput(GestureState.IDLE, (), None)
@@ -387,8 +383,7 @@ def test_a_steering_hand_missing_for_the_timeout_is_paused_not_lost() -> None:
 
 
 def test_a_steering_hand_lost_for_longer_commits_at_once() -> None:
-    # A normal release, not a cancel - and not held in the confirm window,
-    # since only an open palm can turn a release into a cancel.
+    # A normal release, never a cancel (section 4.4).
     machine = GestureStateMachine()
     now = steer(machine)
     machine.update((), now + FRAME_MS)

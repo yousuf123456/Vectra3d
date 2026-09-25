@@ -42,7 +42,6 @@ STATE_NAMES = {
     GestureState.CREATING: "Creating",
     GestureState.RESIZING: "Resizing",
     GestureState.STEERING: "Steering",
-    GestureState.RELEASING: "Releasing...",
 }
 COMMITTED_TEXT = "Last gesture: done"
 CANCELLED_TEXT = "Last gesture: cancelled"
@@ -236,18 +235,20 @@ class CameraPreview(QWidget):
         frame: HandFrame,
         hands: tuple[TrackedHand, ...],
         output: MachineOutput,
+        message: str | None = None,
     ) -> None:
         """Show one picture, the raw hands drawn on it, and what they are doing.
 
         `hands` are the same hands as `frame.hands`, measured, and `output` is
         what the gesture state machine made of them. The raw points are drawn,
         not the smoothed ones, so the picture shows exactly what the tracker
-        saw.
+        saw. `message`, when given, takes the gesture line's place: something
+        a gesture could not do, such as creating an eleventh vector.
         """
         self._picture.show_frame(pixels, frame)
         self._last_outcome = outcome_text(output) or self._last_outcome
         text = status_text(hands)
-        gesture_line = machine_text(output, self._last_outcome)
+        gesture_line = message or machine_text(output, self._last_outcome)
         if gesture_line:
             text = f"{text}\n{gesture_line}"
         # Set only on a change: 30 times a second, a label that is told its

@@ -4,15 +4,17 @@ Takes the measured hands of each frame and decides which gesture, if any, is
 happening. Only one gesture happens at a time. The machine outputs intents
 (`intents.py`) and never touches a vector.
 
-The spec's five states, plus two short phases inside them:
+The spec's five states, plus one short phase inside them:
 - **WAITING** - one hand has just pinched. For up to the two-hand window it
   is not yet known whether this is steering or the start of a two-hand
   gesture, so nothing begins until the second hand pinches or the window
   runs out.
-- **RELEASING** - a pinch gesture's pinch has ended. The gesture is frozen and
-  waits the release confirm window before committing, because the open palm
-  that cancels it can only appear after the pinching hand has opened, which
-  ends the pinch first.
+
+Letting go of a pinch commits at once. Only steering can be cancelled, by an
+open palm from the free hand: a hand that has just let go of a pinch opens
+naturally, and MediaPipe reads that as an open palm, so a palm seen after a
+release says nothing about what the student meant (found with real hands at
+G5.3).
 
 A gesture begins only when a pinch *begins*. A pinch held through the end of a
 gesture, or ignored because another gesture was running, starts nothing until
@@ -55,7 +57,6 @@ def _ms(seconds: float) -> int:
 # Comparing float seconds would land a hair either side of a boundary
 # depending on the numbers involved (0.334 - 0.034 is not exactly 0.3).
 TWO_HAND_WINDOW_MS = _ms(config.TWO_HAND_PINCH_WINDOW_S)
-RELEASE_CONFIRM_MS = _ms(config.RELEASE_CONFIRM_S)
 HAND_LOST_MS = _ms(config.HAND_LOST_TIMEOUT_S)
 HOLD_MS = _ms(config.HOLD_DURATION_S)
 
@@ -66,7 +67,6 @@ class GestureState(Enum):
     CREATING = "creating"
     RESIZING = "resizing"
     STEERING = "steering"
-    RELEASING = "releasing"
     HOLDING = "holding"
 
 
@@ -120,11 +120,6 @@ class GestureStateMachine:
             for hand in hands
             if hand.pinching and not self._was_pinching.get(hand.hand_id, False)
         ]
-        # Only a hand that is not pinching can cancel. A pinch with the other
-        # three fingers stretched out is read as an open palm by MediaPipe's
-        # classifier often enough to cancel gestures at random (measured with
-        # real hands at G5.2: three false cancels in 30 s).
-        palm = any(hand.gesture == OPEN_PALM and not hand.pinching for hand in hands)
         for hand in hands:
             if self._spent.get(hand.hand_id) not in (None, hand.gesture):
                 del self._spent[hand.hand_id]
@@ -136,11 +131,9 @@ class GestureStateMachine:
         elif self._state == GestureState.WAITING:
             self._waiting(by_id, onsets, now_ms, intents)
         elif self._state == GestureState.STEERING:
-            self._steering(by_id, palm, now_ms, intents)
+            self._steering(hands, by_id, now_ms, intents)
         elif self._state in (GestureState.CREATING, GestureState.RESIZING):
-            self._two_hand(by_id, palm, now_ms, intents)
-        elif self._state == GestureState.RELEASING:
-            self._releasing(palm, now_ms, intents)
+            self._two_hand(by_id, now_ms, intents)
         elif self._state == GestureState.HOLDING:
             hold = self._holding(hands, by_id, onsets, now_ms, intents)
 
@@ -191,37 +184,45 @@ class GestureStateMachine:
 
     def _steering(
         self,
+        hands: tuple[TrackedHand, ...],
         by_id: dict[int, TrackedHand],
-        palm: bool,
         now_ms: int,
         intents: list[Intent],
     ) -> None:
-        if palm:
+        # Only the free hand cancels, and only while it is not pinching. The
+        # steering hand itself opens as it lets go, which MediaPipe reads as
+        # an open palm (G5.3); and a pinch with the other three fingers
+        # stretched out is read as one too (G5.2: three false cancels in 30 s).
+        steering_id = self._hand_ids[0]
+        if any(
+            hand.hand_id != steering_id
+            and hand.gesture == OPEN_PALM
+            and not hand.pinching
+            for hand in hands
+        ):
             self._end(Cancel(), intents)
             return
-        hand = by_id.get(self._hand_ids[0])
+        hand = by_id.get(steering_id)
         if hand is None:
             self._while_missing(now_ms, intents)
         elif not hand.pinching:
-            self._begin_release(now_ms)
+            self._end(Commit(), intents)
         else:
             intents.append(UpdateSteer(hand.pinch_point, hand.scale))
 
     def _two_hand(
         self,
         by_id: dict[int, TrackedHand],
-        palm: bool,
         now_ms: int,
         intents: list[Intent],
     ) -> None:
-        if palm:
-            self._end(Cancel(), intents)
-            return
+        # No open-palm cancel here. Both hands are pinching, so a palm could
+        # only come from a hand that has just let go - which is a release.
         first, second = (by_id.get(hand_id) for hand_id in self._hand_ids)
         if first is None or second is None:
             self._while_missing(now_ms, intents)
         elif not (first.pinching and second.pinching):
-            self._begin_release(now_ms)
+            self._end(Commit(), intents)
         else:
             intents.append(
                 UpdateTwoHand(
@@ -229,12 +230,6 @@ class GestureStateMachine:
                     average_scale(first, second),
                 )
             )
-
-    def _releasing(self, palm: bool, now_ms: int, intents: list[Intent]) -> None:
-        if palm:
-            self._end(Cancel(), intents)
-        elif now_ms - self._started_ms >= RELEASE_CONFIRM_MS:
-            self._end(Commit(), intents)
 
     def _holding(
         self,
@@ -311,8 +306,7 @@ class GestureStateMachine:
         """A gesture hand is out of view: pause, and release once it is lost.
 
         Section 4.4: lost for more than the timeout ends the gesture as a
-        normal release. It commits at once, without the confirm window,
-        because losing a hand is never a cancel. Timed from when the hand was
+        normal release, never a cancel. Timed from when the hand was
         last seen; its entry is only forgotten after this check has run.
         """
         last_seen_ms = min(
@@ -322,10 +316,6 @@ class GestureStateMachine:
         )
         if now_ms - last_seen_ms > HAND_LOST_MS:
             self._end(Commit(), intents)
-
-    def _begin_release(self, now_ms: int) -> None:
-        self._state = GestureState.RELEASING
-        self._started_ms = now_ms
 
     def _end(self, intent: Intent, intents: list[Intent]) -> None:
         intents.append(intent)
