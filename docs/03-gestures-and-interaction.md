@@ -105,10 +105,18 @@ Pinch with both hands already apart, then move them closer or farther. The activ
 - This is **additive**, at the same rate as creating. A ratio-based approach (doubling the gap doubles the length) was rejected: it barely responds on small vectors.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.4.*
+Built in G5.4, on top of what G5.3 built for creating.
+
+- **The maths** is `resize_components` in `gestures/hand_to_vector.py`. The stretch is the same one creating uses, but it is allowed to be negative here, which is how closing the hands shortens the vector. The direction is taken from the vector as it was when the resize began and never recalculated, so however the hands wander the arrow cannot turn - only the distance between them counts. The length is held at 0.1 or more every frame.
+- **It acts on the active vector,** through `ui/gesture_controller.py` and the same gesture session as creating: the scene is remembered when the resize begins, each frame calls `actions.edit_vector`, and letting go records one undo step. A resize that changed nothing records nothing. Unlike a create, a resize is never thrown away on release, since it cannot have become too short.
+- **It is refused, with the reason under the camera picture,** when there is nothing sensible to resize: "Vector A is locked.", "Create a vector first.", or "Vector A has no direction to resize." for a zero vector - which can exist, because `A - A` can be saved as a vector. A refusal changes nothing and records nothing.
+- **A result follows it live.** If the resized vector is part of a result (say A in `A + B`), the result arrow is redrawn at its new value each frame, and the result card's numbers change in place. The short glide a result makes after a panel edit is skipped mid-gesture: restarted 30 times a second it would only ever trail behind the hand.
+- **Speed.** About 53 ms per update with ten vectors and a result showing - the same as creating. With the resized vector's components and shadows switched on it is about 114 ms, because those overlays rebuild all their geometry every frame; making that faster belongs with G5.8, where components following a hand-moved vector is a criterion of its own.
 
 ### Likely questions
 - **How does it know whether I want to create or resize?** By how far apart your hands are when you pinch: together means create, apart means resize.
+- **Why doesn't the arrow turn when I move my hands up or down?** Resizing only ever changes length. Turning the arrow is steering, a separate one-hand gesture.
+- **Can I make a vector point the other way by closing my hands all the way?** No. The length stops at 0.1; reversing a vector would be steering it round, not resizing it.
 
 ---
 

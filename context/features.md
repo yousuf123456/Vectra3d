@@ -103,8 +103,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-07 Resize by hand
 **Group:** G5 · **Depends on:** F-02, F-05a
-- [ ] The resize gesture changes the active vector's magnitude while keeping its direction unchanged.
-- [ ] Releasing the gesture freezes the magnitude.
+- [x] The resize gesture changes the active vector's magnitude while keeping its direction unchanged.
+- [x] Releasing the gesture freezes the magnitude.
 
 ### F-08 Edit exact values
 **Group:** G2 · **Depends on:** F-04, F-05a

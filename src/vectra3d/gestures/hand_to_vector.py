@@ -67,20 +67,19 @@ def head_index(start_points: tuple[Point, Point], points: tuple[Point, Point]) -
     return 0 if moved[0] > moved[1] else 1
 
 
-def stretch_magnitude(
+def stretch(
     start_points: tuple[Point, Point],
     start_scale: float,
     points: tuple[Point, Point],
     scale: float,
     sensitivity: float,
 ) -> float | None:
-    """How long the hands' stretch makes a vector (6.2, 6.3).
+    """How much length the hands' stretch adds, in scene units (6.2, 6.3).
 
     (current distance - starting distance) / full stretch * sensitivity, with
     each distance in hand-scale units of its own moment, so leaning in
-    mid-gesture does not by itself change the answer. Never below zero:
-    bringing the hands closer than they started gives nothing, not a vector
-    pointing backwards.
+    mid-gesture does not by itself change the answer. Negative when the hands
+    have come closer than they started, which is how a resize shrinks.
 
     None if either hand scale is zero, when no distance can be measured.
     """
@@ -88,7 +87,7 @@ def stretch_magnitude(
         return None
     start_hs = distance(*start_points) / start_scale
     now_hs = distance(*points) / scale
-    return max(0.0, (now_hs - start_hs) / config.FULL_STRETCH_HS * sensitivity)
+    return (now_hs - start_hs) / config.FULL_STRETCH_HS * sensitivity
 
 
 def create_components(
@@ -104,14 +103,16 @@ def create_components(
     It points along the line from the tail hand to the head hand, carried
     into the world by the screen's `axes` (right, up), so it starts parallel
     to the screen; depth is added by steering afterwards. Its length is the
-    stretch magnitude.
+    stretch, never below zero: bringing the hands closer than they started
+    gives nothing, not a vector pointing backwards.
 
     The zero vector while the hands have not moved apart, or lie exactly on
     top of each other. None if nothing can be measured this frame.
     """
-    length = stretch_magnitude(start_points, start_scale, points, scale, sensitivity)
-    if length is None:
+    added = stretch(start_points, start_scale, points, scale, sensitivity)
+    if added is None:
         return None
+    length = max(0.0, added)
 
     head = head_index(start_points, points)
     head_point, tail_point = points[head], points[1 - head]
@@ -124,6 +125,32 @@ def create_components(
     )
     if along is None or length == 0.0:
         return (0.0, 0.0, 0.0)
+    return tuple(length * value for value in along)
+
+
+def resize_components(
+    original: Triple,
+    start_points: tuple[Point, Point],
+    start_scale: float,
+    points: tuple[Point, Point],
+    scale: float,
+    sensitivity: float,
+) -> Triple | None:
+    """A vector resized by two pinching hands (6.3).
+
+    Its direction stays exactly that of `original`, the vector as it was when
+    the resize began. Its length is the original length plus the stretch, at
+    the same rate as creating, and never below the minimum magnitude, however
+    far the hands close.
+
+    None if nothing can be measured this frame, or if `original` is the zero
+    vector, which has no direction to keep.
+    """
+    along = unit_vector(original)
+    added = stretch(start_points, start_scale, points, scale, sensitivity)
+    if along is None or added is None:
+        return None
+    length = max(config.MIN_MAGNITUDE, magnitude(original) + added)
     return tuple(length * value for value in along)
 
 

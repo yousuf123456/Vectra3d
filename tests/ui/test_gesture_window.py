@@ -157,3 +157,53 @@ def test_after_release_the_whole_scene_is_redrawn(app, window) -> None:
     apply(window, Commit())
     # A full refresh rebuilds the list, as it always has.
     assert window.info_panel._card_by_name["A"] is not card
+
+
+# --- Resizing (F-07) ---
+
+RESIZE = BeginTwoHand(TwoHandKind.RESIZE, (0, 1), START, 0.25)
+
+
+def test_a_resize_moves_the_result_and_its_card_in_place(app, window) -> None:
+    store = window._store
+    actions.create_vector(store, (3.0, 0.0, 4.0))
+    actions.create_vector(store, (0.0, 1.0, 0.0))
+    actions.toggle_selected(store, "A")
+    actions.toggle_selected(store, "B")
+    actions.compute_resultant(store)
+    actions.set_active(store, "A")
+    app.processEvents()
+
+    apply(window, RESIZE)
+    result_card = window.info_panel._result_card
+    apply(window, PULLED)
+    app.processEvents()
+
+    # A is now (10.5, 0, 14), so A + B is (10.5, 1, 14): its card says so
+    # without having been rebuilt. |v| is the fourth value.
+    assert window.info_panel._result_card is result_card
+    texts = [label.text() for label in result_card.value_labels]
+    assert texts[:3] == ["10.50", "1.00", "14.00"]
+    # And the arrow was drawn at the new value straight away, not gliding.
+    assert window._result == store.result
+
+
+def test_a_resize_rescales_the_scene_only_on_release(app, window) -> None:
+    actions.create_vector(window._store, (3.0, 0.0, 4.0))
+    assert window.scene.extent == 10
+
+    apply(window, RESIZE, PULLED)
+    app.processEvents()
+    assert window.scene.extent == 10
+
+    apply(window, Commit())
+    assert window.scene.extent == 20
+
+
+def test_a_refused_resize_is_explained_in_the_camera_strip(window) -> None:
+    actions.create_vector(window._store, (3.0, 0.0, 4.0))
+    actions.toggle_locked(window._store, "A")
+    # Pinch points 0.3 of the width apart: 0.4 picture heights, 2 hs - a resize.
+    both = (pinching_hand_at(0.35), pinching_hand_at(0.65))
+    window._on_hand_frame(PIXELS, HandFrame(hands=both, timestamp_ms=0, aspect=ASPECT))
+    assert window.camera_preview.status.endswith("Vector A is locked.")

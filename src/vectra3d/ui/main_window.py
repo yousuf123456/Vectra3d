@@ -374,15 +374,15 @@ class VectraMainWindow(MainWindow):
     def _live_name(self) -> str | None:
         """The vector a gesture is moving, if only it needs redrawing.
 
-        None when no gesture is moving a vector, and also when the moving
-        vector feeds the result: the result's arrow and card would then have
-        to follow it too, so the full redraw runs instead.
+        None when no gesture is moving a vector. Also None when the result
+        has appeared or gone since the last full redraw - which a resize can
+        cause by making a sum too large to show - because that changes which
+        cards the panel holds, and only the full redraw rebuilds them.
         """
         name = self._gesture_controller.live_name
         if not self._store.gesture_in_progress or self._store.get(name) is None:
             return None
-        result = self._store.result
-        if result is not None and name in result.sources:
+        if (self._store.result is None) != (self._result is None):
             return None
         return name
 
@@ -406,6 +406,15 @@ class VectraMainWindow(MainWindow):
             self.overlays.draw(vectors, name)
         if self._store.projections_shown == name:
             self.projections.draw(vectors, name)
+        # A result worked out from this vector follows it. Drawn directly,
+        # without the 150 ms glide panel edits get: restarted every frame, the
+        # glide would only ever trail behind the hand.
+        result = self._store.result
+        if result is not None and name in result.sources:
+            self._result_transition.cancel()
+            self._result = result
+            self.result.draw(result)
+            self.info_panel.update_result(result)
         self.plotter.render()
         self.info_panel.update_vector(vector)
         self.action_panel.refresh()

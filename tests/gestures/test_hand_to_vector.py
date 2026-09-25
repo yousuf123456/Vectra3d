@@ -17,7 +17,8 @@ from vectra3d.gestures.hand_to_vector import (
     head_index,
     is_long_enough,
     screen_axes,
-    stretch_magnitude,
+    resize_components,
+    stretch,
 )
 
 SENSITIVITY = 25
@@ -92,31 +93,36 @@ def test_the_stretch_formula() -> None:
     # Scale 0.25. Started 0.125 apart (0.5 hs), now 1.125 apart (4.5 hs).
     # (4.5 - 0.5) / 8 * 25 = 12.5.
     now = ((0.5, 0.5), (1.625, 0.5))
-    assert stretch_magnitude(START, 0.25, now, 0.25, SENSITIVITY) == 12.5
+    assert stretch(START, 0.25, now, 0.25, SENSITIVITY) == 12.5
 
 
 def test_one_full_stretch_is_the_sensitivity() -> None:
     # 8 hs of extra distance at scale 0.25 is 2.0 picture heights.
     now = ((0.5, 0.5), (2.625, 0.5))
-    assert stretch_magnitude(START, 0.25, now, 0.25, SENSITIVITY) == SENSITIVITY
-    assert stretch_magnitude(START, 0.25, now, 0.25, 10) == 10
+    assert stretch(START, 0.25, now, 0.25, SENSITIVITY) == SENSITIVITY
+    assert stretch(START, 0.25, now, 0.25, 10) == 10
 
 
 def test_each_distance_is_measured_in_its_own_moments_hand_scale() -> None:
     # Leaning in doubles both the hands and the gap between them: 0.25 apart
     # at scale 0.5 is still 0.5 hs, so nothing has been stretched.
     now = ((0.5, 0.5), (0.75, 0.5))
-    assert stretch_magnitude(START, 0.25, now, 0.5, SENSITIVITY) == 0.0
+    assert stretch(START, 0.25, now, 0.5, SENSITIVITY) == 0.0
 
 
-def test_hands_closer_than_they_started_give_nothing() -> None:
+def test_hands_closer_than_they_started_stretch_by_a_negative_amount() -> None:
+    # 0.0625 apart is 0.25 hs, 0.25 closer than the start: -0.25 / 8 * 25.
     now = ((0.5, 0.5), (0.5625, 0.5))
-    assert stretch_magnitude(START, 0.25, now, 0.25, SENSITIVITY) == 0.0
+    assert stretch(START, 0.25, now, 0.25, SENSITIVITY) == -0.78125
+
+
+def test_hands_closer_than_they_started_create_nothing() -> None:
+    assert create(((0.5, 0.5), (0.5625, 0.5))) == (0.0, 0.0, 0.0)
 
 
 def test_a_hand_of_no_size_cannot_be_measured() -> None:
-    assert stretch_magnitude(START, 0.0, START, 0.25, SENSITIVITY) is None
-    assert stretch_magnitude(START, 0.25, START, 0.0, SENSITIVITY) is None
+    assert stretch(START, 0.0, START, 0.25, SENSITIVITY) is None
+    assert stretch(START, 0.25, START, 0.0, SENSITIVITY) is None
 
 
 # --- The vector ---
@@ -155,7 +161,7 @@ def test_a_diagonal_pull_keeps_its_angle() -> None:
     # in that ratio, with the stretch as its length.
     now = ((0.5, 0.5), (1.625, -0.5))
     components = create(now)
-    length = stretch_magnitude(START, 0.25, now, 0.25, SENSITIVITY)
+    length = stretch(START, 0.25, now, 0.25, SENSITIVITY)
     assert components[1] == 0.0
     assert components[0] / components[2] == pytest.approx(1.125)
     assert math.hypot(*components) == pytest.approx(length)
@@ -177,3 +183,59 @@ def test_a_vector_shorter_than_the_minimum_is_not_kept() -> None:
     assert not is_long_enough((config.MIN_MAGNITUDE / 2, 0.0, 0.0))
     assert is_long_enough((config.MIN_MAGNITUDE, 0.0, 0.0))
     assert is_long_enough((12.5, 0.0, 0.0))
+
+
+# --- Resizing ---
+
+# (3, 0, 4) is 5 long, pointing (0.6, 0, 0.8).
+ORIGINAL = (3.0, 0.0, 4.0)
+
+
+def resize(now, scale=0.25, original=ORIGINAL):
+    return resize_components(original, START, 0.25, now, scale, SENSITIVITY)
+
+
+def test_pulling_apart_lengthens_the_vector_in_the_same_direction() -> None:
+    # A 12.5 stretch: 5 + 12.5 = 17.5 long, still (0.6, 0, 0.8).
+    components = resize(((0.5, 0.5), (1.625, 0.5)))
+    assert components == pytest.approx((10.5, 0.0, 14.0))
+
+
+def test_which_way_the_hands_move_does_not_turn_it() -> None:
+    # The same stretch pulled vertically gives exactly the same vector.
+    start = ((0.5, 0.5), (0.5, 0.375))
+    now = ((0.5, 0.5), (0.5, -0.625))
+    components = resize_components(ORIGINAL, start, 0.25, now, 0.25, SENSITIVITY)
+    assert components == pytest.approx((10.5, 0.0, 14.0))
+
+
+def test_closing_the_hands_shortens_it() -> None:
+    # 0.25 hs closer: 5 - 0.78125 = 4.21875 long.
+    components = resize(((0.5, 0.5), (0.5625, 0.5)))
+    assert math.hypot(*components) == pytest.approx(4.21875)
+    assert components[0] / components[2] == pytest.approx(0.75)
+
+
+def test_it_never_shrinks_below_the_minimum() -> None:
+    # A 1-long vector and hands closing by a full stretch: 1 - 25 would be
+    # far below zero; it stops at the minimum, still pointing the same way.
+    start = ((0.0, 0.5), (2.125, 0.5))
+    now = ((0.0, 0.5), (0.125, 0.5))
+    components = resize_components(
+        (0.0, 1.0, 0.0), start, 0.25, now, 0.25, SENSITIVITY
+    )
+    assert components == (0.0, config.MIN_MAGNITUDE, 0.0)
+
+
+def test_leaning_in_does_not_resize() -> None:
+    # Hands and gap both doubled: still 0.5 hs apart, so the same 5.
+    components = resize(((0.5, 0.5), (0.75, 0.5)), scale=0.5)
+    assert components == pytest.approx(ORIGINAL)
+
+
+def test_the_zero_vector_cannot_be_resized() -> None:
+    assert resize(((0.5, 0.5), (1.625, 0.5)), original=(0.0, 0.0, 0.0)) is None
+
+
+def test_a_resize_with_nothing_to_measure_gives_none() -> None:
+    assert resize(START, scale=0.0) is None

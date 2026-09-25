@@ -5,14 +5,16 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G5 — Gesture control. G5.1-G5.3 done. Two F-02 criteria are
+- **Current group:** G5 — Gesture control. G5.1-G5.4 done. Two F-02 criteria are
   carried into G5: joystick feedback (tick at G5.5) and performance (11-13% against a
   10% line).
-- **Next step:** G5.4 — F-07 resize by hand: `BeginTwoHand(resize)` / `UpdateTwoHand` /
-  `Commit` in `ui/gesture_controller.py`, through the gesture session G5.3 built. The
-  window's fast redraw falls back to a full redraw when the moving vector feeds the
-  result - resize is the first gesture that can reach that case, so measure it. Resize
-  cannot be cancelled (section 5, amended at G5.3).
+- **Next step:** G5.5 — F-06 steer by hand, without snapping: `BeginSteer` /
+  `UpdateSteer` / `Commit` / `Cancel` in `ui/gesture_controller.py`. Screen-relative
+  joystick (section 6.4): dead zone, speed up to 90°/s, magnitude unchanged. Steering is
+  the one gesture that can be cancelled (free hand's open palm), so `cancel_gesture` gets
+  its first caller from a hand. Also due here: F-02's joystick feedback in the preview
+  (anchor, dead-zone ring, line to the pinch point), θ and φ shown live in the 3D view
+  (section 10), and measuring the tracker slowdown while VTK renders every frame.
 - **Blocked on:** nothing.
 
 ## Completed steps
@@ -57,6 +59,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G4 close | F-21 deleted; group closed | 2026-09-24 | `G4 closed: privacy notice deleted` | The user's decision after G4.1. F-21 was deleted outright rather than moved to post-MVP, after the point was raised that it is the disclosure `architecture.md` section 6 calls for. Changed in `features.md`, `build-plan.md`, `project-overview.md`, `architecture.md`, `library-docs.md` and `docs/02` together, so nothing still promises a notice. |
 | G5.1 | Hand metrics: `gestures/hand_metrics.py` (hand scale, pinch hysteresis, One Euro smoothing, hand ids), `HandFrame.aspect`, pinch readout in the preview | 2026-09-24 | `G5.1: hand metrics` | No `features.md` criteria of its own; it is the base for F-03, F-06 and F-07. Three smoothing values added to `interaction-spec.md` section 9 at the user's decision. Found at planning: landmarks are 0-1 per side, so on 4:3 every measured distance was off by up to a third depending on the hand's angle - corrected with the picture's aspect. The user checked pinch detection with real hands in the real window: "working well". Two expected values in the filter tests were the agent's arithmetic, not the code (0.17320 for 0.17317). 31 new tests; suite now 627 passing. |
 | G5.3 | F-03 create by gesture: `gestures/hand_to_vector.py`, `ui/gesture_controller.py`, the gesture session in `state/actions.py`, the window's live redraw | 2026-09-25 | `G5.3: create a vector by gesture` | All three F-03 criteria pass; the user created vectors with real hands and found it "feels good". Two problems found and fixed in the step. **Speed:** the full redraw measured ~300 ms per camera frame, so the arrow would have fallen ever further behind; now only the moving vector and its card's numbers are redrawn, and frames that arrive together share one redraw - ~48 ms, about 20 updates a second, no backlog. **False cancels:** the user found that letting go of a pinch cancelled the vector, because the opening hand reads as `Open_Palm` inside G5.2's 0.3 s confirm window; section 5 amended at the user's decision so release commits at once, only steering can be cancelled, and only by the free hand. The confirm-window tests were rewritten to the new rule, with two regression tests for a release read as an open palm; suite 672 -> 720 passing. |
+| G5.4 | F-07 resize by hand: `resize_components` and a signed `stretch` in `gestures/hand_to_vector.py`, resize in `ui/gesture_controller.py`, `InfoPanel.update_result`, the result on the window's fast path | 2026-09-25 | `G5.4: resize a vector by hand` | Both F-07 criteria pass; the user resized with real hands: "working now". The direction is fixed from the moment the resize begins and the length never drops below 0.1. Refusals are explained in the camera strip - locked (the spec's wording), no vector, and the zero vector. A result follows the resized vector at full speed. Measured on screen with ten vectors: 53 ms per update with a result showing, 114 ms with the vector's components and shadows on - deferred to G5.8 at the user's decision. 19 new tests; suite now 739 passing. |
 | G5.2 | Gesture state machine: `gestures/state_machine.py`, `gestures/intents.py`, the metrics' 0.3 s memory for a missing hand, the gesture line in the preview | 2026-09-24 | `G5.2: gesture state machine` | No `features.md` criteria of its own; F-03, F-05b, F-06, F-07, F-09b, F-13b and F-19 (gestures) are built on it. Found at planning: cancel as specified could almost never happen, since opening a pinching hand releases before a palm is seen - section 5 amended with a release confirm window. Real-hand testing then found MediaPipe mostly losing two hands held close or pointing at the camera (palms-to-camera works), gestures cancelled by pinching hands misread as `Open_Palm` (fixed: only a non-pinching hand cancels), and two-hand pinches arriving 328 and 469 ms apart (window 0.3 -> 0.5 s). Two metrics bugs caught by tests: a late-returning hand resumed as the old one, and a slow frame losing a visible hand. User confirmed with real hands: "now working fine". 45 new tests; suite now 672 passing. |
 
 
@@ -69,7 +72,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | In progress — G5.1-G5.3 done |
+| G5 | Gesture control | In progress — G5.1-G5.4 done |
 | G6 | Packaging | Not started |
 
 ---
@@ -248,6 +251,10 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-25 | Undo and Redo are disabled while a gesture runs; other panel clicks mid-gesture are not guarded | Undo mid-gesture would restore a scene from under the hands, and the gesture would then commit on top of it. A panel click with both hands pinching is unlikely enough not to build for; if one deletes the live vector, the gesture's updates are refused. |
 | 2026-09-25 | The limit wording is one constant, `action_panel.LIMIT_TEXT`, used by the panel and the gesture | F-03 asks for "a message that explains the limit"; saying it two ways would be the G3.4 zero-vector-note mistake again. |
 | 2026-09-25 | Pinch thresholds left at 0.25 / 0.35 hs | Revisit was due at G5.3. The user created vectors by hand without reporting a dropped pinch, so there is no evidence to change them on. |
+| 2026-09-25 | A resize takes its direction from the vector as it was when the resize began, and only the distance between the hands counts | Section 6.3 says the direction stays fixed. Recomputing it from the current vector each frame would let rounding creep it round over a long resize; keeping the original makes "fixed" exact. |
+| 2026-09-25 | A resize is refused, with a reason in the camera strip, for no vector, a locked vector and the zero vector | The user's choice. The spec gives only the locked message; the other two were added so a student pinching with no response is not left thinking the tracking failed. The zero vector can exist because a saved `A - A` is one, and it has no direction to keep. |
+| 2026-09-25 | A result following a hand-moved vector is drawn directly, without the 150 ms glide, and its card is updated in place | The user's choice over falling back to the ~300 ms full redraw. The glide, restarted every frame, would only ever trail behind the hand. It still runs for panel edits, which is what section 10 describes. The full redraw still runs if the result appears or disappears mid-gesture (a sum becoming too large to show), since that changes which cards exist. |
+| 2026-09-25 | Resizing with the vector's components and shadows on (114 ms per update) left for G5.8 | The user's choice. "Components update live while the vector is moved by hand" is an F-13b criterion, built at G5.8; the fix - updating overlay geometry in place, and not rendering once per overlay - belongs with the criterion that asks for it. |
 | 2026-09-24 | Palms toward the camera is the working hand pose, recorded for students | Measured: hands held close or pointing at the camera were tracked as one hand or none. Written into `docs/03` as a likely question; worth putting in front of students before the trial. |
 
 
@@ -268,6 +275,7 @@ Every change to a value in `config.py` / `interaction-spec.md` section 9, with t
 
 | Found | Issue | Status |
 |---|---|---|
+| 2026-09-25 | **A hand-moved vector showing its components and shadows redraws in ~114 ms** (about 9 updates a second), against ~53 ms without them. The two overlays rebuild all their geometry every frame (33 ms and 24 ms) and each calls `render()` itself, so a frame renders about 3.6 times. | Open — fix at G5.8 with F-13b |
 | 2026-09-25 | **A hand-moved vector redraws in ~48 ms, over the 33 ms camera frame**, so it updates about 20 times a second rather than 30. It cannot lag - frames share redraws - and the user found creating smooth enough. Most of it is fixed cost (building the arrow and its halo, one render, Qt painting). Resize and steer move a vector the same way. | Open — re-measure at G5.5 with the tracker-slowdown issue below |
 | 2026-09-24 | **While the 3D view renders continuously, the tracker slows from ~30 to ~10 frames a second**, even with recognition stubbed out. Most likely VTK holding Python's GIL during `render()`. Harmless while the student drags the view with the mouse, but G5.5 steering redraws the view on every frame, so it must be measured there. | Open — measure at G5.5 |
 | 2026-09-24 | The no-webcam message has been proven only with a fake camera through the real thread and preview, not with a real camera switched off. | Open — check by hand before G6 |

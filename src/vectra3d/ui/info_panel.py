@@ -234,6 +234,7 @@ class InfoPanel(QWidget):
         # Each vector's card by name, so one card's numbers can be changed in
         # place while a hand moves that vector (`update_vector`).
         self._card_by_name: dict[str, _Card] = {}
+        self._result_card: _ResultCard | None = None
         self._cards = QWidget()
         self._cards_layout = QVBoxLayout(self._cards)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
@@ -261,6 +262,7 @@ class InfoPanel(QWidget):
     ) -> None:
         """Rebuild the list to match the store."""
         self._card_by_name = {}
+        self._result_card = None
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
             widget = item.widget()
@@ -271,15 +273,14 @@ class InfoPanel(QWidget):
         # student just asked for is the first thing they see, and where it
         # does not move as vectors are added and removed below it.
         if result is not None:
-            self._cards_layout.addWidget(
-                _build_result_card(
-                    result,
-                    on_save=self._save_result,
-                    on_show=self._show_how,
-                    can_save=can_save_result,
-                    can_show=can_show_result,
-                )
+            self._result_card = _build_result_card(
+                result,
+                on_save=self._save_result,
+                on_show=self._show_how,
+                can_save=can_save_result,
+                can_show=can_show_result,
             )
+            self._cards_layout.addWidget(self._result_card)
         elif result_error is not None:
             self._cards_layout.addWidget(_build_result_message(result_error))
 
@@ -316,15 +317,17 @@ class InfoPanel(QWidget):
         and the zero-vector note can change mid-gesture, so only they are set.
         """
         card = self._card_by_name.get(vector.name)
-        if card is None:
-            return
-        left, right = card_values(vector)
-        for label, (_, text) in zip(card.value_labels, left + right):
-            if label.text() != text:
-                label.setText(text)
-        note = card_note(vector)
-        card.note_label.setText(note or "")
-        card.note_label.setVisible(note is not None)
+        if card is not None:
+            _set_values(card, vector.components)
+
+    def update_result(self, result: Result) -> None:
+        """Change the numbers on the result card, and nothing else.
+
+        For a result following a vector that a hand is moving, for the same
+        reason as `update_vector`.
+        """
+        if self._result_card is not None:
+            _set_values(self._result_card, result.components)
 
     def _delete(self, name: str) -> None:
         actions.delete_vector(self._store, name)
@@ -357,7 +360,34 @@ class InfoPanel(QWidget):
         self.show_how_requested.emit()
 
 
-class _Card(QFrame):
+class _ValueCard(QFrame):
+    """A card whose numbers can be changed in place (`InfoPanel.update_vector`).
+
+    Holds the value labels in the order `values_for` gives them, and the note
+    line; the builders fill both in.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.value_labels: list[QLabel] = []
+        self.note_label = QLabel()
+
+
+def _set_values(card: _ValueCard, components: tuple[float, float, float]) -> None:
+    left, right = values_for(components)
+    for label, (_, text) in zip(card.value_labels, left + right):
+        if label.text() != text:
+            label.setText(text)
+    note = note_for(components)
+    card.note_label.setText(note or "")
+    card.note_label.setVisible(note is not None)
+
+
+class _ResultCard(_ValueCard):
+    """The temporary result's card."""
+
+
+class _Card(_ValueCard):
     """A vector's card, which activates that vector when clicked.
 
     Activation is handled here rather than with a button behind the contents
@@ -371,10 +401,6 @@ class _Card(QFrame):
         self._name = name
         self._on_activate = on_activate
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        # Filled in by `_build_card`, for `InfoPanel.update_vector`: the value
-        # labels in the order `card_values` gives them, and the note line.
-        self.value_labels: list[QLabel] = []
-        self.note_label = QLabel()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -572,7 +598,7 @@ def _build_result_card(
     on_show: Callable[[], None],
     can_save: bool,
     can_show: bool,
-) -> QWidget:
+) -> _ResultCard:
     """The temporary result's card: its expression, its numbers, and Save.
 
     Built apart from `_build_card` rather than by adding options to it. A
@@ -581,7 +607,7 @@ def _build_result_card(
     is a vector" conditions through one builder would make both harder to
     read than having two.
     """
-    card = QFrame()
+    card = _ResultCard()
     card.setStyleSheet(
         f"QFrame {{ border: 1px solid {naming.RESULT_COLOR};"
         f" border-radius: {theme.CARD_RADIUS}px; background: {theme.CARD_BACKGROUND}; }}"
@@ -619,18 +645,25 @@ def _build_result_card(
     left, right = values_for(result.components)
     for row, (name_text, value_text) in enumerate(left):
         values.addWidget(_key(name_text), row, 0)
-        values.addWidget(_value(value_text), row, 1)
+        label = _value(value_text)
+        card.value_labels.append(label)
+        values.addWidget(label, row, 1)
     for row, (name_text, value_text) in enumerate(right):
         values.addWidget(_key(name_text), row, 3)
-        values.addWidget(_value(value_text, align_right=False), row, 4)
+        label = _value(value_text, align_right=False)
+        card.value_labels.append(label)
+        values.addWidget(label, row, 4)
     outer.addLayout(values)
 
+    # Always built and hidden when empty, as on a vector's card, so a result
+    # passing through zero while a hand moves one of its vectors can show and
+    # lose its note without a rebuild.
     text = note_for(result.components)
-    if text is not None:
-        note = QLabel(text)
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color: {theme.MUTED_TEXT};")
-        outer.addWidget(note)
+    card.note_label.setText(text or "")
+    card.note_label.setWordWrap(True)
+    card.note_label.setStyleSheet(f"color: {theme.MUTED_TEXT};")
+    card.note_label.setVisible(text is not None)
+    outer.addWidget(card.note_label)
 
     buttons = QHBoxLayout()
     buttons.setSpacing(theme.GAP_SMALL)

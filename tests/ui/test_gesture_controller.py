@@ -6,6 +6,8 @@ camera is looking along +y with z up, so the screen's right is +x.
 
 from __future__ import annotations
 
+import pytest
+
 from vectra3d.gestures.intents import (
     BeginSteer,
     BeginTwoHand,
@@ -127,11 +129,114 @@ def test_the_message_goes_when_the_next_gesture_begins() -> None:
     assert controller.message is None
 
 
-def test_a_resize_does_not_create_anything_yet() -> None:
-    # Resizing is G5.4; until then its intents change nothing.
+# --- Resizing (F-07, `interaction-spec.md` 6.3) ---
+
+RESIZE = BeginTwoHand(TwoHandKind.RESIZE, (0, 1), START, 0.25)
+# 0.25 hs closer than the start: a stretch of -0.78125.
+CLOSED = UpdateTwoHand(((0.5, 0.5), (0.5625, 0.5)), 0.25)
+
+
+def store_with(*components) -> VectorStore:
+    store = VectorStore()
+    for value in components:
+        actions.create_vector(store, value)
+    return store
+
+
+def test_a_resize_lengthens_the_active_vector_and_keeps_its_direction() -> None:
+    # B is (3, 0, 4), 5 long. A 12.5 stretch: 17.5 long, (10.5, 0, 14).
+    store = store_with((1.0, 0.0, 0.0), (3.0, 0.0, 4.0))
+    controller = GestureController(store)
+    run(controller, RESIZE, PULLED)
+
+    assert store.get("B").components == pytest.approx((10.5, 0.0, 14.0))
+    assert store.get("A").components == (1.0, 0.0, 0.0)
+    assert store.gesture_in_progress
+    assert controller.labels() == {"B": "|B| = 17.50"}
+
+
+def test_closing_the_hands_shortens_it() -> None:
+    # 5 - 0.78125 = 4.21875 long, along (0.6, 0, 0.8).
+    store = store_with((3.0, 0.0, 4.0))
+    controller = GestureController(store)
+    run(controller, RESIZE, CLOSED)
+    assert store.get("A").components == pytest.approx((2.53125, 0.0, 3.375))
+
+
+def test_a_committed_resize_is_one_undo_step() -> None:
+    store = store_with((3.0, 0.0, 4.0))
+    controller = GestureController(store)
+    run(controller, RESIZE, CLOSED, PULLED, Commit())
+
+    assert not store.gesture_in_progress
+    assert controller.labels() == {}
+    actions.undo(store)
+    assert store.get("A").components == (3.0, 0.0, 4.0)
+    actions.undo(store)
+    assert store.names == ()
+
+
+def test_a_resize_that_changed_nothing_records_nothing() -> None:
+    store = store_with((3.0, 0.0, 4.0))
+    controller = GestureController(store)
+    run(controller, RESIZE, Commit())
+    actions.undo(store)
+    assert not store.history.can_undo
+
+
+def test_a_resize_shrunk_to_the_minimum_is_kept() -> None:
+    # Unlike a create, a resize is never dropped on release: it cannot go
+    # below the minimum magnitude, so there is nothing too short to drop.
+    # Hands 8.5 hs apart closing to 0.5 hs: a stretch of -25 on a 0.5 vector.
+    store = store_with((0.0, 0.5, 0.0))
+    controller = GestureController(store)
+    far_apart = ((0.0, 0.5), (2.125, 0.5))
+    begin = BeginTwoHand(TwoHandKind.RESIZE, (0, 1), far_apart, 0.25)
+    closed = UpdateTwoHand(((0.0, 0.5), (0.125, 0.5)), 0.25)
+    run(controller, begin, closed, Commit())
+    assert store.get("A").components == (0.0, 0.1, 0.0)
+
+
+def test_a_locked_vector_is_not_resized_and_the_student_is_told() -> None:
+    store = store_with((3.0, 0.0, 4.0))
+    actions.toggle_locked(store, "A")
+    before = store.snapshot()
+    controller = GestureController(store)
+
+    run(controller, RESIZE, PULLED, Commit())
+
+    assert controller.message == "Vector A is locked."
+    assert store.snapshot() == before
+    assert not store.gesture_in_progress
+
+
+def test_with_no_vector_the_student_is_told_to_create_one() -> None:
     store = VectorStore()
     controller = GestureController(store)
-    resize = BeginTwoHand(TwoHandKind.RESIZE, (0, 1), START, 0.25)
-    run(controller, resize, PULLED, Commit())
+    run(controller, RESIZE, PULLED, Commit())
+    assert controller.message == "Create a vector first."
     assert store.names == ()
     assert not store.gesture_in_progress
+
+
+def test_the_zero_vector_has_no_direction_to_resize() -> None:
+    store = store_with((0.0, 0.0, 0.0))
+    before = store.snapshot()
+    controller = GestureController(store)
+    run(controller, RESIZE, PULLED, Commit())
+    assert controller.message == "Vector A has no direction to resize."
+    assert store.snapshot() == before
+
+
+def test_a_resize_keeps_the_result_live() -> None:
+    # A + B with A resized to (10.5, 0, 14): (10.5, 1, 14).
+    store = store_with((3.0, 0.0, 4.0), (0.0, 1.0, 0.0))
+    actions.toggle_selected(store, "A")
+    actions.toggle_selected(store, "B")
+    actions.compute_resultant(store)
+    actions.set_active(store, "A")
+    controller = GestureController(store)
+
+    run(controller, RESIZE, PULLED)
+
+    assert store.result.components == pytest.approx((10.5, 1.0, 14.0))
