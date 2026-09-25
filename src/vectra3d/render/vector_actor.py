@@ -34,6 +34,11 @@ TIP_LENGTH = 0.060
 # same one, singled out.
 HALO_SCALE = 3.4
 HALO_OPACITY = 0.22
+# When a steered vector snaps onto an axis or plane its halo flashes brighter
+# for a moment (`interaction-spec.md` section 10). The halo rather than the
+# axis, because a plane has no single line to flash.
+SNAP_FLASH_OPACITY = 0.6
+SNAP_FLASH_MS = 300
 
 LETTER_FONT_SIZE = 15
 # How far past the head the letter sits, as a fraction of the arrow's length.
@@ -105,19 +110,24 @@ class VectorActors:
 
         self._plotter.render()
 
-    def redraw(self, vector: Vector, is_active: bool, label_text: str) -> None:
+    def redraw(
+        self, vector: Vector, is_active: bool, label_text: str, flash: bool = False
+    ) -> None:
         """Redraw one vector and leave every other actor alone. Does not render.
 
         For a vector being moved by hand, which changes 30 times a second:
         rebuilding all ten arrows each frame measured 90 ms, most of a frame
         spent on arrows that had not moved. Its halo is replaced here too,
-        since the moving vector is the active one.
+        since the moving vector is the active one; `flash` draws it brighter,
+        for a snap.
         """
         self._plotter.remove_actor(f"halo-{vector.name}", render=False)
         self._drawn.add(vector.name)
-        self._draw_one(vector, is_active, label_text)
+        self._draw_one(vector, is_active, label_text, flash)
 
-    def _draw_one(self, vector: Vector, is_active: bool, label_text: str) -> None:
+    def _draw_one(
+        self, vector: Vector, is_active: bool, label_text: str, flash: bool = False
+    ) -> None:
         tail = np.array(vector.tail, dtype=float)
         head = tail + np.array(vector.components, dtype=float)
         length = magnitude_of(tuple(head - tail))
@@ -146,7 +156,7 @@ class VectorActors:
             self._plotter.add_mesh(
                 arrow(HALO_SCALE),
                 color=color,
-                opacity=HALO_OPACITY,
+                opacity=SNAP_FLASH_OPACITY if flash else HALO_OPACITY,
                 lighting=False,
                 name=f"halo-{vector.name}",
                 render=False,

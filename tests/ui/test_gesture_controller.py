@@ -129,8 +129,10 @@ def test_the_message_goes_when_the_next_gesture_begins() -> None:
     run(controller, BEGIN, Commit())
     assert controller.message == LIMIT_TEXT
 
+    # The limit message goes. What replaces it is the steer's own news: the
+    # vectors all lie on +x, so this one starts snapped there (6.5).
     run(controller, BeginSteer(0, (0.5, 0.5), 0.25))
-    assert controller.message is None
+    assert controller.message == "Steering, snapped to +x axis"
 
 
 # --- Resizing (F-07, `interaction-spec.md` 6.3) ---
@@ -390,3 +392,149 @@ def test_steering_keeps_the_result_live() -> None:
     run(controller, FULL_RIGHT, now_ms=500)
 
     assert store.result.components == pytest.approx((H, -H, 1.0))
+
+
+# --- Snapping while steering (6.5) ---
+#
+# Every turn here is about +z, so the vector stays exactly in the XY plane and
+# only the -y axis can catch it. A full push turns 90 degrees a second: 0.9
+# degrees every 10 ms. The angle from -y is read back as atan2(x, -y).
+
+FULL_LEFT = UpdateSteer((0.125, 0.5), 0.25)
+
+
+def degrees_from_minus_y(components) -> float:
+    return math.degrees(math.atan2(components[0], -components[1]))
+
+
+def on_minus_y(components) -> bool:
+    """Exactly on the -y axis, at the vector's length.
+
+    `at(20.0)` is 5.000000000000001 long, not 5, and a snap keeps the length
+    it was given; "exactly on" is the other two components being zero.
+    """
+    return (
+        components[0] == 0.0
+        and components[2] == 0.0
+        and components[1] == pytest.approx(-5.0)
+    )
+
+
+def at(angle: float) -> tuple[float, float, float]:
+    """5 long, `angle` degrees round from -y towards +x, in the XY plane."""
+    t = math.radians(angle)
+    return (5 * math.sin(t), -5 * math.cos(t), 0.0)
+
+
+def snapped_on_the_way_back() -> tuple[VectorStore, GestureController]:
+    """Start 20 degrees off -y and steer back for 170 ms: 4.7 degrees off."""
+    store = store_with(at(20.0))
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_LEFT, now_ms=100)  # 11 degrees: nothing to catch it
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(11.0)
+    run(controller, FULL_LEFT, now_ms=170)  # 4.7 degrees: onto the axis
+    return store, controller
+
+
+def test_steering_within_5_degrees_of_an_axis_puts_it_exactly_on() -> None:
+    store, controller = snapped_on_the_way_back()
+    assert on_minus_y(store.get("A").components)
+    assert controller.message == "Steering, snapped to -y axis"
+
+
+def test_the_snap_is_reported_once_for_the_flash() -> None:
+    store, controller = snapped_on_the_way_back()
+    assert controller.take_snap_engaged()
+    assert not controller.take_snap_engaged()
+    # Held on the axis for another frame: nothing new arrived.
+    run(controller, FULL_LEFT, now_ms=180)
+    assert not controller.take_snap_engaged()
+
+
+def test_the_axis_holds_until_the_steering_is_8_degrees_away() -> None:
+    store, controller = snapped_on_the_way_back()
+    # On arriving, the steering starts again from the axis itself, so the
+    # way back out is a full 8 degrees: 80 ms is 7.2, still held...
+    run(controller, FULL_RIGHT, now_ms=250)
+    assert on_minus_y(store.get("A").components)
+    # ... and 100 ms is 9.0, past the release.
+    run(controller, FULL_RIGHT, now_ms=270)
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(9.0)
+
+
+def test_a_vector_already_on_an_axis_is_held_there_without_a_flash() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    assert controller.message == "Steering, snapped to -y axis"
+    assert not controller.take_snap_engaged()
+
+    heard = []
+    store.subscribe(lambda: heard.append(True))
+    run(controller, FULL_RIGHT, now_ms=50)  # 4.5 degrees: held
+    assert store.get("A").components == (0.0, -5.0, 0.0)
+    assert heard == []
+
+    # 9 degrees: off the axis, sliding along the XY plane it already lies in.
+    # A new target but no jump, so nothing to flash.
+    run(controller, FULL_RIGHT, now_ms=100)
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(9.0)
+    assert controller.message == "Steering, snapped to XY plane"
+    assert not controller.take_snap_engaged()
+
+
+def test_releasing_while_snapped_keeps_the_snapped_vector_as_one_undo_step() -> None:
+    store, controller = snapped_on_the_way_back()
+    run(controller, Commit(), now_ms=200)
+
+    assert on_minus_y(store.get("A").components)
+    assert controller.message is None
+    assert not controller.take_snap_engaged()
+    actions.undo(store)
+    assert store.get("A").components == pytest.approx(at(20.0))
+    actions.undo(store)
+    assert store.names == ()
+
+
+def test_cancelling_while_snapped_puts_the_vector_back_exactly() -> None:
+    store, controller = snapped_on_the_way_back()
+    run(controller, Cancel(), now_ms=200)
+    assert store.get("A").components == at(20.0)
+    assert controller.message is None
+
+
+# --- Snap lock: steering stays within the snapped plane (6.5) ---
+#
+# A view like the default one, looking down at the floor from about 27
+# degrees up along (-4, 3, -2.5): the screen's up is tilted from z and a sideways push alone would tip the vector
+# out of the XY plane. Found with real hands at G5.6.
+
+RAISED = (-4.0, 3.0, -2.5)
+
+
+def test_a_sideways_sweep_in_a_raised_view_stays_on_the_floor() -> None:
+    store = store_with((5.0, 0.0, 0.0))
+    controller = GestureController(store)
+    controller.apply([STEER], RAISED, Z_UP, 0)
+    flashes = []
+    for frame in range(1, 31):  # about 90 degrees
+        controller.apply([FULL_RIGHT], RAISED, Z_UP, 33 * frame)
+        assert store.get("A").components[2] == 0.0
+        if controller.take_snap_engaged():
+            flashes.append(controller.message)
+    # Round the floor from +x to +y, flashing only on arriving at +y.
+    assert store.get("A").components == pytest.approx((0.0, 5.0, 0.0))
+    assert flashes == ["Steering, snapped to +y axis"]
+
+
+def test_up_and_down_still_lift_it_off_the_floor() -> None:
+    # (-4, 3, 0) is square to this view's right, (0.6, 0.8, 0), so a push up
+    # turns it straight out of the floor: 18 degrees in 200 ms, past the 8
+    # degree release.
+    store = store_with((-4.0, 3.0, 0.0))
+    controller = GestureController(store)
+    controller.apply([STEER], RAISED, Z_UP, 0)
+    controller.apply([UpdateSteer((0.5, 0.125), 0.25)], RAISED, Z_UP, 200)
+    assert abs(store.get("A").components[2]) == pytest.approx(5 * math.sin(math.radians(18)))
+    assert controller.message is None

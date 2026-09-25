@@ -13,15 +13,21 @@ import pytest
 
 from vectra3d import config
 from vectra3d.gestures.hand_to_vector import (
+    SnapTarget,
+    angle_from,
     create_components,
+    exact_target,
     head_index,
     is_long_enough,
     deflection,
     resize_components,
     screen_axes,
+    snap_target,
+    snapped_components,
     steer_components,
     steer_speed,
     stretch,
+    turn_axes,
 )
 
 SENSITIVITY = 25
@@ -327,3 +333,197 @@ def test_the_magnitude_does_not_creep_over_many_frames() -> None:
         push = (FULL * math.cos(step), FULL * math.sin(step))
         vector = steer_components(vector, 5.0, push, 0.033, FRONT)
     assert math.hypot(*vector) == pytest.approx(5.0, abs=1e-12)
+
+
+# --- Snapping (6.5) ---
+#
+# Directions are built from angles, so each test states its own angle in
+# degrees and the expected answer follows from the 5 degree snap-in and 8
+# degree release. `tilted(a, e)` points at azimuth a from +x towards +y and
+# elevation e above the XY plane.
+
+
+def tilted(azimuth: float, elevation: float) -> tuple[float, float, float]:
+    a, e = math.radians(azimuth), math.radians(elevation)
+    return (math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))
+
+
+def off_x(angle: float) -> tuple[float, float, float]:
+    """`angle` degrees from +x, leaning equally towards +y and +z.
+
+    Its angle to the XY and XZ planes is asin(sin(angle) / sqrt 2): 5.58
+    degrees at 7.9 and 5.72 at 8.1, so neither plane can catch it.
+    """
+    t = math.radians(angle)
+    side = math.sin(t) * math.sqrt(0.5)
+    return (math.cos(t), side, side)
+
+
+PLUS_X = SnapTarget(0, 1)
+XY = SnapTarget(2)
+
+
+def test_targets_are_named_for_the_camera_strip() -> None:
+    assert SnapTarget(0, 1).label == "+x axis"
+    assert SnapTarget(2, -1).label == "-z axis"
+    assert SnapTarget(2).label == "XY plane"
+    assert SnapTarget(0).label == "YZ plane"
+    assert SnapTarget(1).label == "XZ plane"
+
+
+def test_angles_from_an_axis_and_from_a_plane() -> None:
+    assert angle_from(tilted(30.0, 0.0), PLUS_X) == pytest.approx(30.0)
+    assert angle_from(tilted(30.0, 0.0), SnapTarget(0, -1)) == pytest.approx(150.0)
+    assert angle_from(tilted(0.0, 20.0), XY) == pytest.approx(20.0)
+    assert angle_from((0.0, 0.0, -3.0), XY) == 90.0
+    assert angle_from((5.0, 0.0, 0.0), PLUS_X) == 0.0
+
+
+def test_an_axis_snaps_in_at_5_degrees_and_not_beyond() -> None:
+    assert snap_target(off_x(4.9), None) == PLUS_X
+    # 5.1 degrees from x is out of the axis's reach, but only 3.6 from the
+    # XZ and XY planes, so it goes into a plane instead.
+    assert snap_target(off_x(5.1), None).is_plane
+
+
+def test_every_axis_in_either_direction() -> None:
+    assert snap_target(tilted(180.0 + 4.0, 0.0), None) == SnapTarget(0, -1)
+    assert snap_target(tilted(90.0, 4.0), None) == SnapTarget(1, 1)
+    assert snap_target(tilted(-90.0, -4.0), None) == SnapTarget(1, -1)
+    assert snap_target(tilted(30.0, 86.0), None) == SnapTarget(2, 1)
+    assert snap_target(tilted(30.0, -86.0), None) == SnapTarget(2, -1)
+
+
+def test_a_plane_snaps_in_at_5_degrees_and_not_beyond() -> None:
+    assert snap_target(tilted(45.0, 4.9), None) == XY
+    assert snap_target(tilted(45.0, 5.1), None) is None
+    # Each of the other two planes: 4 degrees off XZ, then off YZ.
+    assert snap_target((0.6, math.sin(math.radians(4.0)), 0.8), None) == SnapTarget(1)
+    assert snap_target((math.sin(math.radians(4.0)), 0.6, 0.8), None) == SnapTarget(0)
+
+
+def test_an_axis_holds_until_8_degrees() -> None:
+    assert snap_target(off_x(7.9), PLUS_X) == PLUS_X
+    assert snap_target(off_x(8.1), PLUS_X) is None
+
+
+def test_a_plane_holds_until_8_degrees() -> None:
+    assert snap_target(tilted(45.0, 7.9), XY) == XY
+    assert snap_target(tilted(45.0, 8.1), XY) is None
+
+
+def test_an_axis_wins_over_the_plane_the_vector_is_held_in() -> None:
+    # Sliding along XY, 4.9 degrees short of +y.
+    assert snap_target(tilted(90.0 - 4.9, 0.0), XY) == SnapTarget(1, 1)
+
+
+def test_near_two_planes_the_nearer_one_wins() -> None:
+    # 4.5 degrees off XZ and 4 off XY: about 6 from +x, so no axis.
+    direction = (1.0, math.sin(math.radians(4.5)), math.sin(math.radians(4.0)))
+    assert angle_from(direction, PLUS_X) > config.SNAP_IN_DEG
+    assert snap_target(direction, None) == XY
+
+
+def test_snapping_onto_an_axis_keeps_the_length_exactly() -> None:
+    assert snapped_components(tilted(-90.0, 3.0), 5.0, SnapTarget(1, -1)) == (
+        0.0,
+        -5.0,
+        0.0,
+    )
+
+
+def test_snapping_into_a_plane_drops_the_part_sticking_out() -> None:
+    # (3, 4, 0.5) flattened is (3, 4, 0), already 5 long.
+    assert snapped_components((3.0, 4.0, 0.5), 5.0, XY) == pytest.approx((3.0, 4.0, 0.0))
+    assert snapped_components((3.0, 4.0, 0.5), 5.0, XY)[2] == 0.0
+
+
+def test_with_nothing_to_snap_to_the_steered_direction_is_shown() -> None:
+    assert snapped_components((1.0, 2.0, 3.0), 5.0, None) == (1.0, 2.0, 3.0)
+
+
+def test_a_vector_exactly_on_an_axis_or_plane_starts_snapped() -> None:
+    assert exact_target((0.0, 0.0, 5.0)) == SnapTarget(2, 1)
+    assert exact_target((0.0, -5.0, 0.0)) == SnapTarget(1, -1)
+    assert exact_target((3.0, 0.0, 4.0)) == SnapTarget(1)
+    assert exact_target((1.0, 2.0, 3.0)) is None
+
+
+# --- Snap lock (6.5) ---
+#
+# A camera about 27 degrees above the floor, looking along (-4, 3, -2.5): its screen up
+# leans away from z, which is what tipped a sideways push out of the floor.
+
+RAISED_AXES = screen_axes((-4.0, 3.0, -2.5), (0.0, 0.0, 1.0))
+Z = (0.0, 0.0, 1.0)
+
+
+def test_a_snapped_target_lies_in_one_plane_or_two() -> None:
+    assert XY.locks == ((0.0, 0.0, 1.0),)
+    assert SnapTarget(1).locks == ((0.0, 1.0, 0.0),)
+    assert PLUS_X.locks == ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+
+def test_unlocked_a_sideways_push_in_a_raised_view_leaves_the_floor() -> None:
+    # The fault the lock exists for.
+    turned = steer_components((5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, RAISED_AXES)
+    assert abs(turned[2]) > 0.5
+
+
+def test_locked_in_the_floor_a_sideways_push_spins_within_it() -> None:
+    turned = steer_components(
+        (5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, RAISED_AXES, XY.locks
+    )
+    # 45 degrees about z, exactly in the plane.
+    assert turned == pytest.approx((H, H, 0.0))
+    assert turned[2] == 0.0
+
+
+def test_locked_in_the_floor_up_and_down_still_tilt_it_out() -> None:
+    turned = steer_components(
+        (5.0, 0.0, 0.0), 5.0, (0.0, FULL), 0.5, RAISED_AXES, XY.locks
+    )
+    assert turned[2] > 1.0
+
+
+def test_the_lock_keeps_the_globe_style_sense() -> None:
+    # From the front, the floor lock turns about z exactly as unlocked did.
+    assert turn((0.0, -5.0, 0.0), (FULL, 0.0)) == pytest.approx((H, -H, 0.0))
+    assert steer_components(
+        (0.0, -5.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, XY.locks
+    ) == pytest.approx((H, -H, 0.0))
+
+
+def test_a_plane_seen_edge_on_spins_with_up_and_down() -> None:
+    # From the front the YZ plane is a vertical line: up/down turns within it
+    # (about x), and sideways is what leaves it.
+    yz = SnapTarget(0).locks
+    up = steer_components((0.0, -5.0, 0.0), 5.0, (0.0, FULL), 0.5, FRONT, yz)
+    assert up == pytest.approx((0.0, -H, H))
+    assert up[0] == 0.0
+    across = steer_components((0.0, -5.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, yz)
+    assert across[0] > 1.0
+
+
+def test_on_an_axis_each_hand_direction_turns_within_one_of_its_planes() -> None:
+    # +x seen from the front lies across the screen. Unlocked, pushing up
+    # turns it about the screen's right - its own line - and it cannot move.
+    assert turn((5.0, 0.0, 0.0), (0.0, FULL)) == pytest.approx((5.0, 0.0, 0.0))
+    # Locked on the axis, up/down turns it within XZ, so the head rises...
+    up = steer_components((5.0, 0.0, 0.0), 5.0, (0.0, FULL), 0.5, FRONT, PLUS_X.locks)
+    assert up == pytest.approx((H, 0.0, H))
+    # ... and sideways within XY, tipping into the screen as before.
+    across = steer_components(
+        (5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, PLUS_X.locks
+    )
+    assert across == pytest.approx((H, H, 0.0))
+
+
+def test_looking_straight_down_the_floor_still_spins_one_way() -> None:
+    # From above, z points at the student and is square to both screen axes,
+    # so neither can give it a sign. It is taken towards the student, and
+    # the answer depends only on the view, so it cannot flip between frames.
+    top = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    first = turn_axes(top, XY.locks)
+    assert first == turn_axes(top, XY.locks)
+    assert first[0] in ((0.0, 0.0, 1.0), (0.0, 0.0, -1.0))

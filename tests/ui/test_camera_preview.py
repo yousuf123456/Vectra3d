@@ -314,6 +314,9 @@ def test_the_window_measures_each_frame_and_the_preview_says_pinching(
             hands=(pinching_hand(),), timestamp_ms=past_window_ms, aspect=ASPECT
         )
         window._on_hand_frame(pixels, later)
-        assert window.camera_preview.status == f"{PINCHING_TEXT}\nSteering"
+        # The vector lies on +x, so the strip adds what it is snapped to (6.5).
+        assert window.camera_preview.status == (
+            f"{PINCHING_TEXT}\nSteering, snapped to +x axis"
+        )
     finally:
         window.close()

@@ -99,7 +99,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 **Group:** G5 · **Depends on:** F-02, F-05a
 - [x] The steering gesture changes the active vector's direction while keeping its magnitude unchanged.
 - [x] Releasing the gesture freezes the vector exactly where it is.
-- [ ] Snapping to axes and planes works as defined in `interaction-spec.md`.
+- [x] Snapping to axes and planes works as defined in `interaction-spec.md`. (Section 6.5 gained the snap lock at G5.6, at the user's decision.)
 
 ### F-07 Resize by hand
 **Group:** G5 · **Depends on:** F-02, F-05a

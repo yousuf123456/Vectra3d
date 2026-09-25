@@ -8,6 +8,8 @@ that a refused gesture's message reaches the camera preview.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -26,6 +28,11 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from vectra3d.gestures.state_machine import GestureState, MachineOutput  # noqa: E402
+from vectra3d.render.vector_actor import (  # noqa: E402
+    HALO_OPACITY,
+    SNAP_FLASH_OPACITY,
+)
 from vectra3d.state import actions, naming  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.ui.action_panel import LIMIT_TEXT  # noqa: E402
@@ -144,7 +151,10 @@ def test_frames_that_arrive_together_share_one_redraw(app, window) -> None:
     apply(window, BEGIN)
     calls = []
     original = window.vectors.redraw
-    window.vectors.redraw = lambda *args: (calls.append(args), original(*args))
+    window.vectors.redraw = lambda *args, **flags: (
+        calls.append(args),
+        original(*args, **flags),
+    )
 
     nudged = UpdateTwoHand(((0.5, 0.5), (0.75, 0.5)), 0.25)
     apply(window, nudged)
@@ -302,3 +312,45 @@ def test_steering_rescales_the_scene_only_on_release(app, window) -> None:
 
     apply(window, Commit(), now_ms=533)
     assert window.scene.extent == 10
+
+
+# --- The snap flash (`interaction-spec.md` sections 6.5 and 10) ---
+#
+# The flash is started in the window's frame slot, so frames go through it
+# with the state machine's output stood in for: the intents are what matter.
+
+FULL_LEFT = UpdateSteer((0.125, 0.5), 0.25)
+
+
+def feed(window, intent, now_ms: int) -> None:
+    window._gestures.update = lambda hands, timestamp_ms: MachineOutput(
+        GestureState.STEERING, (intent,), None
+    )
+    window._on_hand_frame(PIXELS, HandFrame(hands=(), timestamp_ms=now_ms, aspect=ASPECT))
+
+
+def halo_opacity(window) -> float:
+    return window.plotter.actors["halo-A"].prop.opacity
+
+
+def test_a_snap_flashes_the_halo_and_names_the_axis(app, window) -> None:
+    # 20 degrees off -y, steered back 15.3 degrees in 170 ms: onto the axis.
+    t = math.radians(20.0)
+    actions.create_vector(window._store, (5 * math.sin(t), -5 * math.cos(t), 0.0))
+    window.scene.set_view("Front")
+    feed(window, STEER, 0)
+    feed(window, FULL_LEFT, 100)
+    app.processEvents()
+    assert halo_opacity(window) == pytest.approx(HALO_OPACITY)
+
+    feed(window, FULL_LEFT, 170)
+    app.processEvents()
+    assert window._store.get("A").components[0] == 0.0
+    assert halo_opacity(window) == pytest.approx(SNAP_FLASH_OPACITY)
+    assert window._snap_flash_timer.isActive()
+    assert window.camera_preview.status.endswith("Steering, snapped to -y axis")
+
+    # The timer's end, without waiting 300 ms for it.
+    window._snap_flash_timer.stop()
+    window._end_snap_flash()
+    assert halo_opacity(window) == pytest.approx(HALO_OPACITY)

@@ -155,7 +155,7 @@ Built in G5.5.
 ## 5a. Seeing the angles
 
 ### In plain words
-The highlighted arrow always shows two angles as curved lines drawn from the axes: θ, measured down from the z axis, and φ, measured round the floor from the x axis to the arrow's shadow. Their values sit in small boxes beside them and change as you move the arrow.
+The highlighted arrow always shows two angles as curved lines drawn from the axes: θ, measured down from the z axis, and φ, measured round the floor from the x axis to the arrow's shadow. Each curve carries its letter, and both values sit in one small line beside the arrow's head, changing as you move it.
 
 ### How it's implemented
 Built in G5.5, in `AngleArcs` in `render/overlays.py`.
@@ -163,7 +163,8 @@ Built in G5.5, in `AngleArcs` in `render/overlays.py`.
 - `theta_arc` is a circular arc from +z to the vector, in the plane that holds both; `phi_arc` is a circular arc in the XY plane from +x turning counterclockwise, the way section 2.3 of the spec measures φ, so 270° goes three quarters of the way round. A dashed grey guide runs from the origin to the vector's floor shadow and up to its head, so it is visible what φ is measured to. Along the z axis φ is undefined, so no φ arc or value is drawn.
 - The values come from `core/spherical.py`, the same numbers the panel uses, formatted to two decimals.
 - **Always on, for the active vector only.** First built for steering only, as the spec then said; the user asked at G5.5 for the angles to show whenever a vector is active. One vector at a time, like components and shadows. They are hidden while the head-to-tail animation plays, because the arrows are drawn away from their real positions then.
-- **Two readability fixes, both from looking at the picture.** VTK's built-in font has no Greek letters, so "θ 45.00°" came out as " 45.00°"; the labels use Windows' own Arial, which has them. And the values were first drawn in the vector's own colour, which the user found hard to read; they are now dark bold text on a white box outlined in the vector's colour, which reads on every one of the ten colours, including yellow.
+- **Readability fixes, all from looking at the picture.** VTK's built-in font has no Greek letters, so "θ 45.00°" came out as " 45.00°"; the labels use Windows' own Arial, which has them. The values were first drawn in the vector's own colour, which the user found hard to read, so they are dark text on a white box outlined in the vector's colour, which reads on every one of the ten colours, including yellow.
+- **Quieter since G5.6.** At first each arc had its own boxed value, 16 pt bold, and the arcs were 3.5 px and solid. Boxes of a fixed screen size do not shrink with the vector, so on a short vector the two boxes covered the arrow completely, and on any vector the arcs outweighed it - the user's report. Now the arcs are 2 px and half transparent, each carries only its letter (θ or φ, no box) just outside its middle (`arc_tag_position`), and both values are one 12 pt line, `angle_text`, hung under the vector's letter beside its head, where it cannot sit on the arrow however short it is.
 
 ### Likely questions
 - **Why θ and φ rather than α, β, γ?** θ and φ are the two numbers the "magnitude + angles" input uses, so the arcs show exactly what a student would type to make this arrow. α, β and γ are on the card.
@@ -179,12 +180,22 @@ While steering, the arrow gently "clicks" onto an axis or a flat plane when it g
 - Angle to an axis **a**: arccos(|**v** · **a**| / |**v**|). Angle to a plane with normal **n**: arcsin(|**v** · **n**| / |**v**|).
 - Snaps in below 5°, releases above 8°: hysteresis again, so it doesn't flicker at the boundary.
 - Axis snaps take priority over plane snaps. Snapping can be turned off in settings.
+- **Snap lock:** while snapped, steering turns the arrow *within* the plane it lies in (on an axis, within one of the two planes that contain it) instead of about the screen's axes. Added at G5.6 after real testing; see below.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.6.*
+Built in G5.6.
+
+- **The rules** are pure functions in `gestures/hand_to_vector.py`. A `SnapTarget` is an axis (with a sign, so +x and -x are different targets) or a plane (named by its normal). `angle_from` measures the two angles above; `snap_target` decides each frame: an axis within 5° always wins, even over a plane the arrow is held in; otherwise the current target holds until 8°; otherwise the nearest plane within 5°; otherwise nothing. Only one axis can be within 5° of any direction, and it is the one along the largest component; the nearest plane is square to the smallest. `snapped_components` puts the arrow exactly on the target at its full length - on an axis the other two components are exactly zero, in a plane the part sticking out is dropped and the rest scaled back up.
+- **Two directions, not one.** The joystick turns a hidden *steered* direction, kept in `ui/gesture_controller.py`, and the store is given that direction snapped. Turning the snapped arrow itself would not work: each frame it would move a couple of degrees off the axis, snap straight back, and never get 8° away. When a snap takes hold, the steered direction is reset onto it once, so drift absorbed on the way in does not carry into the next move - but only on arriving; reset every frame, the arrow could never leave.
+- **The snap lock**, `turn_axes`. The default view looks down at the floor from above, so the screen's up is tilted from z, and a purely sideways push turned the arrow about that tilted axis and dropped it out of the XY plane after about 24° - found by the user with real hands. While snapped, each plane the arrow lies in replaces the screen axis nearest to its normal: for the floor seen from above, sideways now spins the arrow round inside it, while up/down still tilts it out, which is how it leaves. For the YZ plane seen edge-on from the front it is the other way round. On an axis, which lies in two planes, sideways takes the plane whose normal is closer to the screen's up and up/down takes the other. The normals are signed to point the way the screen axis they replace does, so the globe-style sense of steering is unchanged.
+- **Where it starts.** An arrow that already lies exactly on an axis or plane when the pinch begins counts as snapped from the start (`exact_target`): it needs the full 8° to leave, and does not flash, since nothing arrived.
+- **The cue.** When a snap moves the arrow onto something new, its halo flashes brighter for 0.3 s (`SNAP_FLASH_OPACITY`, `SNAP_FLASH_MS` in `render/vector_actor.py`, timed by one `QTimer` in the window so a second snap restarts it). The halo rather than the axis, because a plane has no single line to flash. Leaving an axis along one of its planes is not a new arrival and does not flash. While snapped, the camera strip says "Steering, snapped to +x axis" or "... XY plane"; it keeps the word "Steering", whose place it takes.
+- Snapping is always on until the setting arrives in G5.7.
 
 ### Likely questions
 - **Can I avoid snapping for an angle like 3° off the axis?** Turn snapping off in settings, or type the exact value in the panel.
+- **Why does the arrow sometimes jump a few degrees when it lets go of an axis?** While held, your hand keeps turning the hidden direction; at 8° the arrow lets go and jumps to where your hand has been steering it. That gap is what stops it flickering on and off at the edge.
+- **Why does moving my hand sideways keep the arrow on the floor, but up and down lifts it off?** That is the snap lock. Once the arrow is in a plane, one hand direction slides it round inside the plane and the other tilts it out, so you can sweep round the floor without it drifting off. A hand that also drifts up a little will still, slowly, tilt it out.
 
 ---
 

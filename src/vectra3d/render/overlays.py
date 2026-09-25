@@ -45,7 +45,12 @@ import pyvista as pv
 from vectra3d.core.formatting import format_angle, format_number
 from vectra3d.core.spherical import to_spherical
 from vectra3d.render.scene import AXIS_COLORS
-from vectra3d.render.vector_actor import SHAFT_RADIUS, TIP_LENGTH, TIP_RADIUS
+from vectra3d.render.vector_actor import (
+    SHAFT_RADIUS,
+    TIP_LENGTH,
+    TIP_RADIUS,
+    letter_position,
+)
 from vectra3d.core.vector_math import magnitude as magnitude_of
 from vectra3d.core.vector_math import unit_vector
 from vectra3d.state import naming
@@ -576,15 +581,24 @@ class ComponentOverlays:
 ARC_RADIUS = 0.4
 # Points per arc: enough that 360 degrees of phi still reads as a curve.
 ARC_POINTS = 64
-# Thicker than the one-pixel axes, so an arc is not read as a grid line.
-ARC_LINE_WIDTH = 3.5
-# How far past its arc's middle an angle's value sits, as a fraction of the
-# arc's radius.
-ARC_LABEL_OUT = 1.2
-# The values are dark bold text on a white box outlined in the vector's
-# colour. Text in the vector's own colour was hard to read - the user's report
-# at G5.5 - and would be worst for the lightest colours, such as E's yellow.
-ARC_LABEL_SIZE = 16
+# Just over the one-pixel axes, so an arc is not read as a grid line, and
+# half transparent: at 3.5 px and solid they outweighed the vector itself,
+# the user's report at G5.6.
+ARC_LINE_WIDTH = 2.0
+ARC_OPACITY = 0.5
+# The values are one line hung just under the vector's letter, beside its
+# head. At the arcs, two boxes of fixed screen size covered a short vector
+# entirely - the user's report at G5.6. Beside the head they never sit on
+# the arrow, however short it is.
+# Dark text on a white box outlined in the vector's colour: text in the
+# vector's own colour was hard to read (G5.5), worst for E's yellow.
+ARC_LABEL_SIZE = 12
+# Each arc still carries its own letter, so it is clear which is theta and
+# which phi: the letter alone, no box, just outside the arc's middle. One
+# glyph is small enough not to cover a short vector the way the boxes did.
+ARC_TAG_SIZE = 13
+# How far past its arc's middle the letter sits, as a fraction of the radius.
+ARC_TAG_OUT = 1.2
 ARC_LABEL_TEXT = "#1F2937"
 ARC_LABEL_BACKGROUND = "#FFFFFF"
 ARC_LABEL_BACKGROUND_OPACITY = 0.85
@@ -669,12 +683,21 @@ def _angles(components: Triple) -> tuple[float, float | None] | None:
     return theta, (None if flat < _ON_Z_AXIS else phi)
 
 
-def _middle(points: Sequence[Triple]) -> Triple | None:
-    """Where an arc's value goes: just outside its middle point."""
+def arc_tag_position(points: Sequence[Triple]) -> Triple | None:
+    """Where an arc's letter goes: just outside the arc's middle point."""
     if not points:
         return None
     x, y, z = points[len(points) // 2]
-    return (x * ARC_LABEL_OUT, y * ARC_LABEL_OUT, z * ARC_LABEL_OUT)
+    return (x * ARC_TAG_OUT, y * ARC_TAG_OUT, z * ARC_TAG_OUT)
+
+
+def angle_text(components: Triple) -> str | None:
+    """The one line of values beside the head: "θ 45.00°   φ 30.00°".
+
+    Only theta along the z axis, where phi is undefined; None for the zero
+    vector.
+    """
+    return "   ".join(text for text in angle_labels(components) if text) or None
 
 
 class AngleArcs:
@@ -685,7 +708,7 @@ class AngleArcs:
     window renders once for the whole frame.
     """
 
-    _ACTORS = ("arc-theta", "arc-phi", "arc-guide", "arclabel-theta", "arclabel-phi")
+    _ACTORS = ("arc-theta", "arc-phi", "arc-guide", "arc-values", "arctag-theta", "arctag-phi")
 
     def __init__(self, plotter: pv.Plotter) -> None:
         self._plotter = plotter
@@ -706,9 +729,9 @@ class AngleArcs:
         self._draw_line("arc-phi", phi_points, tail, color)
         self._draw_guide(vector, tail)
 
-        theta_text, phi_text = angle_labels(vector.components)
-        self._draw_label("arclabel-theta", theta_text, _middle(theta_points), tail, color)
-        self._draw_label("arclabel-phi", phi_text, _middle(phi_points), tail, color)
+        self._draw_tag("arctag-theta", THETA, arc_tag_position(theta_points), tail)
+        self._draw_tag("arctag-phi", PHI, arc_tag_position(phi_points), tail)
+        self._draw_values(vector, color)
 
     def _draw_line(
         self, name: str, points: Sequence[Triple], tail: np.ndarray, color: str
@@ -720,6 +743,7 @@ class AngleArcs:
             pv.lines_from_points(np.array(points, dtype=float) + tail),
             color=color,
             line_width=ARC_LINE_WIDTH,
+            opacity=ARC_OPACITY,
             lighting=False,
             name=name,
             render=False,
@@ -752,27 +776,39 @@ class AngleArcs:
             render=False,
         )
 
-    def _draw_label(
-        self,
-        name: str,
-        text: str | None,
-        position: Triple | None,
-        tail: np.ndarray,
-        color: str,
+    def _draw_tag(
+        self, name: str, letter: str, position: Triple | None, tail: np.ndarray
     ) -> None:
-        if text is None or position is None:
+        """An arc's own letter, so it is clear which angle it is."""
+        if position is None:
             self._plotter.remove_actor(name, render=False)
             return
         label = pv.Label(
-            text=text,
-            position=tuple(tail + np.array(position)),
-            size=ARC_LABEL_SIZE,
+            text=letter, position=tuple(tail + np.array(position)), size=ARC_TAG_SIZE
         )
         label.prop.set_font_file(GREEK_FONT)
         label.prop.color = ARC_LABEL_TEXT
         label.prop.bold = True
+        self._plotter.add_actor(label, name=name, reset_camera=False, render=False)
+
+    def _draw_values(self, vector: Vector, color: str) -> None:
+        """The angles' values, hung just under the vector's letter.
+
+        Anchored where the letter is and justified to hang below it, so the
+        two read as one caption at the head and never cover the arrow.
+        """
+        text = angle_text(vector.components)
+        if text is None:
+            self._plotter.remove_actor("arc-values", render=False)
+            return
+        label = pv.Label(text=text, position=letter_position(vector), size=ARC_LABEL_SIZE)
+        label.prop.set_font_file(GREEK_FONT)
+        label.prop.color = ARC_LABEL_TEXT
+        label.prop.justification_vertical = "top"
         label.prop.background_color = ARC_LABEL_BACKGROUND
         label.prop.background_opacity = ARC_LABEL_BACKGROUND_OPACITY
         label.prop.frame = True
         label.prop.frame_color = color
-        self._plotter.add_actor(label, name=name, reset_camera=False, render=False)
+        self._plotter.add_actor(
+            label, name="arc-values", reset_camera=False, render=False
+        )

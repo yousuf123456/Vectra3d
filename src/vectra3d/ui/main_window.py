@@ -36,7 +36,7 @@ from vectra3d.render.overlays import AngleArcs, ComponentOverlays, ProjectionOve
 from vectra3d.state import actions, naming
 from vectra3d.render.result_actor import ResultActor
 from vectra3d.render.scene import Scene
-from vectra3d.render.vector_actor import VectorActors
+from vectra3d.render.vector_actor import SNAP_FLASH_MS, VectorActors
 from vectra3d.state.store import VectorStore
 from vectra3d.tracking.tracker_thread import TrackerThread
 from vectra3d.ui import theme
@@ -123,6 +123,14 @@ class VectraMainWindow(MainWindow):
         # Whether a redraw of the vector being moved by hand is already asked
         # for; see `_on_store_changed`.
         self._live_redraw_pending = False
+        # A steered vector's halo flashes when it snaps (`interaction-spec.md`
+        # section 10). One timer, so a second snap within the flash restarts
+        # it rather than being cut short by the first one's end.
+        self._snap_flash = False
+        self._snap_flash_timer = QTimer(self)
+        self._snap_flash_timer.setSingleShot(True)
+        self._snap_flash_timer.setInterval(SNAP_FLASH_MS)
+        self._snap_flash_timer.timeout.connect(self._end_snap_flash)
         # Emitted on the tracker's thread and delivered on this one: Qt
         # queues a signal across threads, so these slots may touch widgets.
         self._tracker.frame_ready.connect(self._on_hand_frame)
@@ -246,6 +254,11 @@ class VectraMainWindow(MainWindow):
         self._gesture_controller.apply(
             output.intents, camera.direction, camera.up, frame.timestamp_ms
         )
+        # A snap always moves the vector, so the live redraw it asked for
+        # has not run yet and will draw the flash.
+        if self._gesture_controller.take_snap_engaged():
+            self._snap_flash = True
+            self._snap_flash_timer.start()
         self.camera_preview.show_frame(
             pixels,
             frame,
@@ -413,7 +426,9 @@ class VectraMainWindow(MainWindow):
         vector = self._store.get(name)
         vectors = self._store.vectors
         label = self._gesture_controller.labels().get(name, name)
-        self.vectors.redraw(vector, name == self._store.active_name, label)
+        self.vectors.redraw(
+            vector, name == self._store.active_name, label, flash=self._snap_flash
+        )
         if self._store.components_shown == name:
             self.overlays.draw(vectors, name)
         if self._store.projections_shown == name:
@@ -432,6 +447,16 @@ class VectraMainWindow(MainWindow):
         self.plotter.render()
         self.info_panel.update_vector(vector)
         self.action_panel.refresh()
+
+    def _end_snap_flash(self) -> None:
+        """Put the halo back to normal, if the vector is still in a hand.
+
+        If the steer has ended, the full redraw that ended it already drew
+        the ordinary halo.
+        """
+        self._snap_flash = False
+        if self._live_name() is not None:
+            self._redraw_live()
 
     def _on_undo(self) -> None:
         """Undo, unless the student is typing.

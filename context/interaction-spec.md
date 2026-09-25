@@ -160,6 +160,8 @@ These camera directions are read from the 3D view's camera at the moment they ar
 - When the vector comes within **5°** (tunable) of an axis (±x, ±y, ±z) or within **5°** of lying in a coordinate plane (XY, YZ, XZ), it snaps exactly onto it.
 - It stays snapped until the steering pushes it more than **8°** (tunable) away, so it doesn't flicker at the boundary.
 - Axis snaps take priority over plane snaps.
+- **Snap lock.** While snapped, steering turns the vector *within* the plane it lies in (or, on an axis, within one of the two planes containing it), whatever the view's rotation, instead of about the screen's axes. For a plane, the hand direction whose screen axis is closer to the plane's normal spins the vector inside it (sideways for the floor seen from above; up/down for the YZ plane seen edge-on from the front), and the other direction tilts it out until it releases. On an axis, the normal closer to the screen's up takes sideways and the other takes up/down. The globe-style sense of 6.4 is kept. (Added 2026-09-25, G5.6, at the user's decision: in the raised default view a purely sideways push turned the vector about a tilted axis and dropped it out of the XY plane.)
+- On arriving at a snap, steering continues from the snapped direction, so the full release angle is needed to leave it. Leaving an axis along one of its planes does not count as a snap engaging (no flash).
 - Snapping is **on by default** and can be turned off in settings (section 8).
 
 ---
@@ -222,7 +224,7 @@ Starting values. Change only after real testing, and record every change in `pro
 - **Active vector:** highlighted (thicker, with a glow or outline) in the 3D view and in the info panel.
 - **During CREATING / RESIZING:** the live magnitude is shown next to the vector's head.
 - **During STEERING:** the camera preview shows the anchor point, the dead zone ring, and a line to the current pinch point.
-- **Angles of the active vector:** the 3D view always shows the active vector's θ and φ as arcs from their axes - θ from +z to the vector, φ in the XY plane from +x round to the vector's shadow - labelled with their values, and changing live while a hand moves it. (Changed 2026-09-25, G5.5, at the user's request: first built for steering only, as this line used to say.)
+- **Angles of the active vector:** the 3D view always shows the active vector's θ and φ as arcs from their axes - θ from +z to the vector, φ in the XY plane from +x round to the vector's shadow - each arc tagged with its own letter (θ, φ), and their values shown as one line beside the vector's head, under its letter, changing live while a hand moves it. The arcs are thin and half transparent so they never outweigh the vector. (Changed 2026-09-25, G5.5, at the user's request: first built for steering only, as this line used to say. Changed again at G5.6, at the user's request: the values were boxes at each arc, which covered a short vector entirely.)
 - **Snap:** a brief visual cue (the vector or target axis flashes) when a snap engages.
 - **Live result updates:** when an input vector changes, the result moves to its new value with a short smooth transition (150 ms), not a jump.
 - **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (1.5 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.

@@ -12,6 +12,8 @@ import pytest
 from vectra3d.render.overlays import (
     ARC_POINTS,
     angle_labels,
+    angle_text,
+    arc_tag_position,
     phi_arc,
     theta_arc,
 )
@@ -80,3 +82,21 @@ def test_phi_has_no_label_along_the_z_axis() -> None:
 def test_the_zero_vector_has_no_angles() -> None:
     assert angle_labels((0.0, 0.0, 0.0)) == (None, None)
     assert theta_arc((0.0, 0.0, 0.0), R) == ()
+
+
+def test_the_values_are_one_line_beside_the_head() -> None:
+    # One caption under the letter, not a box at each arc (G5.6).
+    assert angle_text((1.0, 0.0, 1.0)) == "θ 45.00°   φ 0.00°"
+    assert angle_text((0.0, 0.0, 2.0)) == "θ 0.00°"
+    assert angle_text((0.0, 0.0, 0.0)) is None
+
+
+def test_each_arc_is_tagged_just_outside_its_middle() -> None:
+    # theta for (1, 0, 1) at radius 2 runs from +z to 45 degrees; its middle
+    # is 22.5 degrees down from z, and the letter sits 1.2 times further out.
+    arc = theta_arc((1.0, 0.0, 1.0), R)
+    t = math.radians(45.0 * (ARC_POINTS // 2) / (ARC_POINTS - 1))
+    assert arc_tag_position(arc) == pytest.approx(
+        (1.2 * R * math.sin(t), 0.0, 1.2 * R * math.cos(t))
+    )
+    assert arc_tag_position(()) is None

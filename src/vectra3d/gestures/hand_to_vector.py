@@ -8,11 +8,18 @@ PyVista - so every rule is tested with hand-calculated values.
 picture means the camera's right in the 3D world, and a hand moving up means
 the camera's up, whichever way the view has been turned. Picture y grows
 downward, so it is flipped.
+
+**Snapping (6.5)** works on the *steered* direction - where the joystick has
+turned the vector, before snapping - rather than on the vector as shown.
+Turned from the snapped vector, each frame would move it a few degrees off
+the axis, it would snap straight back, and it could never get far enough
+away to leave.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from vectra3d import config
 from vectra3d.core.vector_math import magnitude, unit_vector
@@ -183,12 +190,62 @@ def steer_speed(deflection_hs: float) -> float:
     return config.STEER_MAX_SPEED_DEG_PER_S * min(1.0, beyond / span)
 
 
+def _dot(a: Triple, b: Triple) -> float:
+    return sum(x * y for x, y in zip(a, b))
+
+
+def turn_axes(
+    axes: tuple[Triple, Triple], locks: tuple[Triple, ...] = ()
+) -> tuple[Triple, Triple]:
+    """What the joystick turns the vector about: (for sideways, for up/down).
+
+    Normally the screen's up and minus its right (see `steer_components`).
+
+    **Snap lock (6.5).** `locks` are the normals of the planes a snapped
+    vector lies in: one for a plane, two for an axis, which lies in two.
+    Each replaces the screen axis nearest to it, so the hand direction that
+    used it turns the vector *within* that plane, whichever way the view is
+    turned. Without this, a sideways push in a view looking down at the floor
+    turns the vector about a tilted axis, and it dips out of the XY plane as
+    it goes - found with real hands at G5.6. On a plane, the other hand
+    direction still tilts the vector out, which is how it leaves; on an axis,
+    each hand direction leaves along one of its two planes.
+
+    Which screen axis a normal replaces: for a plane, the one it lies closer
+    to - sideways spins the floor seen from above, up/down spins the YZ
+    plane seen edge-on from the front. For an axis, the normal closer to the
+    screen's up takes sideways and the other takes up/down.
+
+    Each normal is signed to point the way the screen axis it replaces does,
+    which keeps the globe-style sense. A normal square to that screen axis
+    is taken towards the student instead.
+    """
+    right, screen_up = axes
+    sideways, upward = screen_up, tuple(-value for value in right)
+    towards_student = _cross(right, screen_up)
+
+    def signed(normal: Triple, like: Triple) -> Triple:
+        lean = _dot(normal, like) or _dot(normal, towards_student)
+        return tuple(value if lean >= 0 else -value for value in normal)
+
+    if len(locks) == 1:
+        (normal,) = locks
+        if abs(_dot(normal, screen_up)) >= abs(_dot(normal, right)):
+            return signed(normal, sideways), upward
+        return sideways, signed(normal, upward)
+    if len(locks) == 2:
+        first, second = sorted(locks, key=lambda n: -abs(_dot(n, screen_up)))
+        return signed(first, sideways), signed(second, upward)
+    return sideways, upward
+
+
 def steer_components(
     current: Triple,
     length: float,
     push: tuple[float, float],
     seconds: float,
     axes: tuple[Triple, Triple],
+    locks: tuple[Triple, ...] = (),
 ) -> Triple:
     """The vector after `seconds` of steering with the joystick at `push` (6.4).
 
@@ -210,13 +267,14 @@ def steer_components(
     if speed == 0.0 or seconds <= 0.0:
         return current
 
-    right, screen_up = axes
     # The near side of the vector points along -view. Turning about the
     # screen's up moves -view towards right (up x -view = right), and about
     # -right moves it towards up (-right x -view = up), so turning about
     # (across * up - upward * right) moves the near side by (across, upward).
+    # `turn_axes` swaps them for plane normals while the vector is snapped.
+    sideways, vertical = turn_axes(axes, locks)
     axis = unit_vector(
-        tuple(across * u - upward * r for u, r in zip(screen_up, right))
+        tuple(across * s + upward * v for s, v in zip(sideways, vertical))
     )
     if axis is None:
         return current
@@ -232,6 +290,126 @@ def steer_components(
     if direction is None:
         return current
     return tuple(length * value for value in direction)
+
+
+_AXIS_NAMES = ("x", "y", "z")
+# A coordinate plane is named by the two axes in it; its normal is the third.
+_PLANE_NAMES = ("YZ", "XZ", "XY")
+
+
+@dataclass(frozen=True)
+class SnapTarget:
+    """An axis or coordinate plane a steered vector can snap onto (6.5).
+
+    `index` is the axis (0, 1, 2 for x, y, z), or for a plane the axis
+    square to it. `sign` is +1 or -1 along an axis, and 0 for a plane, which
+    has no direction along it.
+    """
+
+    index: int
+    sign: int = 0
+
+    @property
+    def is_plane(self) -> bool:
+        return self.sign == 0
+
+    @property
+    def locks(self) -> tuple[Triple, ...]:
+        """The normals of the planes a vector snapped here lies in.
+
+        One for a plane; two for an axis, which lies in the two planes
+        square to the other axes. Steering turns it within these.
+        """
+        others = (self.index,) if self.is_plane else tuple(
+            index for index in range(3) if index != self.index
+        )
+        return tuple(
+            tuple(1.0 if axis == other else 0.0 for axis in range(3)) for other in others
+        )
+
+    @property
+    def label(self) -> str:
+        if self.is_plane:
+            return f"{_PLANE_NAMES[self.index]} plane"
+        return f"{'+' if self.sign > 0 else '-'}{_AXIS_NAMES[self.index]} axis"
+
+
+def angle_from(direction: Triple, target: SnapTarget) -> float:
+    """How far a direction is from an axis or from lying in a plane, in °.
+
+    The cosine or sine is clamped, since a component over its own magnitude
+    can land one step past 1 and `math.acos` would raise (see G2.1).
+    """
+    along = unit_vector(direction)
+    if along is None:
+        return 90.0
+    share = along[target.index]
+    if target.is_plane:
+        return math.degrees(math.asin(min(1.0, abs(share))))
+    return math.degrees(math.acos(max(-1.0, min(1.0, target.sign * share))))
+
+
+def exact_target(components: Triple) -> SnapTarget | None:
+    """The axis, or failing that the plane, a vector lies exactly on.
+
+    A vector already on one when steering begins counts as snapped to it
+    from the start, so it needs the full release angle to leave and does not
+    flash as if it had just arrived.
+    """
+    zeros = [index for index, value in enumerate(components) if value == 0.0]
+    if len(zeros) == 2:
+        index = 3 - sum(zeros)
+        return SnapTarget(index, 1 if components[index] > 0 else -1)
+    if len(zeros) == 1:
+        return SnapTarget(zeros[0])
+    return None
+
+
+def snap_target(steered: Triple, current: SnapTarget | None) -> SnapTarget | None:
+    """What a steered direction snaps onto this frame (6.5).
+
+    An axis within the snap-in angle always wins, even over a plane the
+    vector is sliding along. Otherwise the current target holds until the
+    steering is past the release angle from it, so the vector does not
+    flicker at the edge. Failing both, the nearest plane within the snap-in
+    angle, or nothing.
+
+    Only one axis can be within 5° of any direction, and the nearest is along
+    the largest component; the nearest plane is square to the smallest.
+    """
+    sizes = [abs(value) for value in steered]
+    widest = sizes.index(max(sizes))
+    axis = SnapTarget(widest, 1 if steered[widest] > 0 else -1)
+    if angle_from(steered, axis) <= config.SNAP_IN_DEG:
+        return axis
+    if current is not None and angle_from(steered, current) <= config.SNAP_RELEASE_DEG:
+        return current
+    plane = SnapTarget(sizes.index(min(sizes)))
+    if angle_from(steered, plane) <= config.SNAP_IN_DEG:
+        return plane
+    return None
+
+
+def snapped_components(steered: Triple, length: float, target: SnapTarget | None) -> Triple:
+    """The vector as shown: `steered` moved exactly onto `target`, at `length`.
+
+    Onto an axis it is that axis at full length. Into a plane, the part
+    sticking out of it is dropped and the rest scaled back up, so it keeps
+    its heading within the plane. With no target it is `steered` unchanged.
+    """
+    if target is None:
+        return steered
+    if not target.is_plane:
+        return tuple(
+            float(target.sign) * length if index == target.index else 0.0
+            for index in range(3)
+        )
+    flat = unit_vector(
+        tuple(0.0 if index == target.index else value for index, value in enumerate(steered))
+    )
+    if flat is None:
+        return steered
+    return tuple(length * value for value in flat)
 
 
 def is_long_enough(components: Triple) -> bool:
