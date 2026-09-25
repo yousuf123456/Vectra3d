@@ -1,6 +1,8 @@
 """Drawing what a vector is made of: its components, and the box they build.
 
-Two overlays live here, switched on and off independently.
+Three overlays live here. The third, the **angle arcs** showing the active
+vector's theta and phi, is always on and is described where it is defined,
+at the end.
 
 **Components** (F-13a). When a vector has its components switched on, three
 things are drawn:
@@ -33,15 +35,19 @@ mesh so the whole box stays a single actor.
 
 from __future__ import annotations
 
+import math
+import os
 from collections.abc import Sequence
 
 import numpy as np
 import pyvista as pv
 
-from vectra3d.core.formatting import format_number
+from vectra3d.core.formatting import format_angle, format_number
+from vectra3d.core.spherical import to_spherical
 from vectra3d.render.scene import AXIS_COLORS
 from vectra3d.render.vector_actor import SHAFT_RADIUS, TIP_LENGTH, TIP_RADIUS
 from vectra3d.core.vector_math import magnitude as magnitude_of
+from vectra3d.core.vector_math import unit_vector
 from vectra3d.state import naming
 from vectra3d.state.models import Point, Vector
 
@@ -555,3 +561,218 @@ class ComponentOverlays:
             self._plotter.add_actor(
                 label, name=f"componentlabel-{axis}-{vector.name}", render=False
             )
+
+
+# --- Angle arcs (interaction-spec.md section 10) ---
+#
+# The active vector's spherical angles (section 2.3), drawn in the 3D view and
+# following it live while a hand moves it: theta as an arc from the +z axis to
+# the vector, and phi as an arc in the XY plane from the +x axis round to the
+# vector's floor shadow. A dashed guide runs from the origin to that shadow
+# and up to the head, so it is visible what phi is measured to.
+
+# How far out the arcs sit, as a fraction of the vector's magnitude: clear of
+# the origin marker and the axis numbers near it, well inside the head.
+ARC_RADIUS = 0.4
+# Points per arc: enough that 360 degrees of phi still reads as a curve.
+ARC_POINTS = 64
+# Thicker than the one-pixel axes, so an arc is not read as a grid line.
+ARC_LINE_WIDTH = 3.5
+# How far past its arc's middle an angle's value sits, as a fraction of the
+# arc's radius.
+ARC_LABEL_OUT = 1.2
+# The values are dark bold text on a white box outlined in the vector's
+# colour. Text in the vector's own colour was hard to read - the user's report
+# at G5.5 - and would be worst for the lightest colours, such as E's yellow.
+ARC_LABEL_SIZE = 16
+ARC_LABEL_TEXT = "#1F2937"
+ARC_LABEL_BACKGROUND = "#FFFFFF"
+ARC_LABEL_BACKGROUND_OPACITY = 0.85
+THETA = "θ"
+PHI = "φ"
+# VTK's built-in fonts have no Greek letters: "θ 45.00°" is drawn as
+# " 45.00°", degree sign and all. Windows' own Arial has them, and the app is
+# Windows only (measured at G5.5; see `library-docs.md`).
+GREEK_FONT = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "arial.ttf")
+# phi is undefined within this distance of the z axis (section 2.3), measured
+# on the unit vector: far finer than anything the display shows.
+_ON_Z_AXIS = 1e-12
+
+
+def theta_arc(components: Triple, radius: float) -> tuple[Triple, ...]:
+    """The arc from the +z axis to the vector, `radius` from the tail.
+
+    It runs in the plane holding z and the vector. For a vector along -z that
+    plane is not defined, so the arc is drawn through +x in the XZ plane.
+    Empty for a vector along +z, where theta is zero and there is nothing to
+    draw, and for the zero vector.
+    """
+    unit = unit_vector(components)
+    if unit is None:
+        return ()
+    theta = math.acos(max(-1.0, min(1.0, unit[2])))
+    if theta == 0.0:
+        return ()
+    # The direction in the XY plane the arc leans towards.
+    across = unit_vector((unit[0], unit[1], 0.0)) or (1.0, 0.0, 0.0)
+    return tuple(
+        (
+            radius * math.sin(t) * across[0],
+            radius * math.sin(t) * across[1],
+            radius * math.cos(t),
+        )
+        for t in (theta * i / (ARC_POINTS - 1) for i in range(ARC_POINTS))
+    )
+
+
+def phi_arc(components: Triple, radius: float) -> tuple[Triple, ...]:
+    """The arc in the XY plane from +x, counterclockwise round to phi.
+
+    Counterclockwise seen from above, the way section 2.3 measures phi, so a
+    phi of 270 degrees is three quarters of a turn, not a quarter the other
+    way. Empty along the z axis, where phi is undefined.
+    """
+    angles = _angles(components)
+    if angles is None or angles[1] is None:
+        return ()
+    phi = math.radians(angles[1])
+    return tuple(
+        (radius * math.cos(s), radius * math.sin(s), 0.0)
+        for s in (phi * i / (ARC_POINTS - 1) for i in range(ARC_POINTS))
+    )
+
+
+def angle_labels(components: Triple) -> tuple[str | None, str | None]:
+    """What the two arcs say: "θ 45.00°" and "φ 30.00°".
+
+    phi's is None along the z axis, where it is undefined; both are None for
+    the zero vector, which has no angles at all.
+    """
+    angles = _angles(components)
+    if angles is None:
+        return (None, None)
+    theta, phi = angles
+    return (
+        f"{THETA} {format_angle(theta)}",
+        None if phi is None else f"{PHI} {format_angle(phi)}",
+    )
+
+
+def _angles(components: Triple) -> tuple[float, float | None] | None:
+    """theta and phi in degrees, with phi None along the z axis."""
+    spherical = to_spherical(components)
+    if spherical is None:
+        return None
+    _, theta, phi = spherical
+    unit = unit_vector(components)
+    flat = math.hypot(unit[0], unit[1])
+    return theta, (None if flat < _ON_Z_AXIS else phi)
+
+
+def _middle(points: Sequence[Triple]) -> Triple | None:
+    """Where an arc's value goes: just outside its middle point."""
+    if not points:
+        return None
+    x, y, z = points[len(points) // 2]
+    return (x * ARC_LABEL_OUT, y * ARC_LABEL_OUT, z * ARC_LABEL_OUT)
+
+
+class AngleArcs:
+    """Draws the theta and phi arcs for the one active vector.
+
+    One vector at a time, as with components and shadows. Nothing renders
+    here: it is redrawn on every frame a hand moves the vector, and the
+    window renders once for the whole frame.
+    """
+
+    _ACTORS = ("arc-theta", "arc-phi", "arc-guide", "arclabel-theta", "arclabel-phi")
+
+    def __init__(self, plotter: pv.Plotter) -> None:
+        self._plotter = plotter
+
+    def draw(self, vector: Vector | None) -> None:
+        """Draw the arcs for this vector, or take them away if None."""
+        if vector is None or magnitude_of(vector.components) == 0.0:
+            for name in self._ACTORS:
+                self._plotter.remove_actor(name, render=False)
+            return
+
+        tail = np.array(vector.tail, dtype=float)
+        radius = magnitude_of(vector.components) * ARC_RADIUS
+        color = naming.color_for(vector.name)
+        theta_points = theta_arc(vector.components, radius)
+        phi_points = phi_arc(vector.components, radius)
+        self._draw_line("arc-theta", theta_points, tail, color)
+        self._draw_line("arc-phi", phi_points, tail, color)
+        self._draw_guide(vector, tail)
+
+        theta_text, phi_text = angle_labels(vector.components)
+        self._draw_label("arclabel-theta", theta_text, _middle(theta_points), tail, color)
+        self._draw_label("arclabel-phi", phi_text, _middle(phi_points), tail, color)
+
+    def _draw_line(
+        self, name: str, points: Sequence[Triple], tail: np.ndarray, color: str
+    ) -> None:
+        if len(points) < 2:
+            self._plotter.remove_actor(name, render=False)
+            return
+        self._plotter.add_mesh(
+            pv.lines_from_points(np.array(points, dtype=float) + tail),
+            color=color,
+            line_width=ARC_LINE_WIDTH,
+            lighting=False,
+            name=name,
+            render=False,
+        )
+
+    def _draw_guide(self, vector: Vector, tail: np.ndarray) -> None:
+        """Dashes from the tail to the floor shadow's tip, and up to the head.
+
+        Nothing to guide along the z axis, where the shadow is a point at the
+        tail and phi is undefined.
+        """
+        x, y, _ = vector.components
+        shadow = (x, y, 0.0)
+        dash = magnitude_of(vector.components) * DASH_FRACTION
+        pairs = []
+        if (x, y) != (0.0, 0.0):
+            pairs.extend(dash_segments((0.0, 0.0, 0.0), shadow, dash))
+            # Empty for a vector lying in the XY plane: it is its own shadow.
+            pairs.extend(dash_segments(shadow, vector.components, dash))
+        if not pairs:
+            self._plotter.remove_actor("arc-guide", render=False)
+            return
+        points = np.array([point for pair in pairs for point in pair], dtype=float)
+        lines = np.hstack([[2, 2 * i, 2 * i + 1] for i in range(len(pairs))])
+        self._plotter.add_mesh(
+            pv.PolyData(points + tail, lines=lines),
+            color=BOX_COLOR,
+            line_width=BOX_LINE_WIDTH,
+            name="arc-guide",
+            render=False,
+        )
+
+    def _draw_label(
+        self,
+        name: str,
+        text: str | None,
+        position: Triple | None,
+        tail: np.ndarray,
+        color: str,
+    ) -> None:
+        if text is None or position is None:
+            self._plotter.remove_actor(name, render=False)
+            return
+        label = pv.Label(
+            text=text,
+            position=tuple(tail + np.array(position)),
+            size=ARC_LABEL_SIZE,
+        )
+        label.prop.set_font_file(GREEK_FONT)
+        label.prop.color = ARC_LABEL_TEXT
+        label.prop.bold = True
+        label.prop.background_color = ARC_LABEL_BACKGROUND
+        label.prop.background_opacity = ARC_LABEL_BACKGROUND_OPACITY
+        label.prop.frame = True
+        label.prop.frame_color = color
+        self._plotter.add_actor(label, name=name, reset_camera=False, render=False)

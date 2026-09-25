@@ -12,6 +12,8 @@ downward, so it is flipped.
 
 from __future__ import annotations
 
+import math
+
 from vectra3d import config
 from vectra3d.core.vector_math import magnitude, unit_vector
 from vectra3d.gestures.hand_metrics import Point, distance
@@ -152,6 +154,84 @@ def resize_components(
         return None
     length = max(config.MIN_MAGNITUDE, magnitude(original) + added)
     return tuple(length * value for value in along)
+
+
+def deflection(anchor: Point, point: Point, scale: float) -> tuple[float, float] | None:
+    """How far the steering hand is from its anchor, in hs, on screen (6.4).
+
+    (right, up): picture y grows downward, so it is flipped. Measured in the
+    hand scale at the anchor, so the joystick's size stays fixed for the
+    whole gesture. None if that scale is zero.
+    """
+    if scale <= 0:
+        return None
+    return ((point[0] - anchor[0]) / scale, (anchor[1] - point[1]) / scale)
+
+
+def steer_speed(deflection_hs: float) -> float:
+    """How fast a joystick this far from its anchor turns the vector, in °/s.
+
+    Nothing inside the dead zone, so a hand held still with a little shake
+    moves nothing. Beyond it the speed rises in a straight line from zero at
+    the dead zone's edge - so there is no jump when the hand crosses it - to
+    the maximum at the full-speed deflection, and stays there.
+    """
+    beyond = deflection_hs - config.STEER_DEAD_ZONE_HS
+    if beyond <= 0:
+        return 0.0
+    span = config.STEER_MAX_SPEED_HS - config.STEER_DEAD_ZONE_HS
+    return config.STEER_MAX_SPEED_DEG_PER_S * min(1.0, beyond / span)
+
+
+def steer_components(
+    current: Triple,
+    length: float,
+    push: tuple[float, float],
+    seconds: float,
+    axes: tuple[Triple, Triple],
+) -> Triple:
+    """The vector after `seconds` of steering with the joystick at `push` (6.4).
+
+    Horizontal deflection turns it about the screen's up, vertical about the
+    screen's right, combined into one turn for a diagonal push. The sense is
+    **globe-style**: the side of the vector nearest the viewer moves the way
+    the hand moves, the usual convention for turning things in 3D. A vector
+    pointing at the student swings with the hand; one pointing into the
+    screen swings the other way; one lying flat on the screen tips into or
+    out of it - which is how steering adds the depth a created vector lacks.
+
+    The turn is exact for the time step (Rodrigues' rotation formula), and
+    the result is scaled back to `length` - the magnitude it had when the
+    steering began - so rounding cannot make the vector creep longer or
+    shorter over thousands of frames (6.4 step 6).
+    """
+    across, upward = push
+    speed = steer_speed(math.hypot(across, upward))
+    if speed == 0.0 or seconds <= 0.0:
+        return current
+
+    right, screen_up = axes
+    # The near side of the vector points along -view. Turning about the
+    # screen's up moves -view towards right (up x -view = right), and about
+    # -right moves it towards up (-right x -view = up), so turning about
+    # (across * up - upward * right) moves the near side by (across, upward).
+    axis = unit_vector(
+        tuple(across * u - upward * r for u, r in zip(screen_up, right))
+    )
+    if axis is None:
+        return current
+
+    angle = math.radians(speed * seconds)
+    cos, sin = math.cos(angle), math.sin(angle)
+    along = sum(k * v for k, v in zip(axis, current))
+    turned = tuple(
+        v * cos + c * sin + k * along * (1.0 - cos)
+        for v, c, k in zip(current, _cross(axis, current), axis)
+    )
+    direction = unit_vector(turned)
+    if direction is None:
+        return current
+    return tuple(length * value for value in direction)
 
 
 def is_long_enough(components: Triple) -> bool:

@@ -6,13 +6,17 @@ camera is looking along +y with z up, so the screen's right is +x.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from vectra3d.gestures.intents import (
     BeginSteer,
     BeginTwoHand,
+    Cancel,
     Commit,
     TwoHandKind,
+    UpdateSteer,
     UpdateTwoHand,
 )
 from vectra3d.state import actions, naming
@@ -34,8 +38,8 @@ NUDGED = UpdateTwoHand(((0.5, 0.5), (0.65625, 0.5)), 0.25)
 BARELY = UpdateTwoHand(((0.5, 0.5), (0.626, 0.5)), 0.25)
 
 
-def run(controller: GestureController, *intents) -> None:
-    controller.apply(intents, LOOKING_ALONG_Y, Z_UP)
+def run(controller: GestureController, *intents, now_ms: int = 0) -> None:
+    controller.apply(intents, LOOKING_ALONG_Y, Z_UP, now_ms)
 
 
 def test_a_vector_appears_as_soon_as_the_gesture_begins() -> None:
@@ -240,3 +244,149 @@ def test_a_resize_keeps_the_result_live() -> None:
     run(controller, RESIZE, PULLED)
 
     assert store.result.components == pytest.approx((10.5, 1.0, 14.0))
+
+
+# --- Steering (F-06, `interaction-spec.md` 6.4) ---
+#
+# The camera looks along +y, so a vector pointing at the student is (0, -5, 0).
+# Anchor at (0.5, 0.5) with a hand scale of 0.25: 1.5 hs to the right is
+# 0.375 further across, full speed. Half a second of it is exactly 45 degrees.
+
+ANCHOR = (0.5, 0.5)
+STEER = BeginSteer(1, ANCHOR, 0.25)
+FULL_RIGHT = UpdateSteer((0.875, 0.5), 0.25)
+# 0.25 hs off the anchor: inside the 0.3 hs dead zone.
+SHAKE = UpdateSteer((0.5625, 0.5), 0.25)
+H = 5 * math.sqrt(0.5)
+
+
+def steering_store() -> VectorStore:
+    return store_with((0.0, -5.0, 0.0))
+
+
+def test_a_full_push_for_half_a_second_turns_the_vector_45_degrees() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_RIGHT, now_ms=500)
+
+    assert store.get("A").components == pytest.approx((H, -H, 0.0))
+    assert store.gesture_in_progress
+    assert controller.live_name == "A"
+
+
+def test_the_turn_builds_up_frame_by_frame_at_the_same_rate() -> None:
+    # Ten frames of 50 ms at full speed: the same 45 degrees as one of 500.
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    for frame in range(1, 11):
+        run(controller, FULL_RIGHT, now_ms=50 * frame)
+    assert store.get("A").components == pytest.approx((H, -H, 0.0))
+
+
+def test_steering_keeps_the_magnitude() -> None:
+    store = store_with((3.0, -4.0, 0.0))
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    for frame in range(1, 40):
+        run(controller, UpdateSteer((0.8, 0.3), 0.25), now_ms=33 * frame)
+    assert math.hypot(*store.get("A").components) == pytest.approx(5.0, abs=1e-12)
+
+
+def test_a_hand_in_the_dead_zone_changes_nothing_at_all() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    heard = []
+    store.subscribe(lambda: heard.append(True))
+
+    run(controller, SHAKE, now_ms=500)
+
+    assert store.get("A").components == (0.0, -5.0, 0.0)
+    # Not even a redraw is asked for.
+    assert heard == []
+
+
+def test_the_joystick_follows_the_hand_for_the_preview() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    assert controller.joystick.anchor == ANCHOR
+    assert controller.joystick.point == ANCHOR
+
+    run(controller, SHAKE, now_ms=33)
+    assert controller.joystick.point == (0.5625, 0.5)
+    assert controller.joystick.scale == 0.25
+
+
+def test_releasing_a_steer_is_one_undo_step() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_RIGHT, now_ms=250)
+    run(controller, FULL_RIGHT, now_ms=500)
+    run(controller, Commit(), now_ms=533)
+
+    assert not store.gesture_in_progress
+    assert controller.live_name is None
+    assert controller.joystick is None
+    actions.undo(store)
+    assert store.get("A").components == (0.0, -5.0, 0.0)
+    actions.undo(store)
+    assert store.names == ()
+
+
+def test_an_open_palm_puts_the_vector_back_exactly_and_records_nothing() -> None:
+    store = steering_store()
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_RIGHT, now_ms=500)
+    run(controller, Cancel(), now_ms=533)
+
+    assert store.get("A").components == (0.0, -5.0, 0.0)
+    assert not store.gesture_in_progress
+    assert controller.joystick is None
+    # Only A's creation to undo.
+    actions.undo(store)
+    assert not store.history.can_undo
+
+
+def test_a_locked_vector_is_not_steered_and_the_student_is_told() -> None:
+    store = steering_store()
+    actions.toggle_locked(store, "A")
+    before = store.snapshot()
+    controller = GestureController(store)
+
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_RIGHT, now_ms=500)
+    run(controller, Commit(), now_ms=533)
+
+    assert controller.message == "Vector A is locked."
+    assert store.snapshot() == before
+    assert controller.joystick is None
+
+
+def test_steering_with_nothing_to_steer_says_why() -> None:
+    controller = GestureController(VectorStore())
+    run(controller, STEER)
+    assert controller.message == "Create a vector first."
+
+    controller = GestureController(store_with((0.0, 0.0, 0.0)))
+    run(controller, STEER)
+    assert controller.message == "Vector A has no direction to steer."
+
+
+def test_steering_keeps_the_result_live() -> None:
+    # A + B, with A turned 45 degrees: (H, -H, 0) + (0, 0, 1).
+    store = store_with((0.0, -5.0, 0.0), (0.0, 0.0, 1.0))
+    actions.toggle_selected(store, "A")
+    actions.toggle_selected(store, "B")
+    actions.compute_resultant(store)
+    actions.set_active(store, "A")
+    controller = GestureController(store)
+
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_RIGHT, now_ms=500)
+
+    assert store.result.components == pytest.approx((H, -H, 1.0))

@@ -16,6 +16,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from PySide6.QtGui import QColor  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from vectra3d.state import actions  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
 from vectra3d.ui.camera_preview import (  # noqa: E402
@@ -34,6 +35,7 @@ from vectra3d.ui.camera_preview import (  # noqa: E402
     outcome_text,
     status_text,
 )
+from vectra3d.ui.gesture_controller import Joystick  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 ASPECT = 4 / 3
@@ -221,6 +223,41 @@ def test_the_picture_and_the_hand_are_drawn(app: QApplication) -> None:
     )
 
 
+def test_the_steering_joystick_is_drawn_over_the_picture(app: QApplication) -> None:
+    # A black picture filling the 240x180 area, so one picture height is 180
+    # pixels. Anchor at the centre: (2/3, 1/2) in picture heights is pixel
+    # (120, 90). The pinch point 0.25 picture heights to the right is 45 px.
+    preview = CameraPreview()
+    pixels = np.zeros((480, 640, 3), dtype=np.uint8)
+    frame = HandFrame(hands=(), timestamp_ms=0, aspect=ASPECT)
+    centre = (ASPECT / 2, 0.5)
+    joystick = Joystick(centre, (centre[0] + 0.25, 0.5), 0.25)
+
+    preview.show_frame(pixels, frame, (), IDLE, None, joystick)
+    image = picture_of(preview)
+
+    def is_joystick(x: int, y: int) -> bool:
+        # Anti-aliased edges blend with the black, so near enough is enough.
+        colour = image.pixelColor(x, y)
+        wanted = QColor(theme.JOYSTICK)
+        return (
+            abs(colour.red() - wanted.red()) < 60
+            and abs(colour.green() - wanted.green()) < 60
+            and abs(colour.blue() - wanted.blue()) < 60
+        )
+
+    # The anchor, and the line on its way to the pinch point.
+    assert is_joystick(120, 90)
+    assert is_joystick(150, 90)
+    # The dead-zone ring: 0.3 hs * 0.25 * 180 = 13.5 px above the anchor.
+    assert any(is_joystick(120, y) for y in (75, 76, 77))
+    # Nothing is drawn well outside it, and nothing at all without a joystick.
+    assert not is_joystick(120, 50)
+    preview.show_frame(pixels, frame, (), IDLE)
+    image = picture_of(preview)
+    assert not is_joystick(120, 90)
+
+
 def test_a_message_clears_the_last_picture(app: QApplication) -> None:
     # A frozen frame would look like a camera that is still working.
     preview = CameraPreview()
@@ -258,7 +295,11 @@ def test_the_window_measures_each_frame_and_the_preview_says_pinching(
     # The window's own slot, called directly so that anything it raises
     # reaches the test instead of being swallowed by Qt. That the tracker is
     # connected to this slot is proven across threads in the tracker's tests.
-    window = VectraMainWindow(VectorStore())
+    # A vector to steer: from G5.5 a steer with nothing to act on is refused,
+    # and the camera strip says so instead of "Steering".
+    store = VectorStore()
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    window = VectraMainWindow(store)
     pixels = np.zeros((480, 640, 3), dtype=np.uint8)
     try:
         frame = HandFrame(hands=(pinching_hand(),), timestamp_ms=0, aspect=ASPECT)

@@ -123,22 +123,50 @@ Built in G5.4, on top of what G5.3 built for creating.
 ## 5. Steering: the joystick
 
 ### In plain words
-Pinch with one hand and hold. The spot where you pinched becomes the center of an invisible joystick. Nudge your hand right, and the arrow swings right; nudge it up, and the arrow tilts up. The farther you move from the center, the faster it turns. Small shakes near the center are ignored.
+Pinch with one hand and hold. The spot where you pinched becomes the center of an invisible joystick, drawn as a yellow ring on the camera picture. Move your hand out of the ring and the arrow turns, like spinning a globe by the side nearest you: nudge right and the near side of the arrow moves right; nudge up and it tilts up. The farther you move from the center, the faster it turns. Small shakes inside the ring are ignored. Open your other hand flat to cancel and put the arrow back.
 
 ### Technically
 - **Rate control, not position control:** hand offset from the anchor sets angular *speed*, not the angle itself. This hides jitter and avoids tiring, large arm movements.
 - Offset d (in hs) → speed ω = ω_max × clamp((d − d₀) / (d_max − d₀), 0, 1), with dead zone d₀ = 0.3 hs, d_max = 1.5 hs, ω_max = 90°/s.
-- **Screen-relative:** the rotation axes come from the 3D camera's current orientation. Horizontal offset rotates around the camera's *up* direction; vertical offset rotates around its *right* direction. So "right" always means right on screen, even when viewing the scene from behind.
+- **Screen-relative:** the rotation axes come from the 3D camera's current orientation. Horizontal offset rotates around the camera's *up* direction; vertical offset rotates around its *right* direction. So "right" means the same on screen from any viewpoint, even when viewing the scene from behind.
+- **Globe-style:** the side of the arrow nearest you follows your hand. An arrow pointing at you swings right when you move right; one pointing into the screen swings left; one lying flat on the screen and pointing right tips *into* the screen. That last case is the point of steering: a created vector lies flat on the screen, and this is how it gets depth.
 - Each frame rotates the vector by angle Δ = ω·Δt around unit axis **u** using **Rodrigues' rotation formula**:
   **v**′ = **v** cos Δ + (**u** × **v**) sin Δ + **u**(**u** · **v**)(1 − cos Δ)
 - Rotations preserve length, so magnitude never changes while steering.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.5.*
+Built in G5.5.
+
+- **The maths** is in `gestures/hand_to_vector.py`. `deflection` measures the hand's offset from the anchor in the hand scale *at the anchor*, so the joystick keeps one size for the whole gesture; picture y is flipped so up is positive. `steer_speed` is the formula above. `steer_components` turns the vector about `across * up - upward * right` - one axis for a diagonal push, not two turns one after the other - by Rodrigues' formula, then scales the result back to the length the vector had when steering began. Rotations keep length in exact arithmetic but not in floating point; rescaling to the stored length means thousands of frames cannot make the arrow creep longer or shorter.
+- **Timed by the camera frames.** Each turn is the speed times the time since the last steering frame, from the frames' own timestamps. So the arrow turns at the same rate whatever the frame rate: when the redraw slows the updates down, each step is just bigger.
+- **It acts on the active vector,** through `ui/gesture_controller.py` and the same gesture session as creating and resizing: one undo step per steer, refused with a reason for a locked vector, no vector, or the zero vector (which has no direction to turn). A hand held inside the dead zone changes nothing at all - not even a redraw.
+- **Cancelling** is the one hand-driven cancel in the app. An open palm from the *free* hand calls `actions.cancel_gesture`, which puts the whole scene back as it was when steering began and records nothing. Only the free hand counts: the steering hand itself reads as an open palm the moment it lets go.
+- **The joystick in the camera picture** is drawn by `ui/camera_preview.py` over the hand: the anchor dot, the dead-zone ring (0.3 hs at the anchor's hand scale) and a line to the current pinch point, in yellow so it is not mistaken for the hand's own lines.
+- **Speed.** About 65 ms per update with ten vectors and a result showing, so about 15 updates a second; the camera itself kept 21 frames a second while steering, against 32 when idle, and frames never backed up. With the vector's components and shadows on it is about 130 ms, which belongs with G5.8.
 
 ### Likely questions
 - **Why a joystick instead of pointing where I want?** Pointing needs accurate depth, which one webcam can't give. The joystick only needs left/right/up/down.
 - **Why does it rotate relative to the screen?** If rotation followed fixed world axes, moving your hand right could move the arrow left on screen when the view is rotated, which feels broken.
+- **Why does the arrow sometimes swing the opposite way to my hand?** It turns like a globe you spin by its near side. If the arrow points into the screen, its head is on the far side, which moves the other way. Moving right always turns it the same way - it is only the head's position that decides which way the head itself goes.
+- **Why does moving my hand right sometimes push the arrow into the screen?** That is how depth is added. An arrow lying flat on the screen can only leave it by tipping into or out of it.
+
+---
+
+## 5a. Seeing the angles
+
+### In plain words
+The highlighted arrow always shows two angles as curved lines drawn from the axes: θ, measured down from the z axis, and φ, measured round the floor from the x axis to the arrow's shadow. Their values sit in small boxes beside them and change as you move the arrow.
+
+### How it's implemented
+Built in G5.5, in `AngleArcs` in `render/overlays.py`.
+
+- `theta_arc` is a circular arc from +z to the vector, in the plane that holds both; `phi_arc` is a circular arc in the XY plane from +x turning counterclockwise, the way section 2.3 of the spec measures φ, so 270° goes three quarters of the way round. A dashed grey guide runs from the origin to the vector's floor shadow and up to its head, so it is visible what φ is measured to. Along the z axis φ is undefined, so no φ arc or value is drawn.
+- The values come from `core/spherical.py`, the same numbers the panel uses, formatted to two decimals.
+- **Always on, for the active vector only.** First built for steering only, as the spec then said; the user asked at G5.5 for the angles to show whenever a vector is active. One vector at a time, like components and shadows. They are hidden while the head-to-tail animation plays, because the arrows are drawn away from their real positions then.
+- **Two readability fixes, both from looking at the picture.** VTK's built-in font has no Greek letters, so "θ 45.00°" came out as " 45.00°"; the labels use Windows' own Arial, which has them. And the values were first drawn in the vector's own colour, which the user found hard to read; they are now dark bold text on a white box outlined in the vector's colour, which reads on every one of the ten colours, including yellow.
+
+### Likely questions
+- **Why θ and φ rather than α, β, γ?** θ and φ are the two numbers the "magnitude + angles" input uses, so the arcs show exactly what a student would type to make this arrow. α, β and γ are on the card.
 
 ---
 

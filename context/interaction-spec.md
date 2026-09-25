@@ -151,6 +151,8 @@ These camera directions are read from the 3D view's camera at the moment they ar
 5. Rotation is screen-relative:
    - Horizontal deflection rotates the vector around the camera's **up** direction (the head swings left or right on screen).
    - Vertical deflection rotates the vector around the camera's **right** direction (the head tilts up or down on screen).
+   - The sense is **globe-style**: the side of the vector nearest the viewer moves the way the hand moves. A vector lying flat on the screen therefore tips into or out of it, which is how steering adds depth (section 6.2). (Settled at G5.5, 2026-09-25.)
+   - The speed rises in a straight line from 0 at the dead zone's edge to the maximum at the full-speed deflection, and is timed from the frames' own timestamps.
 6. Magnitude never changes while steering.
 7. Releasing the pinch freezes the vector.
 
@@ -219,7 +221,8 @@ Starting values. Change only after real testing, and record every change in `pro
 ## 10. Visual feedback and animation
 - **Active vector:** highlighted (thicker, with a glow or outline) in the 3D view and in the info panel.
 - **During CREATING / RESIZING:** the live magnitude is shown next to the vector's head.
-- **During STEERING:** the camera preview shows the anchor point, the dead zone ring, and a line to the current pinch point. The 3D view shows θ and φ changing live.
+- **During STEERING:** the camera preview shows the anchor point, the dead zone ring, and a line to the current pinch point.
+- **Angles of the active vector:** the 3D view always shows the active vector's θ and φ as arcs from their axes - θ from +z to the vector, φ in the XY plane from +x round to the vector's shadow - labelled with their values, and changing live while a hand moves it. (Changed 2026-09-25, G5.5, at the user's request: first built for steering only, as this line used to say.)
 - **Snap:** a brief visual cue (the vector or target axis flashes) when a snap engages.
 - **Live result updates:** when an input vector changes, the result moves to its new value with a short smooth transition (150 ms), not a jump.
 - **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (1.5 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.
@@ -232,7 +235,7 @@ Test each at a normal laptop distance, then leaning in, then sitting back.
 - [ ] Hands together + pull apart creates a vector; it follows the line between the hands.
 - [ ] Hands apart + pinch resizes the active vector without changing its direction.
 - [ ] Steering: small hand shake inside the dead zone does not move the vector.
-- [ ] Steering: moving right always moves the head right on screen, even after rotating the 3D view to look from behind.
+- [ ] Steering: moving right turns the vector the same way on screen whatever the view is turned to, even after rotating the 3D view to look from behind. (Globe-style, section 6.4: the side nearest you follows the hand, so a vector pointing at you swings right, one pointing into the screen swings left, and one lying flat pointing right tips into the screen. Reworded 2026-09-25, G5.5: "always moves the head right" cannot hold for every vector if steering is to add depth.)
 - [ ] Snapping engages near each axis and plane and releases cleanly; turning it off in settings works.
 - [ ] Each hold gesture triggers once after 0.5 s and not again until the hand changes shape.
 - [ ] Open palm with the free hand cancels steering and restores the vector exactly; releasing a create, resize or steer never cancels it.

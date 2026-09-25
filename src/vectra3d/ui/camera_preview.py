@@ -21,11 +21,13 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from vectra3d import config
 from vectra3d.gestures.hand_frame import NO_GESTURE, HandFrame
 from vectra3d.gestures.hand_metrics import TrackedHand
 from vectra3d.gestures.intents import Cancel, Commit, HoldTriggered
 from vectra3d.gestures.state_machine import GestureState, MachineOutput
 from vectra3d.ui import theme
+from vectra3d.ui.gesture_controller import Joystick
 
 # 4:3, the shape of the picture a laptop webcam delivers (640x480), so the
 # picture fills the area without bars.
@@ -79,6 +81,10 @@ HAND_CONNECTIONS = (
 
 LINE_WIDTH = 1.5
 POINT_RADIUS = 2.5
+# The steering joystick drawn over the picture (`interaction-spec.md` 10):
+# the anchor, the dead-zone ring round it, and a line to the pinch point.
+JOYSTICK_WIDTH = 2.0
+ANCHOR_RADIUS = 3.5
 
 
 def gesture_text(label: str) -> str:
@@ -143,10 +149,17 @@ class _Picture(QWidget):
         self.setFixedSize(PICTURE_WIDTH, PICTURE_HEIGHT)
         self._pixels: np.ndarray | None = None
         self._frame: HandFrame | None = None
+        self._joystick: Joystick | None = None
 
-    def show_frame(self, pixels: np.ndarray | None, frame: HandFrame | None) -> None:
+    def show_frame(
+        self,
+        pixels: np.ndarray | None,
+        frame: HandFrame | None,
+        joystick: Joystick | None = None,
+    ) -> None:
         self._pixels = pixels
         self._frame = frame
+        self._joystick = joystick
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -173,6 +186,8 @@ class _Picture(QWidget):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             for hand in self._frame.hands:
                 _draw_hand(painter, hand.landmarks, target)
+        if self._joystick is not None:
+            _draw_joystick(painter, self._joystick, target)
 
 
 def _fit(width: int, height: int, area_width: int, area_height: int) -> QRectF:
@@ -203,6 +218,29 @@ def _draw_hand(
     painter.setBrush(QColor(theme.HAND_POINT))
     for point in points:
         painter.drawEllipse(point, POINT_RADIUS, POINT_RADIUS)
+
+
+def _draw_joystick(painter: QPainter, joystick: Joystick, target: QRectF) -> None:
+    """The anchor, the dead-zone ring and the line to the pinch point.
+
+    The joystick's points are in picture heights, so on the drawn picture a
+    point is `x * height` across and `y * height` down, and the ring's radius
+    is the dead zone in hs times the hand scale times the height.
+    """
+    height = target.height()
+
+    def at(point: tuple[float, float]) -> QPointF:
+        return QPointF(target.x() + point[0] * height, target.y() + point[1] * height)
+
+    anchor = at(joystick.anchor)
+    ring = config.STEER_DEAD_ZONE_HS * joystick.scale * height
+    color = QColor(theme.JOYSTICK)
+    painter.setPen(QPen(color, JOYSTICK_WIDTH))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(anchor, ring, ring)
+    painter.drawLine(anchor, at(joystick.point))
+    painter.setBrush(color)
+    painter.drawEllipse(anchor, ANCHOR_RADIUS, ANCHOR_RADIUS)
 
 
 class CameraPreview(QWidget):
@@ -236,6 +274,7 @@ class CameraPreview(QWidget):
         hands: tuple[TrackedHand, ...],
         output: MachineOutput,
         message: str | None = None,
+        joystick: Joystick | None = None,
     ) -> None:
         """Show one picture, the raw hands drawn on it, and what they are doing.
 
@@ -244,8 +283,9 @@ class CameraPreview(QWidget):
         not the smoothed ones, so the picture shows exactly what the tracker
         saw. `message`, when given, takes the gesture line's place: something
         a gesture could not do, such as creating an eleventh vector.
+        `joystick`, while steering, is drawn over the picture.
         """
-        self._picture.show_frame(pixels, frame)
+        self._picture.show_frame(pixels, frame, joystick)
         self._last_outcome = outcome_text(output) or self._last_outcome
         text = status_text(hands)
         gesture_line = message or machine_text(output, self._last_outcome)

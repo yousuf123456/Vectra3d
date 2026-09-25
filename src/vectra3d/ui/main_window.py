@@ -32,7 +32,7 @@ from vectra3d.gestures.hand_frame import HandFrame
 from vectra3d.gestures.hand_metrics import HandMetrics
 from vectra3d.gestures.state_machine import GestureStateMachine
 from vectra3d.render.animations import ComponentTransition, HeadToTail
-from vectra3d.render.overlays import ComponentOverlays, ProjectionOverlays
+from vectra3d.render.overlays import AngleArcs, ComponentOverlays, ProjectionOverlays
 from vectra3d.state import actions, naming
 from vectra3d.render.result_actor import ResultActor
 from vectra3d.render.scene import Scene
@@ -188,6 +188,10 @@ class VectraMainWindow(MainWindow):
         # The shadows on the three planes, switched on separately from the
         # components: the two answer different questions about a vector.
         self.projections = ProjectionOverlays(self.plotter)
+        # The active vector's theta and phi, as arcs from their axes
+        # (`interaction-spec.md` section 10). Always shown, on the active
+        # vector only, at the user's request at G5.5.
+        self.angle_arcs = AngleArcs(self.plotter)
         # The temporary operation result, drawn in the one reserved colour.
         # It is not a vector, so it gets its own actor rather than being
         # pushed through `VectorActors`.
@@ -239,9 +243,16 @@ class VectraMainWindow(MainWindow):
         # The camera is read now, every frame: "right" is the screen's right
         # as the student sees it at this moment (`interaction-spec.md` 6.1).
         camera = self.plotter.camera
-        self._gesture_controller.apply(output.intents, camera.direction, camera.up)
+        self._gesture_controller.apply(
+            output.intents, camera.direction, camera.up, frame.timestamp_ms
+        )
         self.camera_preview.show_frame(
-            pixels, frame, hands, output, self._gesture_controller.message
+            pixels,
+            frame,
+            hands,
+            output,
+            self._gesture_controller.message,
+            self._gesture_controller.joystick,
         )
 
     def _build_toolbar(self) -> None:
@@ -308,6 +319,7 @@ class VectraMainWindow(MainWindow):
         # origin. They come back when the animation ends.
         self.overlays.draw((), None)
         self.projections.draw((), None)
+        self.angle_arcs.draw(None)
         self._head_to_tail.play([term.components for term in terms])
         self.info_panel.refresh(
             self._store.vectors,
@@ -406,6 +418,8 @@ class VectraMainWindow(MainWindow):
             self.overlays.draw(vectors, name)
         if self._store.projections_shown == name:
             self.projections.draw(vectors, name)
+        if self._store.active_name == name:
+            self.angle_arcs.draw(vector)
         # A result worked out from this vector follows it. Drawn directly,
         # without the 150 ms glide panel edits get: restarted every frame, the
         # glide would only ever trail behind the hand.
@@ -480,6 +494,7 @@ class VectraMainWindow(MainWindow):
         self.vectors.draw(vectors, active, self._gesture_controller.labels())
         self.overlays.draw(vectors, self._store.components_shown)
         self.projections.draw(vectors, self._store.projections_shown)
+        self.angle_arcs.draw(self._store.active)
 
         # The arrow is animated to its new components; everything else is
         # already where it belongs. `move_to` renders each step, so this is

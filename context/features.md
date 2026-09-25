@@ -69,7 +69,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 **Group:** G4 · **Depends on:** F-01
 - [x] Shows the mirrored webcam feed with detected hand landmarks drawn on it.
 - [x] Shows the currently recognized gesture by name, or "No hand detected."
-- [ ] Shows gesture feedback defined in `interaction-spec.md` (e.g. joystick center and dead zone while steering). **Carried into G5** at the user's decision (G4.1): everything it names comes from the gesture state machine. Tick at G5.5.
+- [x] Shows gesture feedback defined in `interaction-spec.md` (e.g. joystick center and dead zone while steering). **Carried into G5** at the user's decision (G4.1): everything it names comes from the gesture state machine. Ticked at G5.5, when the joystick arrived.
 - [x] If no webcam is found, the app still runs fully from the action panel and shows a clear message instead of crashing. (Proven with a fake camera through the real thread and preview; not yet seen with a real camera switched off.)
 - [ ] Hand tracking does not freeze or noticeably slow the 3D view or the panels. **Open, carried into G5.** Measured at G4.1 as an 11-13% frame-rate drop against the 10% line agreed at planning; the user closed the step without a verdict on it. Re-measure under full gesture load.
 
@@ -97,8 +97,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-06 Steer direction by hand
 **Group:** G5 · **Depends on:** F-02, F-05a
-- [ ] The steering gesture changes the active vector's direction while keeping its magnitude unchanged.
-- [ ] Releasing the gesture freezes the vector exactly where it is.
+- [x] The steering gesture changes the active vector's direction while keeping its magnitude unchanged.
+- [x] Releasing the gesture freezes the vector exactly where it is.
 - [ ] Snapping to axes and planes works as defined in `interaction-spec.md`.
 
 ### F-07 Resize by hand

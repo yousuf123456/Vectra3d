@@ -16,8 +16,11 @@ from vectra3d.gestures.hand_to_vector import (
     create_components,
     head_index,
     is_long_enough,
-    screen_axes,
+    deflection,
     resize_components,
+    screen_axes,
+    steer_components,
+    steer_speed,
     stretch,
 )
 
@@ -239,3 +242,88 @@ def test_the_zero_vector_cannot_be_resized() -> None:
 
 def test_a_resize_with_nothing_to_measure_gives_none() -> None:
     assert resize(START, scale=0.0) is None
+
+
+# --- Steering (6.4) ---
+#
+# The camera looks along +y (FRONT), so the viewer is at -y: a vector pointing
+# at the student is (0, -5, 0). Full deflection turns at 90 degrees a second,
+# so half a second of it is exactly 45 degrees. 5 * cos 45 = 5 * sin 45 = H.
+
+H = 5 * math.sqrt(0.5)
+FULL = config.STEER_MAX_SPEED_HS
+
+
+def turn(current, push, seconds=0.5, axes=FRONT):
+    return steer_components(current, 5.0, push, seconds, axes)
+
+
+def test_deflection_is_measured_from_the_anchor_in_hs_with_up_positive() -> None:
+    # 0.25 right and 0.125 up the picture (smaller y) at scale 0.25.
+    assert deflection((0.5, 0.5), (0.75, 0.375), 0.25) == (1.0, 0.5)
+    assert deflection((0.5, 0.5), (0.75, 0.375), 0.0) is None
+
+
+def test_nothing_moves_inside_the_dead_zone() -> None:
+    assert steer_speed(0.0) == 0.0
+    assert steer_speed(config.STEER_DEAD_ZONE_HS) == 0.0
+    assert turn((0.0, -5.0, 0.0), (config.STEER_DEAD_ZONE_HS, 0.0)) == (0.0, -5.0, 0.0)
+
+
+def test_speed_rises_in_a_straight_line_to_the_maximum_and_stays() -> None:
+    # Halfway between 0.3 and 1.5 hs is 0.9 hs: half of 90 degrees a second.
+    halfway = (config.STEER_DEAD_ZONE_HS + FULL) / 2
+    assert steer_speed(halfway) == pytest.approx(config.STEER_MAX_SPEED_DEG_PER_S / 2)
+    assert steer_speed(FULL) == config.STEER_MAX_SPEED_DEG_PER_S
+    assert steer_speed(3 * FULL) == config.STEER_MAX_SPEED_DEG_PER_S
+
+
+def test_pushing_right_swings_a_vector_pointing_at_you_to_the_right() -> None:
+    # Turned 45 degrees about +z: (5 sin 45, -5 cos 45, 0). +x is screen right.
+    assert turn((0.0, -5.0, 0.0), (FULL, 0.0)) == pytest.approx((H, -H, 0.0))
+
+
+def test_pushing_up_tilts_a_vector_pointing_at_you_upwards() -> None:
+    assert turn((0.0, -5.0, 0.0), (0.0, FULL)) == pytest.approx((0.0, -H, H))
+
+
+def test_a_vector_pointing_into_the_screen_swings_the_other_way() -> None:
+    # Globe-style: the far side moves against the hand.
+    assert turn((0.0, 5.0, 0.0), (FULL, 0.0)) == pytest.approx((-H, H, 0.0))
+
+
+def test_pushing_right_tips_a_flat_vector_pointing_right_into_the_screen() -> None:
+    # This is how steering adds depth to a vector created flat on the screen.
+    assert turn((5.0, 0.0, 0.0), (FULL, 0.0)) == pytest.approx((H, H, 0.0))
+
+
+def test_the_same_push_turns_the_other_way_in_the_world_seen_from_behind() -> None:
+    # From behind, the student's right is -x: the vector at them, (0, 5, 0),
+    # swings to -x - which is still their right.
+    assert turn((0.0, 5.0, 0.0), (FULL, 0.0), axes=BEHIND) == pytest.approx(
+        (-H, H, 0.0)
+    )
+
+
+def test_a_diagonal_push_turns_once_by_its_full_amount() -> None:
+    # Right and up equally, at full speed: one 45 degree turn, not two.
+    push = (FULL, FULL)
+    turned = turn((0.0, -5.0, 0.0), push)
+    cosine = -turned[1] / 5.0
+    assert math.degrees(math.acos(cosine)) == pytest.approx(45.0)
+    assert turned[0] == pytest.approx(turned[2])
+
+
+def test_the_turn_follows_the_time_step() -> None:
+    # A tenth of a second at full speed: 9 degrees.
+    turned = turn((0.0, -5.0, 0.0), (FULL, 0.0), seconds=0.1)
+    assert math.degrees(math.atan2(turned[0], -turned[1])) == pytest.approx(9.0)
+    assert turn((0.0, -5.0, 0.0), (FULL, 0.0), seconds=0.0) == (0.0, -5.0, 0.0)
+
+
+def test_the_magnitude_does_not_creep_over_many_frames() -> None:
+    vector = (3.0, -4.0, 0.0)
+    for step in range(1000):
+        push = (FULL * math.cos(step), FULL * math.sin(step))
+        vector = steer_components(vector, 5.0, push, 0.033, FRONT)
+    assert math.hypot(*vector) == pytest.approx(5.0, abs=1e-12)

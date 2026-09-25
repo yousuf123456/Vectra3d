@@ -12,7 +12,15 @@ import numpy as np
 import pytest
 
 from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
-from vectra3d.gestures.intents import BeginTwoHand, Commit, TwoHandKind, UpdateTwoHand
+from vectra3d.gestures.intents import (
+    BeginSteer,
+    BeginTwoHand,
+    Cancel,
+    Commit,
+    TwoHandKind,
+    UpdateSteer,
+    UpdateTwoHand,
+)
 
 pytest.importorskip("PySide6.QtWidgets")
 
@@ -44,9 +52,9 @@ def window(app: QApplication):
     window.close()
 
 
-def apply(window: VectraMainWindow, *intents) -> None:
+def apply(window: VectraMainWindow, *intents, now_ms: int = 0) -> None:
     camera = window.plotter.camera
-    window._gesture_controller.apply(intents, camera.direction, camera.up)
+    window._gesture_controller.apply(intents, camera.direction, camera.up, now_ms)
 
 
 def pinching_hand_at(x: float) -> Hand:
@@ -207,3 +215,90 @@ def test_a_refused_resize_is_explained_in_the_camera_strip(window) -> None:
     both = (pinching_hand_at(0.35), pinching_hand_at(0.65))
     window._on_hand_frame(PIXELS, HandFrame(hands=both, timestamp_ms=0, aspect=ASPECT))
     assert window.camera_preview.status.endswith("Vector A is locked.")
+
+
+# --- Steering (F-06) and the angle arcs ---
+
+STEER = BeginSteer(1, (0.5, 0.5), 0.25)
+FULL_RIGHT = UpdateSteer((0.875, 0.5), 0.25)
+
+
+def arcs_shown(window) -> bool:
+    return "arc-theta" in window.plotter.actors and "arc-phi" in window.plotter.actors
+
+
+def test_the_active_vector_always_shows_its_angles(app, window) -> None:
+    # The user's request at G5.5: not only while steering.
+    assert not arcs_shown(window)
+    actions.create_vector(window._store, (0.0, -5.0, 3.0))
+    assert arcs_shown(window)
+
+    actions.delete_vector(window._store, "A")
+    assert not arcs_shown(window)
+
+
+def test_the_arcs_follow_the_vector_while_it_is_steered(app, window) -> None:
+    actions.create_vector(window._store, (0.0, -5.0, 3.0))
+    drawn = []
+    original = window.angle_arcs.draw
+    window.angle_arcs.draw = lambda vector: (drawn.append(vector), original(vector))
+
+    apply(window, STEER, now_ms=0)
+    apply(window, FULL_RIGHT, now_ms=500)
+    app.processEvents()
+
+    assert drawn[-1] == window._store.get("A")
+    assert drawn[-1].components != (0.0, -5.0, 3.0)
+    assert arcs_shown(window)
+
+
+def test_the_arcs_move_to_whichever_vector_is_active(app, window) -> None:
+    actions.create_vector(window._store, (0.0, -5.0, 3.0))
+    actions.create_vector(window._store, (4.0, 0.0, 0.0))
+    drawn = []
+    original = window.angle_arcs.draw
+    window.angle_arcs.draw = lambda vector: (drawn.append(vector), original(vector))
+
+    actions.set_active(window._store, "A")
+    assert drawn[-1].name == "A"
+
+
+def test_a_cancelled_steer_puts_the_vector_and_its_arcs_back(app, window) -> None:
+    actions.create_vector(window._store, (0.0, -5.0, 3.0))
+    apply(window, STEER, now_ms=0)
+    apply(window, FULL_RIGHT, now_ms=500)
+    app.processEvents()
+    apply(window, Cancel(), now_ms=533)
+    assert window._store.get("A").components == (0.0, -5.0, 3.0)
+    assert arcs_shown(window)
+
+
+def test_the_arcs_hide_while_the_head_to_tail_animation_plays(app, window) -> None:
+    store = window._store
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    actions.create_vector(store, (0.0, 1.0, 0.0))
+    actions.toggle_selected(store, "A")
+    actions.toggle_selected(store, "B")
+    actions.compute_resultant(store)
+    assert arcs_shown(window)
+
+    window._play_head_to_tail()
+    assert not arcs_shown(window)
+    window._head_to_tail.cancel()
+    assert arcs_shown(window)
+
+
+def test_steering_rescales_the_scene_only_on_release(app, window) -> None:
+    # (0, -12, 0) needs an extent of 20. Turned 45 degrees it is about
+    # (8.49, -8.49, 0), which fits in 10 - but only once the steer ends.
+    actions.create_vector(window._store, (0.0, -12.0, 0.0))
+    window.scene.set_view("Front")
+    assert window.scene.extent == 20
+
+    apply(window, STEER, now_ms=0)
+    apply(window, FULL_RIGHT, now_ms=500)
+    app.processEvents()
+    assert window.scene.extent == 20
+
+    apply(window, Commit(), now_ms=533)
+    assert window.scene.extent == 10
