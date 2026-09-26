@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -41,12 +42,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSizePolicy,
+    QSlider,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from vectra3d import config
 from vectra3d.core.formatting import format_number
 from vectra3d.core.spherical import THETA_MAX, THETA_MIN, to_components, to_spherical
 from vectra3d.state import actions, naming
@@ -380,17 +383,19 @@ class CollapsibleBox(QGroupBox):
     than hiding them - a different thing, which saves no space and would
     fight the rule that disables this box for a locked vector.
 
-    Both boxes start open. Nothing is hidden until the student chooses to
-    hide it, and the fold is theirs to undo.
+    Boxes start open: nothing is hidden until the student chooses to hide
+    it, and the fold is theirs to undo. The one exception is the gesture
+    settings, which are rarely changed and would otherwise take room from
+    the vector list on every launch.
     """
 
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, expanded: bool = True) -> None:
         super().__init__()
 
         self._header = QToolButton()
         self._header.setText(title)
         self._header.setCheckable(True)
-        self._header.setChecked(True)
+        self._header.setChecked(expanded)
         self._header.setAutoRaise(True)
         self._header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._header.setStyleSheet("QToolButton { border: none; font-weight: 600; }")
@@ -406,6 +411,7 @@ class CollapsibleBox(QGroupBox):
         layout.addWidget(self._header)
         layout.addWidget(self._content)
 
+        self._content.setVisible(expanded)
         self._update_arrow()
 
     def add(self, widget: QWidget) -> None:
@@ -459,6 +465,7 @@ class ActionPanel(QWidget):
         layout.addWidget(self._build_edit_box())
         layout.addWidget(self._edit_hint)
         layout.addWidget(self._build_operations())
+        layout.addWidget(self._build_settings())
 
         self._clear = QPushButton("Clear all")
         self._clear.setToolTip("Remove every vector from the scene")
@@ -544,6 +551,63 @@ class ActionPanel(QWidget):
         box.add(holder)
         return box
 
+
+    def _build_settings(self) -> QWidget:
+        """Snapping and magnitude sensitivity (F-20, spec section 8).
+
+        Folded at launch, since they are rarely changed. They start at the
+        spec's defaults every time; nothing is saved between launches.
+        """
+        box = CollapsibleBox("Gesture settings", expanded=False)
+
+        holder = QWidget()
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.GAP_SMALL)
+
+        self._snapping = QCheckBox("Snap to axes and planes while steering")
+        self._snapping.setChecked(self._store.settings.snapping)
+        self._snapping.toggled.connect(self._on_snapping)
+        layout.addWidget(self._snapping)
+
+        layout.addWidget(QLabel("Magnitude sensitivity"))
+        row = QHBoxLayout()
+        # The slider counts steps of 5, so it can only ever produce a value
+        # the spec allows: 1 to 10 steps is 5 to 50 units.
+        self._sensitivity = QSlider(Qt.Orientation.Horizontal)
+        self._sensitivity.setRange(
+            config.MAGNITUDE_SENSITIVITY_MIN // config.MAGNITUDE_SENSITIVITY_STEP,
+            config.MAGNITUDE_SENSITIVITY_MAX // config.MAGNITUDE_SENSITIVITY_STEP,
+        )
+        self._sensitivity.setPageStep(1)
+        self._sensitivity.setValue(
+            self._store.settings.sensitivity // config.MAGNITUDE_SENSITIVITY_STEP
+        )
+        self._sensitivity.setToolTip(
+            "How long a vector one full stretch of the hands makes, when creating "
+            "or resizing. Lower for fine control of short vectors."
+        )
+        self._sensitivity.valueChanged.connect(self._on_sensitivity)
+        row.addWidget(self._sensitivity)
+        self._sensitivity_value = QLabel()
+        row.addWidget(self._sensitivity_value)
+        layout.addLayout(row)
+        self._show_sensitivity()
+
+        box.add(holder)
+        return box
+
+    def _on_snapping(self, on: bool) -> None:
+        actions.set_snapping(self._store, on)
+
+    def _on_sensitivity(self, steps: int) -> None:
+        actions.set_sensitivity(self._store, steps * config.MAGNITUDE_SENSITIVITY_STEP)
+        self._show_sensitivity()
+
+    def _show_sensitivity(self) -> None:
+        self._sensitivity_value.setText(
+            f"{self._store.settings.sensitivity} units per full stretch"
+        )
     def _on_subtract(self) -> None:
         """Show the difference between the two chosen vectors (F-16)."""
         minuend = self._minuend.currentText()

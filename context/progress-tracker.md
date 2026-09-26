@@ -5,12 +5,13 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G5 — Gesture control. G5.1-G5.6 done. One F-02 criterion is still
+- **Current group:** G5 — Gesture control. G5.1-G5.7 done. One F-02 criterion is still
   carried: performance (11-13% against a 10% line), re-measure under full gesture load.
-- **Next step:** G5.7 — gesture settings (F-20): a Snapping on/off toggle (default on)
-  and a Magnitude sensitivity setting (25, range 5-50 in steps of 5) in the action panel,
-  held in `state`. The controller currently reads `config.MAGNITUDE_SENSITIVITY_DEFAULT`
-  directly and always snaps; both become the live settings.
+- **Next step:** G5.8 — hold gestures (F-05b, F-09b, F-13b): `Pointing_Up` next vector
+  skipping locked, `Thumb_Up` lock/unlock, `Victory` components, with the progress ring in
+  the camera preview. HOLDING is already built in the state machine (G5.2); this step wires
+  its triggers to actions and draws the ring. Also due here: components and shadows
+  redrawing live while a hand moves the vector (F-13b; the 114 ms known issue).
 - **Blocked on:** nothing.
 
 ## Completed steps
@@ -58,6 +59,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G5.4 | F-07 resize by hand: `resize_components` and a signed `stretch` in `gestures/hand_to_vector.py`, resize in `ui/gesture_controller.py`, `InfoPanel.update_result`, the result on the window's fast path | 2026-09-25 | `G5.4: resize a vector by hand` | Both F-07 criteria pass; the user resized with real hands: "working now". The direction is fixed from the moment the resize begins and the length never drops below 0.1. Refusals are explained in the camera strip - locked (the spec's wording), no vector, and the zero vector. A result follows the resized vector at full speed. Measured on screen with ten vectors: 53 ms per update with a result showing, 114 ms with the vector's components and shadows on - deferred to G5.8 at the user's decision. 19 new tests; suite now 739 passing. |
 | G5.5 | F-06 steer by hand, and the angle arcs: `deflection` / `steer_speed` / `steer_components` in `gestures/hand_to_vector.py`, steering and cancel in `ui/gesture_controller.py`, the joystick in `ui/camera_preview.py`, `AngleArcs` in `render/overlays.py` | 2026-09-25 | `G5.5: steer a vector by hand` | F-06's first two criteria pass, and F-02's feedback criterion carried from G4. The user steered with real hands: "it feels good". Two spec questions settled first: step 5's rotation is kept globe-style, which is the only reading that adds depth, and the section 11 line that contradicted it was reworded; θ and φ are drawn as arcs from their axes. The user then asked for the angles to be clearer and to show on the active vector at all times - both done, and section 10 changed to say so. Found before the user saw it: VTK's font drops Greek letters. The tracker slowdown feared at G4.1 measured with real hands: 32 fps idle, 21 fps steering, no backlog. 38 new tests; suite now 777 passing. |
 | G5.6 | Snapping while steering (F-06), the snap lock, and quieter angle arcs: `SnapTarget` / `snap_target` / `snapped_components` / `turn_axes` in `gestures/hand_to_vector.py`, the steered direction in `ui/gesture_controller.py`, the halo flash in `render/vector_actor.py` and the window, `AngleArcs` restyled | 2026-09-25 | `G5.6: snap to axes and planes while steering` | **F-06 is now closed entirely.** Snaps in at 5°, releases at 8°, axes before planes, halo flash and "Steering, snapped to ..." in the strip. The joystick turns a hidden steered direction and the store shows it snapped; otherwise a snapped vector could never get 8° away. The user then found that in the raised default view a sideways-only push dropped the vector out of the XY floor: screen-relative steering turns about a tilted axis. Section 6.5 amended at the user's decision with a **snap lock** - while snapped, steering turns within the plane(s) the vector lies in - extended to axes after simulation showed the plane lock alone still dipped off the floor when leaving an axis. The user also found the angle boxes hid short vectors: arcs thinned, values moved to one line beside the head, each arc tagged with its letter; section 10 changed. User: "working good now". 32 new tests; suite now 809 passing. |
+| G5.7 | F-20 gesture settings: `Settings` in `state/models.py`, `set_snapping` / `set_sensitivity` in `state/actions.py`, the controller reading them live, the folded Gesture settings box in `ui/action_panel.py` | 2026-09-26 | `G5.7: gesture settings` | All three F-20 criteria pass; the user checked with real hands: "working well". Settings are outside undo, survive clearing the scene, and do not notify the store, since nothing drawn depends on them and the full redraw would run on every step of a dragged slider. The slider counts steps of 5, so it cannot produce a value off the spec's grid; the action refuses one anyway. Checked by screenshot at the panel's real 300 px width before launching. 23 new tests; suite now 832 passing. |
 | G5.2 | Gesture state machine: `gestures/state_machine.py`, `gestures/intents.py`, the metrics' 0.3 s memory for a missing hand, the gesture line in the preview | 2026-09-24 | `G5.2: gesture state machine` | No `features.md` criteria of its own; F-03, F-05b, F-06, F-07, F-09b, F-13b and F-19 (gestures) are built on it. Found at planning: cancel as specified could almost never happen, since opening a pinching hand releases before a palm is seen - section 5 amended with a release confirm window. Real-hand testing then found MediaPipe mostly losing two hands held close or pointing at the camera (palms-to-camera works), gestures cancelled by pinching hands misread as `Open_Palm` (fixed: only a non-pinching hand cancels), and two-hand pinches arriving 328 and 469 ms apart (window 0.3 -> 0.5 s). Two metrics bugs caught by tests: a late-returning hand resumed as the old one, and a slow frame losing a visible hand. User confirmed with real hands: "now working fine". 45 new tests; suite now 672 passing. |
 
 
@@ -70,7 +72,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | In progress — G5.1-G5.6 done |
+| G5 | Gesture control | In progress — G5.1-G5.7 done |
 | G6 | Packaging | Not started |
 
 ---
@@ -266,6 +268,10 @@ Decisions made during planning (2026-09-19). Add new decisions below with the da
 | 2026-09-25 | The snap cue is the halo flashing (0.6 opacity for 300 ms) plus "Steering, snapped to ..." in the camera strip | The user's choice at planning. The halo rather than the axis because a plane has no single line to flash. The strip text keeps "Steering" after a test showed the snap text had replaced it. No flash when leaving an axis along one of its planes, or when the target changes without the vector moving - nothing arrived. Flash constants live in `render/vector_actor.py`: layout, not section 9 tunables. |
 | 2026-09-25 | A vector exactly on an axis or plane when steering begins starts snapped, without a flash | Otherwise a vector typed as (0, 0, 5) would leave the axis at the first twitch past 5° while one steered onto it needed 8°. |
 | 2026-09-25 | **The angle arcs made quieter; section 10 changed**, at the user's request | Boxes of a fixed screen size at each arc covered a short vector completely, and 3.5 px solid arcs outweighed any vector. Arcs are now 2 px at half opacity, each tagged with only its letter, and the values are one 12 pt line hung under the vector's letter beside its head, where they cannot sit on the arrow. The letters were added after the user asked how to tell which arc is which once the values had moved. |
+| 2026-09-26 | Gesture settings reset on every launch; nothing is saved | The user's choice at planning. On a shared lab or lecture laptop the next student would otherwise inherit someone else's setting, and the spec asks for no more. |
+| 2026-09-26 | Changing a setting does not notify the store's listener | Nothing drawn depends on a setting - the controller reads it every frame - and the window's full redraw costs about 300 ms, which a dragged slider would trigger at every step. The panel's own widgets show the value. |
+| 2026-09-26 | The Gesture settings box starts folded, the one box that does | The user's choice. Settings are rarely changed and the vector list competes for the panel's height on a 728 px screen. |
+| 2026-09-26 | The sensitivity slider counts steps (1-10) and multiplies by 5 | A `QSlider` over 5-50 would produce every integer in between when dragged. Counting steps makes an off-grid value impossible from the panel; `set_sensitivity` still refuses one, for any other caller. |
 | 2026-09-24 | Palms toward the camera is the working hand pose, recorded for students | Measured: hands held close or pointing at the camera were tracked as one hand or none. Written into `docs/03` as a likely question; worth putting in front of students before the trial. |
 
 

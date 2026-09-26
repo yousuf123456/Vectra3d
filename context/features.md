@@ -198,9 +198,9 @@ Keep this simple: store a snapshot of all vectors before each change. Do not bui
 
 ### F-20 Gesture settings
 **Group:** G5 · **Depends on:** F-03, F-06, F-07
-- [ ] The action panel has a **Snapping** on/off toggle (default on). Turning it off stops all snapping while steering.
-- [ ] The action panel has a **Magnitude sensitivity** setting: how many units a full hand stretch equals, default 25, range 5 to 50 in steps of 5 (see `interaction-spec.md` section 8).
-- [ ] Changing sensitivity immediately affects creating and resizing by hand.
+- [x] The action panel has a **Snapping** on/off toggle (default on). Turning it off stops all snapping while steering.
+- [x] The action panel has a **Magnitude sensitivity** setting: how many units a full hand stretch equals, default 25, range 5 to 50 in steps of 5 (see `interaction-spec.md` section 8).
+- [x] Changing sensitivity immediately affects creating and resizing by hand.
 
 ---
 

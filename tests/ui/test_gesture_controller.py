@@ -538,3 +538,56 @@ def test_up_and_down_still_lift_it_off_the_floor() -> None:
     controller.apply([UpdateSteer((0.5, 0.125), 0.25)], RAISED, Z_UP, 200)
     assert abs(store.get("A").components[2]) == pytest.approx(5 * math.sin(math.radians(18)))
     assert controller.message is None
+
+
+# --- The gesture settings (F-20) ---
+
+
+def test_the_sensitivity_sets_how_long_a_full_stretch_creates() -> None:
+    # The same pull as PULLED: 4 hs more than the start, half a full stretch.
+    # At 25 that is 12.5 long; at 50, 25.
+    store = VectorStore()
+    actions.set_sensitivity(store, 50)
+    controller = GestureController(store)
+    run(controller, BEGIN, PULLED)
+    assert store.get("A").components == pytest.approx((25.0, 0.0, 0.0))
+
+
+def test_the_sensitivity_sets_how_far_a_stretch_resizes() -> None:
+    # (3, 4, 0) is 5 long; half a full stretch at 50 adds 25: 30 long.
+    store = store_with((3.0, 4.0, 0.0))
+    actions.set_sensitivity(store, 50)
+    controller = GestureController(store)
+    run(controller, RESIZE, PULLED)
+    assert store.get("A").components == pytest.approx((18.0, 24.0, 0.0))
+
+
+def test_with_snapping_off_a_vector_near_an_axis_is_left_where_it_is() -> None:
+    store = store_with(at(20.0))
+    actions.set_snapping(store, False)
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    run(controller, FULL_LEFT, now_ms=170)  # 4.7 degrees off -y
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(4.7)
+    assert controller.message is None
+    assert not controller.take_snap_engaged()
+
+
+def test_a_vector_on_an_axis_is_not_held_with_snapping_off() -> None:
+    store = steering_store()
+    actions.set_snapping(store, False)
+    controller = GestureController(store)
+    run(controller, STEER, now_ms=0)
+    assert controller.message is None
+    run(controller, FULL_RIGHT, now_ms=50)
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(4.5)
+
+
+def test_turning_snapping_off_mid_snap_lets_go_on_the_next_frame() -> None:
+    store, controller = snapped_on_the_way_back()
+    actions.set_snapping(store, False)
+    # Steering restarted from the axis when it snapped; 10 ms more to the
+    # left carries it 0.9 degrees past -y, and nothing holds it there.
+    run(controller, FULL_LEFT, now_ms=180)
+    assert degrees_from_minus_y(store.get("A").components) == pytest.approx(-0.9)
+    assert controller.message is None

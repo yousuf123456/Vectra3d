@@ -15,10 +15,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from vectra3d import config
+
 # A point in the scene: x, y, z.
 Point = tuple[float, float, float]
 
 ORIGIN: Point = (0.0, 0.0, 0.0)
+
+
+@dataclass(frozen=True)
+class Settings:
+    """The student's gesture settings (`interaction-spec.md` section 8).
+
+    Snapping while steering, and how many scene units one full hand stretch
+    adds when creating or resizing. They start at the spec's defaults on
+    every launch and are never saved: on a shared lab laptop the next student
+    should not inherit someone else's choice.
+    """
+
+    snapping: bool = config.SNAPPING_DEFAULT
+    sensitivity: int = config.MAGNITUDE_SENSITIVITY_DEFAULT
 
 
 class Operation(Enum):

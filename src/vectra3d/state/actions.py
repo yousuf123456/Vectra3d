@@ -32,6 +32,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from vectra3d import config
+
 from vectra3d.core.operations import resultant, subtract
 from vectra3d.state import naming
 from typing import NamedTuple
@@ -255,6 +257,34 @@ def toggle_selected(store: VectorStore, name: str) -> bool:
     store.set_selected(name, now_selected)
     store.notify()
     return now_selected
+
+
+def set_snapping(store: VectorStore, on: bool) -> None:
+    """Turn snapping while steering on or off (F-20, spec section 8).
+
+    Settings are not changes to the vectors, so no undo step (F-19). Nor is
+    anyone told: nothing drawn depends on a setting - the gesture controller
+    reads it each frame - and the full redraw a notification causes costs
+    about 300 ms, once per step of a dragged slider.
+    """
+    store.set_settings(replace(store.settings, snapping=on))
+
+
+def set_sensitivity(store: VectorStore, units: int) -> bool:
+    """Set how many units a full hand stretch adds (F-20, spec section 8).
+
+    Refused, returning False, for anything off the spec's grid: 5 to 50 in
+    steps of 5. The panel's slider cannot produce such a value; the rule is
+    kept here because every change goes through the actions. Not undoable,
+    and nobody is told, for the reasons given at `set_snapping`.
+    """
+    if (
+        not config.MAGNITUDE_SENSITIVITY_MIN <= units <= config.MAGNITUDE_SENSITIVITY_MAX
+        or (units - config.MAGNITUDE_SENSITIVITY_MIN) % config.MAGNITUDE_SENSITIVITY_STEP
+    ):
+        return False
+    store.set_settings(replace(store.settings, sensitivity=units))
+    return True
 
 
 def toggle_components(store: VectorStore, name: str) -> bool:

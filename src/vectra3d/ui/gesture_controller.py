@@ -21,7 +21,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 
-from vectra3d import config
 from vectra3d.core.formatting import format_number
 from vectra3d.core.vector_math import magnitude
 from vectra3d.gestures.hand_metrics import Point as PicturePoint
@@ -173,7 +172,11 @@ class GestureController:
                     self._joystick = Joystick(intent.anchor, intent.anchor, intent.scale)
                     self._last_ms = now_ms
                     self._steered = self._original.components
-                    self._snap = exact_target(self._steered)
+                    self._snap = (
+                        exact_target(self._steered)
+                        if self._store.settings.snapping
+                        else None
+                    )
             elif isinstance(intent, UpdateTwoHand):
                 self._update_two_hand(intent, camera_direction, camera_up)
             elif isinstance(intent, UpdateSteer):
@@ -238,7 +241,7 @@ class GestureController:
                 intent.points,
                 intent.scale,
                 axes,
-                config.MAGNITUDE_SENSITIVITY_DEFAULT,
+                self._store.settings.sensitivity,
             )
         else:
             components = resize_components(
@@ -247,7 +250,7 @@ class GestureController:
                 self._begin.scale,
                 intent.points,
                 intent.scale,
-                config.MAGNITUDE_SENSITIVITY_DEFAULT,
+                self._store.settings.sensitivity,
             )
         if components is not None:
             actions.edit_vector(self._store, self._moving, components)
@@ -283,13 +286,21 @@ class GestureController:
         if push is None or axes is None or vector is None:
             return
         length = magnitude(self._original.components)
+        # Snapping can be switched off mid-steer (F-20): the vector then goes
+        # to wherever the hand has steered it, on this frame.
+        if not self._store.settings.snapping:
+            self._snap = None
         # Snapped, the joystick turns it within the plane or planes it lies in.
         locks = self._snap.locks if self._snap is not None else ()
         self._steered = steer_components(
             self._steered, length, push, seconds, axes, locks
         )
 
-        target = snap_target(self._steered, self._snap)
+        target = (
+            snap_target(self._steered, self._snap)
+            if self._store.settings.snapping
+            else None
+        )
         # A snap engages when the vector jumps onto something new. Leaving
         # an axis along a plane it already lies in is a change of target
         # with no jump, and flashing then would announce nothing visible.

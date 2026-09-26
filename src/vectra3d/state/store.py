@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from vectra3d.state.models import Result, Vector
+from vectra3d.state.models import Result, Settings, Vector
 from vectra3d.state.undo import History, Snapshot
 
 
@@ -46,6 +46,9 @@ class VectorStore:
         self._result: Result | None = None
         self._result_error: str | None = None
         self._listeners: list[Callable[[], None]] = []
+        # The gesture settings. Not part of the scene: outside undo, and
+        # untouched by clearing it.
+        self._settings = Settings()
         # The steps that can be taken back (F-19). The store owns it so that
         # every action keeps its one-argument signature, and so that G5's
         # gesture engine records through the same place the panel does.
@@ -57,6 +60,10 @@ class VectorStore:
         self._gesture_before: Snapshot | None = None
 
     # --- Reading ---
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
 
     @property
     def gesture_in_progress(self) -> bool:
@@ -241,6 +248,9 @@ class VectorStore:
         self._projections_shown = None
         self._result = None
         self._result_error = None
+
+    def set_settings(self, settings: Settings) -> None:
+        self._settings = settings
 
     def set_active(self, name: str | None) -> None:
         if name is not None and name not in self._vectors:

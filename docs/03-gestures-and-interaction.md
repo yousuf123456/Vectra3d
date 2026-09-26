@@ -190,12 +190,37 @@ Built in G5.6.
 - **The snap lock**, `turn_axes`. The default view looks down at the floor from above, so the screen's up is tilted from z, and a purely sideways push turned the arrow about that tilted axis and dropped it out of the XY plane after about 24° - found by the user with real hands. While snapped, each plane the arrow lies in replaces the screen axis nearest to its normal: for the floor seen from above, sideways now spins the arrow round inside it, while up/down still tilts it out, which is how it leaves. For the YZ plane seen edge-on from the front it is the other way round. On an axis, which lies in two planes, sideways takes the plane whose normal is closer to the screen's up and up/down takes the other. The normals are signed to point the way the screen axis they replace does, so the globe-style sense of steering is unchanged.
 - **Where it starts.** An arrow that already lies exactly on an axis or plane when the pinch begins counts as snapped from the start (`exact_target`): it needs the full 8° to leave, and does not flash, since nothing arrived.
 - **The cue.** When a snap moves the arrow onto something new, its halo flashes brighter for 0.3 s (`SNAP_FLASH_OPACITY`, `SNAP_FLASH_MS` in `render/vector_actor.py`, timed by one `QTimer` in the window so a second snap restarts it). The halo rather than the axis, because a plane has no single line to flash. Leaving an axis along one of its planes is not a new arrival and does not flash. While snapped, the camera strip says "Steering, snapped to +x axis" or "... XY plane"; it keeps the word "Steering", whose place it takes.
-- Snapping is always on until the setting arrives in G5.7.
+- Snapping can be switched off from the Gesture settings box (section 6a). Switched off in the middle of a snap, the arrow goes to where the hand has steered it on the next frame.
 
 ### Likely questions
 - **Can I avoid snapping for an angle like 3° off the axis?** Turn snapping off in settings, or type the exact value in the panel.
 - **Why does the arrow sometimes jump a few degrees when it lets go of an axis?** While held, your hand keeps turning the hidden direction; at 8° the arrow lets go and jumps to where your hand has been steering it. That gap is what stops it flickering on and off at the edge.
 - **Why does moving my hand sideways keep the arrow on the floor, but up and down lifts it off?** That is the snap lock. Once the arrow is in a plane, one hand direction slides it round inside the plane and the other tilts it out, so you can sweep round the floor without it drifting off. A hand that also drifts up a little will still, slowly, tilt it out.
+
+---
+
+## 6a. Gesture settings
+
+### In plain words
+A small **Gesture settings** box in the action panel has two controls: a tick box that turns snapping on or off, and a slider for how long a vector one full stretch of your hands makes. Lower is finer control over short vectors; higher reaches long ones quickly.
+
+### Technically
+- Snapping: on by default.
+- Magnitude sensitivity: the units one full stretch (8 hs) adds when creating or resizing. Default 25, from 5 to 50 in steps of 5.
+- Both start at their defaults every time the app opens.
+
+### How it's implemented
+Built in G5.7.
+
+- **In the state layer**, as every other piece of data is. `Settings` in `state/models.py` is a frozen dataclass holding the two values, created from `config.py`. The store holds one; `actions.set_snapping` and `actions.set_sensitivity` change it. The sensitivity action refuses anything off the 5-50 grid, because every change goes through the actions whether or not the panel could produce it.
+- **Not part of the scene.** Changing a setting records no undo step (F-19 is about the vectors), and clearing the scene or undoing leaves the settings alone. It also does not notify the store's listener: nothing drawn depends on a setting, and the full redraw a notification causes costs about 300 ms - once for every step of a dragged slider.
+- **Read live.** `ui/gesture_controller.py` reads `store.settings` on every frame, so a change applies from the next frame: creating and resizing use the sensitivity; steering skips the snap rules, the snap lock and the flash when snapping is off.
+- **The panel box** in `ui/action_panel.py` is a `CollapsibleBox` that starts folded - the one box that does, because settings are rarely changed and the vector list needs the room. The slider counts steps of 5 (1 to 10), so it can only ever produce a value the spec allows, and the readout beside it says "25 units per full stretch".
+- **Never saved.** On a shared lab or lecture laptop, the next student should not inherit someone else's setting.
+
+### Likely questions
+- **Why does my setting reset when I reopen the app?** On purpose: many students share one laptop in a lab, and an odd setting left behind by someone else would look like a bug.
+- **Why is the box folded?** It is rarely needed, and the vector list below it needs the height. Click its title to open it.
 
 ---
 
