@@ -261,7 +261,7 @@ Any change can be undone, including an entire hand movement. One full gesture, f
 - Gestures record a snapshot only at the start, and commit one step on release. Cancelled gestures record nothing.
 
 ### How it's implemented
-*The panel half was built in step G2.8; the gesture half comes in G5.9.*
+*The panel half was built in step G2.8; the gesture half arrived with creating by hand in G5.3 and was verified across every gesture in G5.9.*
 
 `src/vectra3d/state/undo.py` holds a `History` of snapshots. A snapshot is the vectors plus which one was active — the active vector is in there because creating a vector makes it active, so undoing a create has to put the highlight back where it was rather than guess.
 
@@ -273,5 +273,12 @@ The snapshots are recorded in `state/actions.py`, the one place every change pas
 
 What undo deliberately does *not* cover: the camera, which vector is active, which are ticked for an operation, and the components and shadows toggles. Those are ways of looking at the scene rather than changes to it, so a vector restored by undo comes back unticked with its overlays off.
 
+**Gestures: one gesture, one step.** A hand gesture changes a vector on every camera frame, which would fill the twenty-step history in under a second. So a gesture runs as a *session* in the store: `actions.begin_gesture` remembers the scene when the pinch begins, every action skips recording while the session runs, and `commit_gesture` records the remembered scene once when the gesture ends - or nothing, if nothing changed. `cancel_gesture` puts the remembered scene back and records nothing. Built at G5.3, because creating by hand needed it, and reused unchanged by resizing and steering. Undo and Redo are greyed out while a gesture runs, so a scene can never be restored from under the hands. The lock hold gesture is a single action like the panel's Lock button, so it records one step through the ordinary route.
+
+G5.9 added `tests/ui/test_gesture_undo.py`, which proves this from raw hand frames rather than from intents: synthetic hands go into the window's frame slot and pass through the hand metrics, the state machine, the controller and the store, the whole way a student's do. It covers a create, a resize and a steer each taken back by one Undo; a gesture ended by both hands leaving the picture, which counts as a release (spec section 4.4); a 300-frame steer that leaves the five earlier steps in the history untouched; a gesture after an undo clearing the redo history; a cancelled steer recording nothing; and a result that followed a steered vector coming back with it. The tests were checked against a deliberately broken session that records every frame, and three of them fail against it.
+
+There is no undo *gesture*: Undo is the toolbar button or Ctrl+Z. The spec lists only three hold gestures, for the same reason it has no delete gesture - a misread hand shape should not silently take back work.
+
 ### Likely questions
 - **Why snapshots instead of recording each action?** With at most 10 vectors, copying everything is simpler and less error-prone than a command system.
+- **Is there a gesture for undo?** No. Use the Undo button or Ctrl+Z. A misread hand shape should never take back your work without you asking.

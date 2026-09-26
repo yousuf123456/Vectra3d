@@ -5,14 +5,15 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G5 — Gesture control. G5.1-G5.8 done. One F-02 criterion is still
+- **Current group:** G5 — Gesture control. All build steps G5.1-G5.9 done; the group checkpoint is next. One F-02 criterion is still
   carried: performance (11-13% against a 10% line), re-measure under full gesture load.
-- **Next step:** G5.9 — F-19 undo for gestures: "one complete gesture (from grab to
-  release) counts as one undo step". The gesture session built at G5.3 already does this for
-  create, resize and steer; this step verifies it across every gesture (including cancels,
-  refusals, hand-lost releases and the lock hold) and ticks the criterion. Then the G5
-  checkpoint: the full section 11 checklist with real hands, the F-02 performance
-  re-measure, and `/review`.
+- **Next step:** the G5 checkpoint (`build-plan.md` section 3). (1) The user runs the
+  full `interaction-spec.md` section 11 checklist with real hands - at a normal distance,
+  leaning in and sitting back. (2) Re-measure F-02's performance criterion under full
+  gesture load (was 11-13% against a 10% line at G4.1) and get the user's verdict.
+  (3) `/review` on G5. (4) Update the tracker, commit, `/remember save`, new session for G6.
+  Raised by the user at G5.9 and deferred to after the checkpoint: whether to add an undo
+  hold gesture (e.g. `Thumb_Down`), which would be a spec change.
 - **Blocked on:** nothing.
 
 ## Completed steps
@@ -62,6 +63,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G5.6 | Snapping while steering (F-06), the snap lock, and quieter angle arcs: `SnapTarget` / `snap_target` / `snapped_components` / `turn_axes` in `gestures/hand_to_vector.py`, the steered direction in `ui/gesture_controller.py`, the halo flash in `render/vector_actor.py` and the window, `AngleArcs` restyled | 2026-09-25 | `G5.6: snap to axes and planes while steering` | **F-06 is now closed entirely.** Snaps in at 5°, releases at 8°, axes before planes, halo flash and "Steering, snapped to ..." in the strip. The joystick turns a hidden steered direction and the store shows it snapped; otherwise a snapped vector could never get 8° away. The user then found that in the raised default view a sideways-only push dropped the vector out of the XY floor: screen-relative steering turns about a tilted axis. Section 6.5 amended at the user's decision with a **snap lock** - while snapped, steering turns within the plane(s) the vector lies in - extended to axes after simulation showed the plane lock alone still dipped off the floor when leaving an axis. The user also found the angle boxes hid short vectors: arcs thinned, values moved to one line beside the head, each arc tagged with its letter; section 10 changed. User: "working good now". 32 new tests; suite now 809 passing. |
 | G5.7 | F-20 gesture settings: `Settings` in `state/models.py`, `set_snapping` / `set_sensitivity` in `state/actions.py`, the controller reading them live, the folded Gesture settings box in `ui/action_panel.py` | 2026-09-26 | `G5.7: gesture settings` | All three F-20 criteria pass; the user checked with real hands: "working well". Settings are outside undo, survive clearing the scene, and do not notify the store, since nothing drawn depends on them and the full redraw would run on every step of a dragged slider. The slider counts steps of 5, so it cannot produce a value off the spec's grid; the action refuses one anyway. Checked by screenshot at the panel's real 300 px width before launching. 23 new tests; suite now 832 passing. |
 | G5.8 | Hold gestures (F-05b, F-09b, F-13b): `actions.activate_next`, `HoldTriggered` in `ui/gesture_controller.py`, the hand on `HoldStatus`, the progress ring in `ui/camera_preview.py`, overlays drawn without rendering in the live path | 2026-09-26 | `G5.8: hold gestures` | All five criteria pass; the user held each shape with real hands: "working fine". Two spec points settled with the user at planning: `Victory` works on a locked vector, and the ring is drawn round the holding hand. The user asked whether `Thumb_Up` unlocking a vector when all are locked was intended - it is: it is a lock switch. Live overlays measured on screen, ten vectors, components and shadows on: 85 ms -> 77 ms; the rest is geometry rebuilt every frame, recorded in Known issues. 18 new tests; suite now 850 passing. |
+| G5.9 | F-19 undo for gestures: verified end to end in `tests/ui/test_gesture_undo.py` | 2026-09-26 | `G5.9: one gesture, one undo step` | Tests only; no fault found and no app code changed. Synthetic hand frames go through the window's frame slot - metrics, state machine, controller, store - for a create, a resize and a steer, a create ended by losing both hands (a release, spec 4.4), a 300-frame steer leaving earlier history intact, a gesture clearing redo, a cancelled steer, and a result restored with its vector. Checked against a deliberately broken session recording every frame: three fail. The user checked with real hands and the toolbar Undo: "working well". The user asked whether there is an undo gesture: there is not, by the spec; deferred as a possible spec change. 8 new tests; suite now 858 passing. |
 | G5.2 | Gesture state machine: `gestures/state_machine.py`, `gestures/intents.py`, the metrics' 0.3 s memory for a missing hand, the gesture line in the preview | 2026-09-24 | `G5.2: gesture state machine` | No `features.md` criteria of its own; F-03, F-05b, F-06, F-07, F-09b, F-13b and F-19 (gestures) are built on it. Found at planning: cancel as specified could almost never happen, since opening a pinching hand releases before a palm is seen - section 5 amended with a release confirm window. Real-hand testing then found MediaPipe mostly losing two hands held close or pointing at the camera (palms-to-camera works), gestures cancelled by pinching hands misread as `Open_Palm` (fixed: only a non-pinching hand cancels), and two-hand pinches arriving 328 and 469 ms apart (window 0.3 -> 0.5 s). Two metrics bugs caught by tests: a late-returning hand resumed as the old one, and a slow frame losing a visible hand. User confirmed with real hands: "now working fine". 45 new tests; suite now 672 passing. |
 
 
@@ -74,7 +76,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | In progress — G5.1-G5.8 done |
+| G5 | Gesture control | Build steps done (G5.1-G5.9); checkpoint pending |
 | G6 | Packaging | Not started |
 
 ---

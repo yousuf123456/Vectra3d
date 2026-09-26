@@ -194,7 +194,7 @@ Keep this simple: store a snapshot of all vectors before each change. Do not bui
 - [x] Keeps the last 20 steps. Making a new change after undoing clears the redo history.
 
 **Undo for gestures — Group:** G5 · **Depends on:** F-19 panel, F-03, F-06, F-07
-- [ ] One complete gesture (from grab to release) counts as **one** undo step, not one step per frame.
+- [x] One complete gesture (from grab to release) counts as **one** undo step, not one step per frame.
 
 ### F-20 Gesture settings
 **Group:** G5 · **Depends on:** F-03, F-06, F-07
