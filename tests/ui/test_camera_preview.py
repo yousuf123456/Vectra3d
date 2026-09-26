@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -30,7 +32,9 @@ from vectra3d.ui.camera_preview import (  # noqa: E402
     PICTURE_WIDTH,
     PINCHING_TEXT,
     CameraPreview,
+    HOLD_RING_HS,
     gesture_text,
+    hold_ring,
     machine_text,
     outcome_text,
     status_text,
@@ -144,7 +148,7 @@ def test_the_gesture_line_names_what_is_happening() -> None:
 
 
 def test_a_hold_shows_its_progress() -> None:
-    holding = MachineOutput(GestureState.HOLDING, (), HoldStatus("Thumb_Up", 0.6))
+    holding = MachineOutput(GestureState.HOLDING, (), HoldStatus("Thumb_Up", 0.6, 0))
 
     assert machine_text(holding, "") == "Holding Thumb up: 60%"
 
@@ -320,3 +324,27 @@ def test_the_window_measures_each_frame_and_the_preview_says_pinching(
         )
     finally:
         window.close()
+
+
+# --- The hold progress ring (section 7) ---
+
+
+def test_the_ring_is_round_the_holding_hand_sized_to_it() -> None:
+    # Two hands; the second (id 3) is holding. Its raw points average to
+    # (0.7, 0.4), and its scale of 0.2 gives a radius of 1.4 * 0.2.
+    left = Hand(landmarks=((0.2, 0.5),) * 21, gesture=NO_GESTURE, gesture_score=0.9)
+    points = ((0.6, 0.3),) * 10 + ((0.8, 0.5),) * 10 + ((0.7, 0.4),)
+    right = Hand(landmarks=points, gesture="Victory", gesture_score=0.9)
+    frame = HandFrame(hands=(left, right), timestamp_ms=0, aspect=ASPECT)
+    hands = (tracked(0.2), replace(tracked(0.7, "Victory"), hand_id=3))
+
+    centre, radius = hold_ring(frame, hands, HoldStatus("Victory", 0.4, 3))
+    assert centre == pytest.approx((0.7, 0.4))
+    assert radius == pytest.approx(HOLD_RING_HS * 0.2)
+
+
+def test_no_ring_without_a_hold_or_without_its_hand() -> None:
+    frame = HandFrame(hands=(hand_at(0.5, 0.5),), timestamp_ms=0, aspect=ASPECT)
+    hands = (tracked(0.5),)
+    assert hold_ring(frame, hands, None) is None
+    assert hold_ring(frame, hands, HoldStatus("Victory", 0.4, 7)) is None

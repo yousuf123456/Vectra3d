@@ -429,10 +429,13 @@ class VectraMainWindow(MainWindow):
         self.vectors.redraw(
             vector, name == self._store.active_name, label, flash=self._snap_flash
         )
+        # Components and shadows follow the hand live (F-13b). Neither renders
+        # itself here: the one render below does the whole frame, where each
+        # rendering on its own made a frame render about 3.6 times.
         if self._store.components_shown == name:
-            self.overlays.draw(vectors, name)
+            self.overlays.draw(vectors, name, render=False)
         if self._store.projections_shown == name:
-            self.projections.draw(vectors, name)
+            self.projections.draw(vectors, name, render=False)
         if self._store.active_name == name:
             self.angle_arcs.draw(vector)
         # A result worked out from this vector follows it. Drawn directly,

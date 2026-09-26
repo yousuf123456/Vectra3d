@@ -93,7 +93,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 - [x] Separately from the active vector, the info panel has a checkbox per vector for **multi-select**, used by the resultant.
 
 **F-05b (gesture) — Group:** G5 · **Depends on:** F-05a, F-02
-- [ ] The cycle gesture moves the active vector to the next one, skipping locked vectors.
+- [x] The cycle gesture moves the active vector to the next one, skipping locked vectors.
 
 ### F-06 Steer direction by hand
 **Group:** G5 · **Depends on:** F-02, F-05a
@@ -119,8 +119,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 - [x] Locked vectors can still be selected for operations and have their components shown.
 
 **F-09b (gesture) — Group:** G5 · **Depends on:** F-09a, F-02
-- [ ] The lock gesture toggles the lock on the active vector.
-- [ ] A locked vector ignores all gestures and is skipped when cycling.
+- [x] The lock gesture toggles the lock on the active vector.
+- [x] A locked vector ignores all gestures and is skipped when cycling. (Read at G5.8, with the user, as the gestures that change a vector - resize and steer. `Thumb_Up` still unlocks it and `Victory` still shows its components, as the panel allows.)
 
 ### F-10 Delete and clear
 **Group:** G1 · **Depends on:** F-04
@@ -150,8 +150,8 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 - [x] Components update whenever the vector changes.
 
 **F-13b (gesture) — Group:** G5 · **Depends on:** F-13a, F-02
-- [ ] The components gesture toggles components on the active vector.
-- [ ] Components update live while the vector is moved by hand.
+- [x] The components gesture toggles components on the active vector.
+- [x] Components update live while the vector is moved by hand. (About 77 ms per update with ten vectors and shadows on too; see Known issues.)
 
 ### F-14 Plane projections
 **Group:** G2 · **Depends on:** F-01, F-05a

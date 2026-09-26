@@ -235,10 +235,19 @@ Three hand signs trigger actions if you hold them for half a second: pointing up
 - There is deliberately no delete gesture: a misread gesture should never destroy work.
 
 ### How it's implemented
-*To be filled in by the agent after step G5.8.*
+Built in G5.8. The timing - 0.5 s at 0.6 confidence, firing once, re-arming on a change of shape - was built into the state machine at G5.2; this step connected it to the vectors.
+
+- **What each shape does** is decided in `ui/gesture_controller.py`, which turns the machine's `HoldTriggered` intent into an action on the active vector, the same actions the panel uses. `Pointing_Up` calls `actions.activate_next`: the next vector by letter after the active one, wrapping round from the last to the first, skipping locked ones. If the active vector is the only unlocked one it stays; if all are locked, nothing changes and the camera strip says "All vectors are locked." `Thumb_Up` calls `toggle_locked`, and `Victory` calls `toggle_components`.
+- **Locked vectors.** "A locked vector ignores all gestures" is read as the gestures that would change it - resizing and steering, both refused since G5.4 and G5.5 - and being skipped when cycling. `Thumb_Up` still works on a locked vector, because it is how one is unlocked, and `Victory` still shows its components, because that changes nothing about it and the panel allows the same.
+- **Undo.** Locking by hand is one undo step, like the panel's Lock button. Moving the highlight and showing components are not, the same as clicking a card or a toggle.
+- **With no vectors** any of the three says "Create a vector first." and does nothing.
+- **The progress ring** is drawn by `ui/camera_preview.py` around the hand making the shape: the machine's `HoldStatus` says which hand, `hold_ring` centres the ring on the middle of that hand's 21 points and sizes it from its hand scale (1.4 hs), and it fills clockwise from twelve o'clock over a faint full circle. Yellow, like the steering joystick.
+- **Components follow the hand.** While a hand moves a vector showing its components or shadows, both are redrawn each frame without rendering themselves, and the window renders once. Measured on screen with ten vectors and both on, while steering: 85 ms per update before, 77 ms after. The rest is rebuilding the geometry each frame, spread evenly across components, shadows, angle arcs and the arrow.
 
 ### Likely questions
 - **Why the half-second wait?** It stops hand shapes you pass through by accident from triggering actions.
+- **Why can thumbs up unlock a vector if locked vectors ignore gestures?** Otherwise a vector locked by hand could only be unlocked from the panel. Thumbs up is a lock *switch*; the gestures a locked vector ignores are the ones that would change it.
+- **I held the sign and nothing happened again.** It fires once per hold. Change your hand to any other shape for a moment, then show the sign again.
 
 ---
 

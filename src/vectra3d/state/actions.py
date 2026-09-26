@@ -243,6 +243,30 @@ def set_active(store: VectorStore, name: str) -> None:
     store.notify()
 
 
+def activate_next(store: VectorStore) -> str | None:
+    """Make the next unlocked vector active, and return its letter (F-05b).
+
+    Next in letter order after the active vector, wrapping round from the
+    last back to the first, and skipping locked vectors (F-09b). If the
+    active vector is the only unlocked one it stays active. None, changing
+    nothing, when there is no unlocked vector at all - including when there
+    are no vectors.
+
+    Not an undo step: which vector is active is not a change to any vector,
+    the same as clicking a card.
+    """
+    names = store.names
+    if not names:
+        return None
+    start = names.index(store.active_name) + 1 if store.active_name in names else 0
+    for offset in range(len(names)):
+        name = names[(start + offset) % len(names)]
+        if not store.get(name).locked:
+            set_active(store, name)
+            return name
+    return None
+
+
 def toggle_selected(store: VectorStore, name: str) -> bool:
     """Tick or untick a vector for an operation. Returns its new state.
 

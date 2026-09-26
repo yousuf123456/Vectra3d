@@ -354,3 +354,32 @@ def test_a_snap_flashes_the_halo_and_names_the_axis(app, window) -> None:
     window._snap_flash_timer.stop()
     window._end_snap_flash()
     assert halo_opacity(window) == pytest.approx(HALO_OPACITY)
+
+
+
+# --- Components and shadows follow the hand (F-13b) ---
+
+
+def test_a_steered_vectors_components_and_shadows_follow_it_in_one_render(
+    app, window
+) -> None:
+    store = window._store
+    actions.create_vector(store, (0.0, -5.0, 3.0))
+    actions.toggle_components(store, "A")
+    actions.toggle_projections(store, "A")
+    apply(window, STEER, now_ms=0)
+    renders, drawn = [], []
+    original_render = window.plotter.render
+    window.plotter.render = lambda *a, **k: (renders.append(1), original_render(*a, **k))
+    original_draw = window.overlays.draw
+    window.overlays.draw = lambda vectors, shown, **k: (
+        drawn.append(store.get("A").components),
+        original_draw(vectors, shown, **k),
+    )
+
+    apply(window, FULL_RIGHT, now_ms=500)
+    app.processEvents()
+
+    # Drawn for where the vector is now, not where it was, in one render.
+    assert drawn[-1] == store.get("A").components != (0.0, -5.0, 3.0)
+    assert len(renders) == 1

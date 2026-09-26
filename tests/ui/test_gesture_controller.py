@@ -15,6 +15,7 @@ from vectra3d.gestures.intents import (
     BeginTwoHand,
     Cancel,
     Commit,
+    HoldTriggered,
     TwoHandKind,
     UpdateSteer,
     UpdateTwoHand,
@@ -591,3 +592,72 @@ def test_turning_snapping_off_mid_snap_lets_go_on_the_next_frame() -> None:
     run(controller, FULL_LEFT, now_ms=180)
     assert degrees_from_minus_y(store.get("A").components) == pytest.approx(-0.9)
     assert controller.message is None
+
+
+# --- Hold gestures (section 7) ---
+
+POINT = HoldTriggered("Pointing_Up")
+THUMB = HoldTriggered("Thumb_Up")
+VICTORY = HoldTriggered("Victory")
+
+
+def test_pointing_up_makes_the_next_unlocked_vector_active() -> None:
+    store = store_with((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+    actions.set_active(store, "A")
+    actions.toggle_locked(store, "B")
+    controller = GestureController(store)
+    run(controller, POINT)
+    assert store.active_name == "C"
+    assert controller.message is None
+
+
+def test_pointing_up_with_every_vector_locked_says_so() -> None:
+    store = store_with((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    actions.toggle_locked(store, "A")
+    actions.toggle_locked(store, "B")
+    controller = GestureController(store)
+    run(controller, POINT)
+    assert store.active_name == "B"
+    assert controller.message == "All vectors are locked."
+
+
+def test_thumb_up_locks_and_unlocks_the_active_vector_one_undo_step_each() -> None:
+    store = store_with((1.0, 2.0, 3.0))
+    controller = GestureController(store)
+    run(controller, THUMB)
+    assert store.active.locked
+    run(controller, THUMB)
+    assert not store.active.locked
+    actions.undo(store)
+    assert store.active.locked
+    actions.undo(store)
+    assert not store.active.locked
+
+
+def test_victory_toggles_components_on_the_active_vector_even_locked() -> None:
+    store = store_with((1.0, 2.0, 3.0))
+    actions.toggle_locked(store, "A")
+    controller = GestureController(store)
+    run(controller, VICTORY)
+    assert store.components_shown == "A"
+    run(controller, VICTORY)
+    assert store.components_shown is None
+
+
+@pytest.mark.parametrize("hold", [POINT, THUMB, VICTORY])
+def test_a_hold_with_no_vectors_does_nothing_and_says_why(hold) -> None:
+    store = VectorStore()
+    controller = GestureController(store)
+    run(controller, hold)
+    assert store.names == ()
+    assert controller.message == "Create a vector first."
+
+
+def test_a_hold_clears_an_earlier_refusal() -> None:
+    store = VectorStore()
+    controller = GestureController(store)
+    run(controller, THUMB)
+    actions.create_vector(store, (1.0, 0.0, 0.0))
+    run(controller, THUMB)
+    assert controller.message is None
+    assert store.active.locked

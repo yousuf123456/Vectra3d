@@ -72,10 +72,13 @@ class GestureState(Enum):
 
 @dataclass(frozen=True)
 class HoldStatus:
-    """A hold in progress: which gesture, and how far to triggering, 0 to 1."""
+    """A hold in progress: which gesture, by which hand, and how far to
+    triggering, 0 to 1. The hand is so the preview can draw the progress
+    ring around it (`interaction-spec.md` section 7)."""
 
     gesture: str
     progress: float
+    hand_id: int
 
 
 @dataclass(frozen=True)
@@ -253,7 +256,7 @@ class GestureStateMachine:
 
         progress = (now_ms - self._started_ms) / HOLD_MS
         if progress < 1.0:
-            return HoldStatus(self._hold_gesture, progress)
+            return HoldStatus(self._hold_gesture, progress, hand.hand_id)
         self._spent[hand.hand_id] = self._hold_gesture
         intents.append(HoldTriggered(self._hold_gesture))
         self._state = GestureState.IDLE
@@ -272,7 +275,7 @@ class GestureStateMachine:
                 self._hand_ids = (hand.hand_id,)
                 self._hold_gesture = hand.gesture
                 self._started_ms = now_ms
-                return HoldStatus(hand.gesture, 0.0)
+                return HoldStatus(hand.gesture, 0.0, hand.hand_id)
         return None
 
     def _begin_two_hand(

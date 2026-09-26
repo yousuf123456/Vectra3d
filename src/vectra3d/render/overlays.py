@@ -319,7 +319,9 @@ class ProjectionOverlays:
         self._plotter = plotter
         self._drawn: set[str] = set()
 
-    def draw(self, vectors: Sequence[Vector], shown: str | None) -> None:
+    def draw(
+        self, vectors: Sequence[Vector], shown: str | None, render: bool = True
+    ) -> None:
         """Draw the one vector casting shadows, and remove any others."""
         wanted = {vector.name for vector in vectors if vector.name == shown}
         for name in self._drawn - wanted:
@@ -330,7 +332,9 @@ class ProjectionOverlays:
             if vector.name in wanted:
                 self._draw_one(vector)
 
-        self._plotter.render()
+        # A hand-moved vector's redraw renders once for the whole frame.
+        if render:
+            self._plotter.render()
 
     def _remove(self, name: str) -> None:
         for plane in PROJECTION_PLANES:
@@ -442,7 +446,9 @@ class ComponentOverlays:
         self._plotter = plotter
         self._drawn: set[str] = set()
 
-    def draw(self, vectors: Sequence[Vector], shown: str | None) -> None:
+    def draw(
+        self, vectors: Sequence[Vector], shown: str | None, render: bool = True
+    ) -> None:
         """Draw the one vector showing its components, and remove any others.
 
         At most one vector shows them at a time (`VectorStore` explains why),
@@ -463,7 +469,9 @@ class ComponentOverlays:
             if vector.name in wanted:
                 self._draw_one(vector)
 
-        self._plotter.render()
+        # A hand-moved vector's redraw renders once for the whole frame.
+        if render:
+            self._plotter.render()
 
     def _remove(self, name: str) -> None:
         self._plotter.remove_actor(f"box-{name}", render=False)

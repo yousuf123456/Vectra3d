@@ -425,8 +425,8 @@ def test_a_hold_fills_up_and_triggers_once_at_its_duration() -> None:
     just_short = machine.update(thumb, HOLD_MS - 1)
     fired = machine.update(thumb, HOLD_MS)
 
-    assert start == MachineOutput(GestureState.HOLDING, (), HoldStatus("Thumb_Up", 0.0))
-    assert half.hold == HoldStatus("Thumb_Up", 0.5)
+    assert start == MachineOutput(GestureState.HOLDING, (), HoldStatus("Thumb_Up", 0.0, 1))
+    assert half.hold == HoldStatus("Thumb_Up", 0.5, 1)
     assert just_short.state == GestureState.HOLDING
     assert fired == MachineOutput(GestureState.IDLE, (HoldTriggered("Thumb_Up"),), None)
 
@@ -454,7 +454,7 @@ def test_switching_straight_to_another_hold_gesture_counts_as_a_new_shape() -> N
 
     output = machine.update((hand(1, gesture="Victory"),), HOLD_MS + FRAME_MS)
 
-    assert output.hold == HoldStatus("Victory", 0.0)
+    assert output.hold == HoldStatus("Victory", 0.0, 1)
 
 
 def test_a_hold_below_the_confidence_never_starts() -> None:
@@ -478,7 +478,7 @@ def test_a_confidence_dip_breaks_the_hold_and_it_starts_over() -> None:
     restart = machine.update(thumb, HOLD_MS)
 
     assert dip == MachineOutput(GestureState.IDLE, (), None)
-    assert restart.hold == HoldStatus("Thumb_Up", 0.0)
+    assert restart.hold == HoldStatus("Thumb_Up", 0.0, 1)
 
 
 def test_a_pinch_beginning_during_a_hold_abandons_it() -> None:

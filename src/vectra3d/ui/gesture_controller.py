@@ -10,9 +10,8 @@ camera's direction and up each frame, since which way is "right" depends on
 how the student has turned the view (`interaction-spec.md` section 6.1), and
 the frame's timestamp, since steering turns the vector at a rate per second.
 
-Built so far: creating (G5.3), resizing (G5.4), steering (G5.5) and snapping
-while steering (G5.6). The hold gestures arrive in G5.8; until then their
-intents are ignored.
+Built so far: creating (G5.3), resizing (G5.4), steering (G5.5), snapping
+while steering (G5.6), gesture settings (G5.7) and the hold gestures (G5.8).
 """
 
 from __future__ import annotations
@@ -43,6 +42,7 @@ from vectra3d.gestures.intents import (
     BeginTwoHand,
     Cancel,
     Commit,
+    HoldTriggered,
     Intent,
     TwoHandKind,
     UpdateSteer,
@@ -58,6 +58,8 @@ from vectra3d.ui.action_panel import LIMIT_TEXT
 NO_VECTOR_TEXT = "Create a vector first."
 LOCKED_TEXT = "Vector {name} is locked."
 NO_DIRECTION_TEXT = "Vector {name} has no direction to {verb}."
+# Why a hold gesture did nothing (section 7).
+ALL_LOCKED_TEXT = "All vectors are locked."
 # What a steered vector is snapped to (section 6.5), shown while it holds.
 # It keeps the word "Steering", which it takes the place of in the strip.
 SNAPPED_TEXT = "Steering, snapped to {target}"
@@ -185,6 +187,30 @@ class GestureController:
                 self._commit()
             elif isinstance(intent, Cancel):
                 self._cancel()
+            elif isinstance(intent, HoldTriggered):
+                self._notice = None
+                self._hold(intent.gesture)
+
+    def _hold(self, gesture: str) -> None:
+        """Do what a held hand shape asks for (section 7).
+
+        `Pointing_Up` makes the next unlocked vector active; `Thumb_Up`
+        locks or unlocks the active vector; `Victory` shows or hides its
+        components. The last two work on a locked vector: locking is how
+        one is unlocked, and components change nothing about it - the panel
+        allows both the same way. With no vectors nothing happens, and the
+        student is told why.
+        """
+        active = self._store.active
+        if active is None:
+            self._notice = NO_VECTOR_TEXT
+        elif gesture == "Pointing_Up":
+            if actions.activate_next(self._store) is None:
+                self._notice = ALL_LOCKED_TEXT
+        elif gesture == "Thumb_Up":
+            actions.toggle_locked(self._store, active.name)
+        elif gesture == "Victory":
+            actions.toggle_components(self._store, active.name)
 
     def _begin_create(self, intent: BeginTwoHand) -> None:
         """Start a new vector at zero length (6.2 step 1).

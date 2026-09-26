@@ -25,7 +25,7 @@ from vectra3d import config
 from vectra3d.gestures.hand_frame import NO_GESTURE, HandFrame
 from vectra3d.gestures.hand_metrics import TrackedHand
 from vectra3d.gestures.intents import Cancel, Commit, HoldTriggered
-from vectra3d.gestures.state_machine import GestureState, MachineOutput
+from vectra3d.gestures.state_machine import GestureState, HoldStatus, MachineOutput
 from vectra3d.ui import theme
 from vectra3d.ui.gesture_controller import Joystick
 
@@ -85,6 +85,14 @@ POINT_RADIUS = 2.5
 # the anchor, the dead-zone ring round it, and a line to the pinch point.
 JOYSTICK_WIDTH = 2.0
 ANCHOR_RADIUS = 3.5
+# The hold progress ring (`interaction-spec.md` section 7): round the hand
+# making the shape, filling clockwise from the top as the hold goes on. In
+# the joystick's colour, so all gesture feedback reads as one family. Its
+# radius is in hand-scale units, so it fits the hand at any distance.
+HOLD_RING_HS = 1.4
+HOLD_RING_WIDTH = 3.0
+# The empty part of the ring, so the student sees how far there is to go.
+HOLD_TRACK_ALPHA = 70
 
 
 def gesture_text(label: str) -> str:
@@ -121,6 +129,27 @@ def status_text(hands: tuple[TrackedHand, ...]) -> str:
     return f"Left: {hand_text(left)}\nRight: {hand_text(right)}"
 
 
+def hold_ring(
+    frame: HandFrame, hands: tuple[TrackedHand, ...], hold: HoldStatus | None
+) -> tuple[tuple[float, float], float] | None:
+    """Where the progress ring goes: its centre and its radius.
+
+    The centre is the middle of the holding hand's 21 raw points, 0-1 across
+    the picture like the landmarks. The radius is in picture heights, from
+    that hand's scale. `hands` are `frame.hands` measured, in the same order,
+    which is how the holding hand's id finds its raw points. None when no
+    hold is running or the holding hand is not in this frame.
+    """
+    if hold is None:
+        return None
+    for tracked, raw in zip(hands, frame.hands):
+        if tracked.hand_id == hold.hand_id:
+            xs, ys = zip(*raw.landmarks)
+            centre = (sum(xs) / len(xs), sum(ys) / len(ys))
+            return centre, HOLD_RING_HS * tracked.scale
+    return None
+
+
 def outcome_text(output: MachineOutput) -> str | None:
     """How a gesture ended this frame, if one did."""
     for intent in output.intents:
@@ -150,16 +179,22 @@ class _Picture(QWidget):
         self._pixels: np.ndarray | None = None
         self._frame: HandFrame | None = None
         self._joystick: Joystick | None = None
+        self._ring: tuple[tuple[float, float], float] | None = None
+        self._progress = 0.0
 
     def show_frame(
         self,
         pixels: np.ndarray | None,
         frame: HandFrame | None,
         joystick: Joystick | None = None,
+        ring: tuple[tuple[float, float], float] | None = None,
+        progress: float = 0.0,
     ) -> None:
         self._pixels = pixels
         self._frame = frame
         self._joystick = joystick
+        self._ring = ring
+        self._progress = progress
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -188,6 +223,8 @@ class _Picture(QWidget):
                 _draw_hand(painter, hand.landmarks, target)
         if self._joystick is not None:
             _draw_joystick(painter, self._joystick, target)
+        if self._ring is not None:
+            _draw_hold_ring(painter, self._ring, self._progress, target)
 
 
 def _fit(width: int, height: int, area_width: int, area_height: int) -> QRectF:
@@ -243,6 +280,34 @@ def _draw_joystick(painter: QPainter, joystick: Joystick, target: QRectF) -> Non
     painter.drawEllipse(anchor, ANCHOR_RADIUS, ANCHOR_RADIUS)
 
 
+def _draw_hold_ring(
+    painter: QPainter,
+    ring: tuple[tuple[float, float], float],
+    progress: float,
+    target: QRectF,
+) -> None:
+    """A faint full circle, and over it the part of the hold done so far.
+
+    Qt measures arc angles in sixteenths of a degree, anticlockwise from
+    three o'clock; starting at 90 degrees and going negative fills
+    clockwise from twelve.
+    """
+    (x, y), radius = ring
+    centre = QPointF(target.x() + x * target.width(), target.y() + y * target.height())
+    size = radius * target.height()
+    box = QRectF(centre.x() - size, centre.y() - size, 2 * size, 2 * size)
+    color = QColor(theme.JOYSTICK)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    track = QColor(color)
+    track.setAlpha(HOLD_TRACK_ALPHA)
+    painter.setPen(QPen(track, HOLD_RING_WIDTH))
+    painter.drawEllipse(box)
+    pen = QPen(color, HOLD_RING_WIDTH)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.drawArc(box, 90 * 16, -round(min(1.0, progress) * 360 * 16))
+
+
 class CameraPreview(QWidget):
     """The picture on the left, what the hands are doing on the right."""
 
@@ -283,9 +348,13 @@ class CameraPreview(QWidget):
         not the smoothed ones, so the picture shows exactly what the tracker
         saw. `message`, when given, takes the gesture line's place: something
         a gesture could not do, such as creating an eleventh vector.
-        `joystick`, while steering, is drawn over the picture.
+        `joystick`, while steering, is drawn over the picture, and so is the
+        progress ring round the hand making a hold gesture.
         """
-        self._picture.show_frame(pixels, frame, joystick)
+        progress = output.hold.progress if output.hold is not None else 0.0
+        self._picture.show_frame(
+            pixels, frame, joystick, hold_ring(frame, hands, output.hold), progress
+        )
         self._last_outcome = outcome_text(output) or self._last_outcome
         text = status_text(hands)
         gesture_line = message or machine_text(output, self._last_outcome)
