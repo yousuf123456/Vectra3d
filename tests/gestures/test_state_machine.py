@@ -510,3 +510,53 @@ def test_open_palm_is_not_a_hold_gesture() -> None:
     output = GestureStateMachine().update((hand(1, gesture="Open_Palm"),), 0)
 
     assert output.hold is None
+
+
+# --- The camera stops (found by the G5 review) ---
+
+
+def test_losing_the_camera_mid_steer_releases_it() -> None:
+    machine = GestureStateMachine()
+    steer(machine)
+    output = machine.camera_lost()
+    assert output == MachineOutput(GestureState.IDLE, (Commit(),), None)
+    assert machine.state == GestureState.IDLE
+
+
+def test_losing_the_camera_mid_create_releases_it() -> None:
+    machine = GestureStateMachine()
+    create(machine)
+    assert machine.state == GestureState.CREATING
+    assert machine.camera_lost().intents == (Commit(),)
+
+
+def test_losing_the_camera_mid_resize_releases_it() -> None:
+    machine = GestureStateMachine()
+    machine.update((hand(1, x=0.1, pinching=True), hand(2, x=0.9, pinching=True)), 0)
+    assert machine.state == GestureState.RESIZING
+    assert machine.camera_lost().intents == (Commit(),)
+
+
+def test_losing_the_camera_while_idle_waiting_or_holding_asks_for_nothing() -> None:
+    idle = GestureStateMachine()
+    assert idle.camera_lost() == MachineOutput(GestureState.IDLE, (), None)
+
+    waiting = GestureStateMachine()
+    waiting.update((hand(1, pinching=True),), 0)
+    assert waiting.state == GestureState.WAITING
+    assert waiting.camera_lost().intents == ()
+
+    holding = GestureStateMachine()
+    holding.update((hand(1, gesture="Thumb_Up"),), 0)
+    assert holding.state == GestureState.HOLDING
+    assert holding.camera_lost().intents == ()
+
+
+def test_after_the_camera_is_lost_a_held_pinch_is_a_new_pinch() -> None:
+    # Hand memory is forgotten, so if frames ever came again a hand still
+    # pinching would be a pinch beginning, not a stale one.
+    machine = GestureStateMachine()
+    steer(machine)
+    machine.camera_lost()
+    machine.update((hand(1, pinching=True),), 10_000)
+    assert machine.state == GestureState.WAITING

@@ -71,7 +71,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 - [x] Shows the currently recognized gesture by name, or "No hand detected."
 - [x] Shows gesture feedback defined in `interaction-spec.md` (e.g. joystick center and dead zone while steering). **Carried into G5** at the user's decision (G4.1): everything it names comes from the gesture state machine. Ticked at G5.5, when the joystick arrived.
 - [x] If no webcam is found, the app still runs fully from the action panel and shows a clear message instead of crashing. (Proven with a fake camera through the real thread and preview; not yet seen with a real camera switched off.)
-- [ ] Hand tracking does not freeze or noticeably slow the 3D view or the panels. **Open, carried into G5.** Measured at G4.1 as an 11-13% frame-rate drop against the 10% line agreed at planning; the user closed the step without a verdict on it. Re-measure under full gesture load.
+- [x] Hand tracking does not freeze or noticeably slow the 3D view or the panels. **Passed at the G5 review (2026-09-26) on the user's verdict, read as the cost of tracking itself.** Re-measured on screen with ten vectors and the view spinning: with the camera watching hands the drop is within this laptop's own run-to-run noise (7.8% in one run, the view faster with the camera on in another), and nothing froze (camera 13-22 frames/s throughout). Steering is slower - 59 to 22 fps of spin frames while steering almost continuously - which is the steered vector's own redraw, not tracking; kept in Known issues. See `progress-tracker.md`.
 
 ### F-03 Create a vector by gesture
 **Group:** G5 · **Depends on:** F-02, F-04

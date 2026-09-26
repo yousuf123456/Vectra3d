@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vectra3d.state import actions  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
+from vectra3d.ui.camera_preview import CAMERA_LOST_TEXT  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 ASPECT = 4 / 3
@@ -224,3 +225,39 @@ def test_undo_puts_back_a_result_the_gesture_moved_too(window) -> None:
 
     actions.undo(store)
     assert store.result == before_result
+
+
+
+# --- The camera stops mid-gesture (found by the G5 review) ---
+
+
+def test_losing_the_camera_mid_steer_ends_it_as_one_undo_step(window) -> None:
+    store = window._store
+    actions.create_vector(store, (3.0, -4.0, 1.0))
+    before = store.snapshot()
+    hands = Hands(window)
+    hands.steer(0.4, 0.7, frames=30)
+    assert store.gesture_in_progress
+    steered = store.get("A").components
+    assert steered != (3.0, -4.0, 1.0)
+
+    window._tracker.camera_lost.emit()
+
+    # Ended, kept as it was steered, and undo is back within reach.
+    assert not store.gesture_in_progress
+    assert store.get("A").components == steered
+    assert window._undo.isEnabled()
+    assert window.camera_preview.status == CAMERA_LOST_TEXT
+    actions.undo(store)
+    assert store.snapshot() == before
+
+
+def test_panel_changes_after_a_lost_camera_are_recorded_again(window) -> None:
+    store = window._store
+    hands = Hands(window)
+    hands.pull_apart((0.45, 0.55), (0.25, 0.75))
+    window._tracker.camera_lost.emit()
+
+    actions.create_vector(store, (1.0, 2.0, 3.0))
+    actions.undo(store)
+    assert store.names == ("A",)

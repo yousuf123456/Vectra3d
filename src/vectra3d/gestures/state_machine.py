@@ -143,6 +143,31 @@ class GestureStateMachine:
         self._remember(hands, now_ms)
         return MachineOutput(self._state, tuple(intents), hold)
 
+    def camera_lost(self) -> MachineOutput:
+        """The camera has stopped: no more frames will come.
+
+        Every hand is lost at once, so a pinch gesture in progress ends the
+        way a lost hand ends one (section 4.4): as a normal release, never a
+        cancel. Without this it could never end at all - a lost hand is only
+        noticed on the frames that follow, and there are none - and the app
+        would stay inside the gesture for good, with undo out of reach.
+        A hold or a wait simply stops. Everything remembered about hands is
+        forgotten.
+        """
+        intents: list[Intent] = []
+        if self._state in (
+            GestureState.CREATING,
+            GestureState.RESIZING,
+            GestureState.STEERING,
+        ):
+            self._end(Commit(), intents)
+        self._state = GestureState.IDLE
+        self._hand_ids = ()
+        self._was_pinching.clear()
+        self._last_seen_ms.clear()
+        self._spent.clear()
+        return MachineOutput(self._state, tuple(intents), None)
+
     # --- States ---
 
     def _idle(

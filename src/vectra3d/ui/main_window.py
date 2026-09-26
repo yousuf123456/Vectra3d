@@ -135,7 +135,7 @@ class VectraMainWindow(MainWindow):
         # queues a signal across threads, so these slots may touch widgets.
         self._tracker.frame_ready.connect(self._on_hand_frame)
         self._tracker.camera_unavailable.connect(self.camera_preview.show_no_camera)
-        self._tracker.camera_lost.connect(self.camera_preview.show_camera_lost)
+        self._tracker.camera_lost.connect(self._on_camera_lost)
 
         # The 3D view on the left, the panels on the right. A splitter lets
         # the student widen either side but never lose the panel, which
@@ -244,6 +244,20 @@ class VectraMainWindow(MainWindow):
     def start_camera(self) -> None:
         """Start watching the camera. The app runs fully without it (F-02)."""
         self._tracker.start()
+
+    def _on_camera_lost(self) -> None:
+        """End any gesture the vanished camera was part of, then say so.
+
+        No frame will follow, so the state machine cannot notice the hands
+        leaving on its own. A gesture left running would keep undo greyed
+        out, keep every later panel change from being recorded, and stop the
+        scene rescaling, until the app was restarted (found by the G5
+        review). It ends as a release, as a lost hand does (spec 4.4).
+        """
+        output = self._gestures.camera_lost()
+        camera = self.plotter.camera
+        self._gesture_controller.apply(output.intents, camera.direction, camera.up, 0)
+        self.camera_preview.show_camera_lost()
 
     def _on_hand_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
         hands = self._hand_metrics.update(frame)
