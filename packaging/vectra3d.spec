@@ -1,9 +1,10 @@
 # PyInstaller build file for Vectra3D.
 #
-# Build with:  uv run pyinstaller packaging/vectra3d.spec --noconfirm
-# Output:      dist/vectra3d/vectra3d.exe  (one folder, shared as a zip)
+# Build with:  uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean
+# Zip with:    uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D
+# Output:      dist/Vectra3D/Vectra3D.exe  (one folder, shared as the zip)
 #
-# Two things here are easy to get wrong and both are deliberate:
+# Three things here are easy to get wrong and all are deliberate:
 #
 # 1. MediaPipe ships model and graph files (.tflite, .binarypb) that
 #    PyInstaller cannot discover by following imports, so collect_all gathers
@@ -26,6 +27,9 @@ datas = [
     *mediapipe_datas,
     *qdarktheme_datas,
     ("../assets/models/gesture_recognizer.task", "assets/models"),
+    # Also given to EXE below: that sets the .exe file's own icon, this lets
+    # the running app put the same icon on its window and taskbar button.
+    ("../assets/icons/vectra3d.ico", "assets/icons"),
 ]
 
 a = Analysis(
@@ -48,15 +52,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="vectra3d",
+    name="Vectra3D",
+    icon="../assets/icons/vectra3d.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # Kept on until packaging is finished, so a startup failure prints
-    # something instead of the window silently never appearing. G6.1 turns
-    # this off so students do not see a terminal behind the app.
-    console=True,
+    # No terminal behind the app. `--check-model` still prints its verdict
+    # when its output is piped: `.\Vectra3D.exe --check-model | Out-String`
+    # in PowerShell, which also waits for it to finish.
+    console=False,
+    # Left enabled on purpose: a startup failure then shows its traceback in
+    # a dialog instead of the window silently never appearing.
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -71,5 +78,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="vectra3d",
+    name="Vectra3D",
 )

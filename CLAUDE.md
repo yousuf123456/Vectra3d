@@ -85,4 +85,6 @@ problems. Assume the same of anything not covered in `context/library-docs.md`.
 - Install: `uv sync`
 - Run: `uv run python -m vectra3d`
 - Test: `uv run pytest`
-- Build: `uv run pyinstaller packaging/vectra3d.spec`
+- Build: `uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean`
+- Zip: `uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D`
+- Check the packaged model (PowerShell): `.\dist\Vectra3D\Vectra3D.exe --check-model | Out-String`

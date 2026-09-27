@@ -14,9 +14,10 @@ os.environ.setdefault("QT_API", "pyside6")
 
 import sys  # noqa: E402
 
+from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from vectra3d.paths import GESTURE_MODEL, resource_path  # noqa: E402
+from vectra3d.paths import APP_ICON, GESTURE_MODEL, resource_path  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
 from vectra3d.tracking.tracker_thread import create_recognizer  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
@@ -86,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     # Themed before the window is built, so every widget is created against
     # the final palette rather than being restyled after it is on screen.
     theme.apply(app)
+    # Every window the app opens, and its taskbar button, takes this icon.
+    app.setWindowIcon(QIcon(str(resource_path(APP_ICON))))
 
     # One store for the whole app: the single source of truth every panel and
     # the 3D view read from (`architecture.md` section 2).

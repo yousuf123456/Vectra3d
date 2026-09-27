@@ -152,6 +152,8 @@ Webcam frame
 | Install everything | `uv sync` |
 | Run the app | `uv run python -m vectra3d` |
 | Run tests | `uv run pytest` |
-| Build the `.exe` | `uv run pyinstaller packaging/vectra3d.spec` |
+| Build the `.exe` | `uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean` |
+| Zip it for sharing | `uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D` |
+| Check the packaged model | `.\dist\Vectra3D\Vectra3D.exe --check-model \| Out-String` (PowerShell; the pipe is what shows a windowed program's output) |
 
 **Smoke test** (build-plan step G0.4, before any feature work): the app opens a window with an empty 3D view that can be rotated with the mouse, and closes cleanly. If this fails, fix it before anything else.

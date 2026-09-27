@@ -187,19 +187,22 @@ Students download a zip, unzip it, and double-click the program. They don't need
 - The final build is tested on a Windows machine without Python, with the internet disconnected.
 
 ### How it's implemented
-*Packaging was set up and proven in step G0.5, before any feature existed, so that packaging problems would surface while the app was still small enough to debug easily. The G6.1 notes will be added when the final build is made.*
+Packaging was set up and proven in step G0.5, before any feature existed, so that packaging problems would surface while the app was still small enough to debug easily. The final build was made in step G6.1.
 
-The build is described by `packaging/vectra3d.spec` and run with:
+The build is described by `packaging/vectra3d.spec`, run and zipped with:
 
 ```
-uv run pyinstaller packaging/vectra3d.spec --noconfirm
+uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean
+uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D
 ```
 
-The result is `dist/vectra3d/`, containing `vectra3d.exe` alongside its
-libraries and data. At the G0.5 stage it was 972 files and 0.66 GB, which will
-grow as the app gains features.
+The result is `dist/Vectra3D/`, containing `Vectra3D.exe` alongside its
+libraries and data in `_internal/`: 1,031 files and 681 MB at G6.1 (972 files
+and 0.66 GB at G0.5). The zip students receive is 247 MB and unpacks to a
+single `Vectra3D` folder. The zip is made with Python's own `zipfile` module,
+so building the shareable file needs no extra tool.
 
-Two parts of that file are doing real work:
+Three parts of that file are doing real work:
 
 - **`collect_all("mediapipe")`.** PyInstaller works out what to include by
   following `import` statements, which finds Python code but not data. MediaPipe
@@ -208,31 +211,61 @@ Two parts of that file are doing real work:
   app fails only when hand tracking first runs. `collect_all` returns MediaPipe's
   data files, its compiled libraries, and its submodules, and all three are
   passed to the build.
+- **`collect_all("qdarktheme")`.** The theme draws checkbox ticks and dropdown
+  arrows from `.svg` files that its stylesheet names by path, which PyInstaller
+  cannot see either. Without them only the packaged app would lose those marks.
+  Checked in the packaged app at G6.1.
 - **The model's destination path.** The gesture recognizer model is added as
   `("../assets/models/gesture_recognizer.task", "assets/models")`, so inside the
   packaged app it sits at the same relative path it has in the project. That is
   what allows `paths.resource_path()` to work without knowing which mode it is
   in: it swaps the project folder for PyInstaller's unpack folder and everything
-  below that point is identical.
+  below that point is identical. The app icon, `assets/icons/vectra3d.ico`, is
+  bundled the same way.
 
-**How the packaged app was checked.** At this stage the app had no camera code,
-so nothing in it loaded the model yet. Rather than adding code the app did not
-need, `app.py` gained a `--check-model` option: running
-`vectra3d.exe --check-model` resolves the model path, builds a real MediaPipe
-gesture recognizer from it, prints what happened, and exits. It reported the
-path as `dist/vectra3d/_internal/assets/models/gesture_recognizer.task` —
+**The icon** is set twice, because Windows asks for it in two places. `icon=` on
+the spec's `EXE` puts it on the `.exe` file itself, which Explorer shows. The
+running app then sets it on its window with `QApplication.setWindowIcon`, loaded
+through `resource_path()`, which is what the title bar and taskbar show. The
+`.ico` holds seven sizes from 16 to 256 pixels, made from a transparent PNG
+(`assets/icons/vectra3d.png`, kept as the source) using Qt alone, so Windows
+picks a sharp image at every size rather than shrinking one large one.
+
+**No terminal window.** The build is "windowed" (`console=False`), so students
+see only the app. G0.5 kept a terminal open behind it while packaging was being
+proven, so that a startup failure would print something. Two things replace it:
+
+- A crash at startup still shows its error, in a dialog, because PyInstaller's
+  windowed traceback is deliberately left on.
+- A windowed program has no terminal to print to, which would have silenced
+  the `--check-model` option below. Its output still arrives when it is piped,
+  and piping also makes PowerShell wait for the program to finish:
+
+  ```
+  .\Vectra3D.exe --check-model | Out-String
+  ```
+
+**How the packaged app is checked.** `app.py` has a `--check-model` option:
+it resolves the model path, builds a real MediaPipe gesture recognizer from it,
+prints what happened, and exits with 0 on success or 1 on failure. At G0.5,
+when the app had no camera code, it reported the path as
+`dist/vectra3d/_internal/assets/models/gesture_recognizer.task` —
 PyInstaller's own unpack folder, confirming the packaged path was being used
-rather than the project folder — and created the recognizer successfully. The
-same option is used again in G6.2 to verify the app on a computer with no
-Python and no internet connection.
+rather than the project folder. At G6.1 the zip was unpacked into an unrelated
+folder and the check run from there, proving the shared file works on its own
+and not only the build folder. The same option is used again in G6.2 to verify
+the app on a computer with no Python and no internet connection.
 
 The bundled model was also compared against the original by checksum, since a
 file that is copied but truncated would pass a simple "is it there?" check.
 
-**One setting is temporary.** `console=True` keeps a terminal window open behind
-the app, so that a failure at startup prints an error instead of the window
-silently never appearing. G6.1 turns this off for the version students receive.
+**The first launch is slower.** PyVista brings in matplotlib, which builds a
+font cache in the user's own folder the first time it runs on a computer. It
+happens once per computer, and has nothing to do with the camera: no picture is
+ever saved.
 
 ### Likely questions
 - **Why is the download fairly large?** It contains a complete Python runtime, the 3D graphics library, and the machine-learning model.
 - **Does it run on Mac?** Not in this version; it was built and tested for Windows only.
+- **Why does the app take longer to open the very first time?** A plotting library that the 3D view depends on prepares its list of fonts once per computer. Later launches skip it.
+- **Can I move `Vectra3D.exe` onto the desktop on its own?** No. It needs the `_internal` folder next to it. Keep the whole `Vectra3D` folder together; put a shortcut on the desktop instead.

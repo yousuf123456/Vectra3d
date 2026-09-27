@@ -22,6 +22,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # tracking works offline and nothing is ever downloaded at runtime.
 GESTURE_MODEL = "assets/models/gesture_recognizer.task"
 
+# The app's icon, for the window and taskbar. The packaged .exe file carries
+# the same icon, set separately in packaging/vectra3d.spec.
+APP_ICON = "assets/icons/vectra3d.ico"
+
 
 def resource_path(relative: str) -> Path:
     """Return the absolute path to a bundled asset.
