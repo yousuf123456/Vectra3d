@@ -287,7 +287,7 @@ For k > 0 the direction is unchanged; for k < 0 it reverses; for k = 0 the resul
 
 Scalar multiplication is the one operation that can reach infinity from values a student could plausibly type, since a large vector times a large k overflows where addition would not. `scale` refuses such a result rather than returning infinity.
 
-*The vector dropdown, the k field, and the notes shown for k = 0 and negative k are added in G3.5.*
+*The panel for it was never built: G3.5 was dropped on 2026-09-23 and scalar multiplication moved to post-MVP (P-06). The maths above stays, tested, for when it is picked up.*
 
 ### Likely questions
 - **Is −1 × A the same as "A backwards"?** Yes: same length, exactly opposite direction.
@@ -308,7 +308,13 @@ Projections onto the coordinate planes simply drop one component:
 A projection onto a plane is different from a component: a component lies along one axis, while a projection lies in a plane and combines two components.
 
 ### How it's implemented
-*To be filled in by the agent after step G2.7.*
+Built in G2.7, in `ProjectionOverlays` in `render/overlays.py`, switched on and off per vector by `actions.toggle_projections`.
+
+- `projection_offsets` works out the three shadows by dropping one component each, exactly as above. A shadow of no length - the XY shadow of a vector along the z axis, for instance - is not drawn.
+- Each shadow is an arrow in the vector's own colour, with a dashed drop line from the vector's head down to the shadow's head, so it is visible where the shadow comes from. The colour says whose shadow it is without a label, and keeps the red, green and blue of the axes free for components, so the two overlays cannot be confused when both are on.
+- Shadows are deliberately faint (thinner and more transparent than the component arrows): they are in the vector's own colour, which nothing else in the scene uses, so they still read at a glance without competing with the vector.
+- One vector casts shadows at a time, and the store holds which one, for the same reason as components: two vectors' shadows would lie on top of each other on the same three planes. Showing shadows is a way of looking at a vector, not a change to it, so it is not an undo step.
+- They are redrawn whenever the vector changes, including live while a hand moves it (G5.8).
 
 ### Likely questions
 - **What's the difference between a projection and a component?** The x component is (x, 0, 0), a single axis. The XY projection is (x, y, 0), the shadow on a whole plane.

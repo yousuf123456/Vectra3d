@@ -77,7 +77,9 @@ class TestTheAnimationChangesNothing:
 
         from vectra3d.render.animations import HeadToTail
 
-        app = QApplication.instance() or QApplication([])
+        # Held in a name on purpose, though nothing reads it: an application
+        # created here must stay alive for the animation's timers to run.
+        app = QApplication.instance() or QApplication([])  # noqa: F841
 
         store = VectorStore()
         actions.create_vector(store, (3.0, 1.0, 0.0))

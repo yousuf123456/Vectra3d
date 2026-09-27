@@ -45,8 +45,12 @@ from vectra3d.gestures.intents import (
 )
 
 OPEN_PALM = "Open_Palm"
-# The hold gestures of section 7. What each one does is G5.8's business.
-HOLD_GESTURES = ("Pointing_Up", "Thumb_Up", "Victory")
+# The hold gestures of section 7, by MediaPipe's labels. What each one does
+# is decided in `ui/gesture_controller.py`.
+POINTING_UP = "Pointing_Up"
+THUMB_UP = "Thumb_Up"
+VICTORY = "Victory"
+HOLD_GESTURES = (POINTING_UP, THUMB_UP, VICTORY)
 
 
 def _ms(seconds: float) -> int:

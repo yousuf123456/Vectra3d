@@ -128,7 +128,7 @@ All hand directions are relative to the screen as the student currently sees it,
 These camera directions are read from the 3D view's camera at the moment they are needed.
 
 ### 6.2 Create a vector
-1. Both hands pinch (within the 0.3 s window) with the pinch points closer than **1.0 hs** (tunable). This enters CREATING.
+1. Both hands pinch (within the two-hand window, section 5) with the pinch points closer than **1.0 hs** (tunable). This enters CREATING.
 2. As the hands pull apart, a new vector is drawn live:
    - **Direction:** the line between the two pinch points, converted to 3D using screen-relative directions (6.1). The vector therefore starts parallel to the screen; the student steers it afterwards to add depth.
    - **Head and tail:** the head is at the hand that has moved more since the pinch started (the "pulling" hand); the hand that moved less is the tail end. This lets students pull in any direction with either hand. If both hands have moved equally (within 10%, tunable), the head is at the hand on the right of the screen. The head/tail choice is re-evaluated live during CREATING, so it settles as soon as one hand clearly leads.

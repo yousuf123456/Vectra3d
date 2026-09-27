@@ -48,6 +48,7 @@ from vectra3d.gestures.intents import (
     UpdateSteer,
     UpdateTwoHand,
 )
+from vectra3d.gestures.state_machine import POINTING_UP, THUMB_UP, VICTORY
 from vectra3d.state import actions
 from vectra3d.state.models import ORIGIN, Vector
 from vectra3d.state.store import VectorStore
@@ -204,12 +205,12 @@ class GestureController:
         active = self._store.active
         if active is None:
             self._notice = NO_VECTOR_TEXT
-        elif gesture == "Pointing_Up":
+        elif gesture == POINTING_UP:
             if actions.activate_next(self._store) is None:
                 self._notice = ALL_LOCKED_TEXT
-        elif gesture == "Thumb_Up":
+        elif gesture == THUMB_UP:
             actions.toggle_locked(self._store, active.name)
-        elif gesture == "Victory":
+        elif gesture == VICTORY:
             actions.toggle_components(self._store, active.name)
 
     def _begin_create(self, intent: BeginTwoHand) -> None:
@@ -327,13 +328,11 @@ class GestureController:
             if self._store.settings.snapping
             else None
         )
-        # A snap engages when the vector jumps onto something new. Leaving
-        # an axis along a plane it already lies in is a change of target
-        # with no jump, and flashing then would announce nothing visible.
         shown = snapped_components(self._steered, length, target)
         if target is not None and target != self._snap:
-            # Leaving an axis along one of its planes is not arriving
-            # anywhere, even if the plane takes up a little drift.
+            # A snap engages - and flashes - when the vector arrives on
+            # something new. Leaving an axis along one of its planes is not
+            # arriving anywhere, even if the plane takes up a little drift.
             leaving = (
                 self._snap is not None
                 and not self._snap.is_plane
