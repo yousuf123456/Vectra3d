@@ -233,15 +233,15 @@ Starting values. Change only after real testing, and record every change in `pro
 
 ## 11. Manual test checklist for gestures (used in group G5)
 Test each at a normal laptop distance, then leaning in, then sitting back.
-- [ ] Pinch is detected reliably with each hand, and does not flicker when held.
-- [ ] Hands together + pull apart creates a vector; it follows the line between the hands.
-- [ ] Hands apart + pinch resizes the active vector without changing its direction.
-- [ ] Steering: small hand shake inside the dead zone does not move the vector.
-- [ ] Steering: moving right turns the vector the same way on screen whatever the view is turned to, even after rotating the 3D view to look from behind. (Globe-style, section 6.4: the side nearest you follows the hand, so a vector pointing at you swings right, one pointing into the screen swings left, and one lying flat pointing right tips into the screen. Reworded 2026-09-25, G5.5: "always moves the head right" cannot hold for every vector if steering is to add depth.)
-- [ ] Snapping engages near each axis and plane and releases cleanly; turning it off in settings works.
-- [ ] Each hold gesture triggers once after 0.5 s and not again until the hand changes shape.
-- [ ] Open palm with the free hand cancels steering and restores the vector exactly; releasing a create, resize or steer never cancels it.
-- [ ] Locked vectors ignore resize and steer, with the message shown.
-- [ ] One gesture = one undo step.
-- [ ] Changing the sensitivity setting changes how much a full stretch creates.
+- [x] Pinch is detected reliably with each hand, and does not flicker when held.
+- [x] Hands together + pull apart creates a vector; it follows the line between the hands.
+- [x] Hands apart + pinch resizes the active vector without changing its direction.
+- [x] Steering: small hand shake inside the dead zone does not move the vector.
+- [x] Steering: moving right turns the vector the same way on screen whatever the view is turned to, even after rotating the 3D view to look from behind. (Globe-style, section 6.4: the side nearest you follows the hand, so a vector pointing at you swings right, one pointing into the screen swings left, and one lying flat pointing right tips into the screen. Reworded 2026-09-25, G5.5: "always moves the head right" cannot hold for every vector if steering is to add depth.)
+- [x] Snapping engages near each axis and plane and releases cleanly; turning it off in settings works.
+- [x] Each hold gesture triggers once after 0.5 s and not again until the hand changes shape.
+- [x] Open palm with the free hand cancels steering and restores the vector exactly; releasing a create, resize or steer never cancels it.
+- [x] Locked vectors ignore resize and steer, with the message shown.
+- [x] One gesture = one undo step.
+- [x] Changing the sensitivity setting changes how much a full stretch creates.
 

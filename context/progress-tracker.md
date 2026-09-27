@@ -5,12 +5,11 @@ Updated after every approved step. Read this at the start of every session to se
 ---
 
 ## Current status
-- **Current group:** G5 — Gesture control. All build steps G5.1-G5.9 done, `/review` run
-  and every finding fixed and committed (camera-loss fix, F-02 passed on the user's
-  verdict, minor fixes). Every G1-G5 criterion is ticked; 865 tests pass.
-- **Next step:** the one G5 checkpoint item left - the user runs the `interaction-spec.md`
-  section 11 checklist with real hands (normal distance, leaning in, sitting back). Then
-  close G5 and start G6 (packaging) in a new session.
+- **Current group:** G6 — Packaging. G5 closed 2026-09-27: every G1-G5 criterion is
+  ticked, the `interaction-spec.md` section 11 checklist passed with real hands, 865 tests
+  pass.
+- **Next step:** G6.1 (F-18 build) - plan with `/architect`. Continued in the G5 session at
+  the user's choice rather than a new one.
   No undo or redo gesture will be added (the user's decision, 2026-09-26).
 - **Blocked on:** nothing.
 
@@ -63,6 +62,7 @@ Updated after every approved step. Read this at the start of every session to se
 | G5.8 | Hold gestures (F-05b, F-09b, F-13b): `actions.activate_next`, `HoldTriggered` in `ui/gesture_controller.py`, the hand on `HoldStatus`, the progress ring in `ui/camera_preview.py`, overlays drawn without rendering in the live path | 2026-09-26 | `G5.8: hold gestures` | All five criteria pass; the user held each shape with real hands: "working fine". Two spec points settled with the user at planning: `Victory` works on a locked vector, and the ring is drawn round the holding hand. The user asked whether `Thumb_Up` unlocking a vector when all are locked was intended - it is: it is a lock switch. Live overlays measured on screen, ten vectors, components and shadows on: 85 ms -> 77 ms; the rest is geometry rebuilt every frame, recorded in Known issues. 18 new tests; suite now 850 passing. |
 | G5.9 | F-19 undo for gestures: verified end to end in `tests/ui/test_gesture_undo.py` | 2026-09-26 | `G5.9: one gesture, one undo step` | Tests only; no fault found and no app code changed. Synthetic hand frames go through the window's frame slot - metrics, state machine, controller, store - for a create, a resize and a steer, a create ended by losing both hands (a release, spec 4.4), a 300-frame steer leaving earlier history intact, a gesture clearing redo, a cancelled steer, and a result restored with its vector. Checked against a deliberately broken session recording every frame: three fail. The user checked with real hands and the toolbar Undo: "working well". The user asked whether there is an undo gesture: there is not, by the spec, and the user then decided none will be added. 8 new tests; suite now 858 passing. |
 | G5 review | `/review` on G5: 2 critical, 1 important, 4 minor findings, all handled | 2026-09-26 / 2026-09-27 | `G5 review: end a gesture when the camera is lost; F-02 passed`, then `G5 review: minor fixes` | Critical: losing the camera mid-gesture left the store inside the gesture for good (now a release, spec 4.4), and F-02's open performance criterion (passed on the user's verdict, see the decisions log). Minor: spec 6.2 still said "0.3 s window" after it became 0.5 s, hold labels written as string literals in two modules, a duplicated comment, `docs/01` section 10 never filled in and section 9 still promising G3.5, and a test's held `QApplication` that looked unused. 7 new tests; suite now 865 passing. |
+| G5 close | `interaction-spec.md` section 11 checklist, all 11 items | 2026-09-27 | `G5 closed: gesture checklist passed` | The last G5 checkpoint item. The user ran the checklist with real hands in the real window: "working well". All eleven ticked. No tuning changes came out of it. G6 continues in this session at the user's choice, not a new one as `build-plan.md` section 3 suggests. |
 | G5.2 | Gesture state machine: `gestures/state_machine.py`, `gestures/intents.py`, the metrics' 0.3 s memory for a missing hand, the gesture line in the preview | 2026-09-24 | `G5.2: gesture state machine` | No `features.md` criteria of its own; F-03, F-05b, F-06, F-07, F-09b, F-13b and F-19 (gestures) are built on it. Found at planning: cancel as specified could almost never happen, since opening a pinching hand releases before a palm is seen - section 5 amended with a release confirm window. Real-hand testing then found MediaPipe mostly losing two hands held close or pointing at the camera (palms-to-camera works), gestures cancelled by pinching hands misread as `Open_Palm` (fixed: only a non-pinching hand cancels), and two-hand pinches arriving 328 and 469 ms apart (window 0.3 -> 0.5 s). Two metrics bugs caught by tests: a late-returning hand resumed as the old one, and a slow frame losing a visible hand. User confirmed with real hands: "now working fine". 45 new tests; suite now 672 passing. |
 
 
@@ -75,8 +75,8 @@ Updated after every approved step. Read this at the start of every session to se
 | G2 | Vector math and display | Complete — `/review` skipped at the user's request |
 | G3 | Operations | Complete — F-15 and F-16 done; F-17 moved to post-MVP; `/review` not run |
 | G4 | Hand tracking | Complete — F-02 built (two criteria carried into G5); F-21 deleted; `/review` not run |
-| G5 | Gesture control | Build steps done (G5.1-G5.9); checkpoint pending |
-| G6 | Packaging | Not started |
+| G5 | Gesture control | Complete — `/review` run, findings fixed; section 11 checklist passed with real hands |
+| G6 | Packaging | In progress |
 
 ---
 
