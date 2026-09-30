@@ -39,7 +39,7 @@ from vectra3d.ui.camera_preview import (  # noqa: E402
     outcome_text,
     status_text,
 )
-from vectra3d.ui.gesture_controller import Joystick  # noqa: E402
+from vectra3d.ui.gesture_controller import Grab  # noqa: E402
 from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
 
 ASPECT = 4 / 3
@@ -227,39 +227,39 @@ def test_the_picture_and_the_hand_are_drawn(app: QApplication) -> None:
     )
 
 
-def test_the_steering_joystick_is_drawn_over_the_picture(app: QApplication) -> None:
+def test_the_steering_grab_is_drawn_over_the_picture(app: QApplication) -> None:
     # A black picture filling the 240x180 area, so one picture height is 180
-    # pixels. Anchor at the centre: (2/3, 1/2) in picture heights is pixel
+    # pixels. Grab point at the centre: (2/3, 1/2) in picture heights is pixel
     # (120, 90). The pinch point 0.25 picture heights to the right is 45 px.
     preview = CameraPreview()
     pixels = np.zeros((480, 640, 3), dtype=np.uint8)
     frame = HandFrame(hands=(), timestamp_ms=0, aspect=ASPECT)
     centre = (ASPECT / 2, 0.5)
-    joystick = Joystick(centre, (centre[0] + 0.25, 0.5), 0.25)
+    grab = Grab(centre, (centre[0] + 0.25, 0.5))
 
-    preview.show_frame(pixels, frame, (), IDLE, None, joystick)
+    preview.show_frame(pixels, frame, (), IDLE, None, grab)
     image = picture_of(preview)
 
-    def is_joystick(x: int, y: int) -> bool:
+    def is_mark(x: int, y: int) -> bool:
         # Anti-aliased edges blend with the black, so near enough is enough.
         colour = image.pixelColor(x, y)
-        wanted = QColor(theme.JOYSTICK)
+        wanted = QColor(theme.GESTURE_MARK)
         return (
             abs(colour.red() - wanted.red()) < 60
             and abs(colour.green() - wanted.green()) < 60
             and abs(colour.blue() - wanted.blue()) < 60
         )
 
-    # The anchor, and the line on its way to the pinch point.
-    assert is_joystick(120, 90)
-    assert is_joystick(150, 90)
-    # The dead-zone ring: 0.3 hs * 0.25 * 180 = 13.5 px above the anchor.
-    assert any(is_joystick(120, y) for y in (75, 76, 77))
-    # Nothing is drawn well outside it, and nothing at all without a joystick.
-    assert not is_joystick(120, 50)
+    # The grab point, and the line on its way to the pinch point.
+    assert is_mark(120, 90)
+    assert is_mark(150, 90)
+    # No ring round it any more: grab and drag has no dead zone.
+    assert not any(is_mark(120, y) for y in range(70, 84))
+    # Nothing is drawn well outside it, and nothing at all without a grab.
+    assert not is_mark(120, 50)
     preview.show_frame(pixels, frame, (), IDLE)
     image = picture_of(preview)
-    assert not is_joystick(120, 90)
+    assert not is_mark(120, 90)
 
 
 def test_a_message_clears_the_last_picture(app: QApplication) -> None:
@@ -318,9 +318,9 @@ def test_the_window_measures_each_frame_and_the_preview_says_pinching(
             hands=(pinching_hand(),), timestamp_ms=past_window_ms, aspect=ASPECT
         )
         window._on_hand_frame(pixels, later)
-        # The vector lies on +x, so the strip adds what it is snapped to (6.5).
+        # The vector lies on +x, so the strip says a release snaps there (6.5).
         assert window.camera_preview.status == (
-            f"{PINCHING_TEXT}\nSteering, snapped to +x axis"
+            f"{PINCHING_TEXT}\nSteering: release to snap to +x axis"
         )
     finally:
         window.close()

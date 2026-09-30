@@ -4,16 +4,18 @@ The state machine says what the hands are doing; this works out what that
 means for a vector. Pure maths on plain tuples - no camera, no Qt, no
 PyVista - so every rule is tested with hand-calculated values.
 
-**Screen-relative directions (6.1).** A hand moving right in the mirrored
-picture means the camera's right in the 3D world, and a hand moving up means
-the camera's up, whichever way the view has been turned. Picture y grows
-downward, so it is flipped.
+**Screen-relative directions (6.1).** When creating, a hand moving right in
+the mirrored picture means the camera's right in the 3D world, and a hand
+moving up means the camera's up, whichever way the view has been turned.
+Picture y grows downward, so it is flipped.
 
-**Snapping (6.5)** works on the *steered* direction - where the joystick has
-turned the vector, before snapping - rather than on the vector as shown.
-Turned from the snapped vector, each frame would move it a few degrees off
-the axis, it would snap straight back, and it could never get far enough
-away to leave.
+**Steering (6.4)** is grab and drag: each frame the vector's two angles
+change by as much as the pinching hand moved. Up and down change theta, so
+the head always rises towards +z or drops towards -z; sideways changes phi,
+turning it round the z axis. A still hand leaves the vector still.
+
+**Snapping (6.5)** happens only on release. While dragging, `snap_near`
+says what a release would land on, for the hint in the camera strip.
 """
 
 from __future__ import annotations
@@ -22,6 +24,12 @@ import math
 from dataclasses import dataclass
 
 from vectra3d import config
+from vectra3d.core.spherical import (
+    FULL_TURN,
+    normalize_phi,
+    to_components,
+    to_spherical,
+)
 from vectra3d.core.vector_math import magnitude, unit_vector
 from vectra3d.gestures.hand_metrics import Point, distance
 
@@ -163,253 +171,224 @@ def resize_components(
     return tuple(length * value for value in along)
 
 
-def deflection(anchor: Point, point: Point, scale: float) -> tuple[float, float] | None:
-    """How far the steering hand is from its anchor, in hs, on screen (6.4).
 
-    (right, up): picture y grows downward, so it is flipped. Measured in the
-    hand scale at the anchor, so the joystick's size stays fixed for the
-    whole gesture. None if that scale is zero.
+
+def hand_movement(before: Point, after: Point, scale: float) -> tuple[float, float] | None:
+    """How far the steering hand moved between two frames, in hs (6.4).
+
+    (right, up): picture y grows downward, so it is flipped. Measured in
+    the hand scale of the newer frame, so leaning in mid-drag does not by
+    itself turn the vector faster. None if that scale is zero.
     """
     if scale <= 0:
         return None
-    return ((point[0] - anchor[0]) / scale, (anchor[1] - point[1]) / scale)
+    return ((after[0] - before[0]) / scale, (before[1] - after[1]) / scale)
 
 
-def steer_speed(deflection_hs: float) -> float:
-    """How fast a joystick this far from its anchor turns the vector, in °/s.
+@dataclass(frozen=True)
+class Heading:
+    """Which way a steered vector points, as its two angles (2.3), in °.
 
-    Nothing inside the dead zone, so a hand held still with a little shake
-    moves nothing. Beyond it the speed rises in a straight line from zero at
-    the dead zone's edge - so there is no jump when the hand crosses it - to
-    the maximum at the full-speed deflection, and stays there.
+    `theta` from +z, 0 to 180; `phi` round the floor from +x towards +y,
+    0 to 360. Steering changes these directly (6.4), so hand up and down
+    always mean towards +z and -z, whatever the view.
     """
-    beyond = deflection_hs - config.STEER_DEAD_ZONE_HS
-    if beyond <= 0:
-        return 0.0
-    span = config.STEER_MAX_SPEED_HS - config.STEER_DEAD_ZONE_HS
-    return config.STEER_MAX_SPEED_DEG_PER_S * min(1.0, beyond / span)
+
+    theta: float
+    phi: float
 
 
-def _dot(a: Triple, b: Triple) -> float:
-    return sum(x * y for x, y in zip(a, b))
+def heading_of(components: Triple) -> Heading | None:
+    """The angles of a vector, or None for the zero vector."""
+    spherical = to_spherical(components)
+    if spherical is None:
+        return None
+    _, theta, phi = spherical
+    return Heading(theta, phi)
 
 
-def turn_axes(
-    axes: tuple[Triple, Triple], locks: tuple[Triple, ...] = ()
-) -> tuple[Triple, Triple]:
-    """What the joystick turns the vector about: (for sideways, for up/down).
+@dataclass(frozen=True)
+class Meridian:
+    """A steered direction as a place on the vertical circle through z (6.4).
 
-    Normally the screen's up and minus its right (see `steer_components`).
+    The circle stands at `phi`, and `tilt` is how far round it the head is
+    from +z, in °, from -180 to 180: positive on the `phi` side, negative
+    once it has gone over the top (or under the bottom) onto the other side.
+    Theta alone stops at 0 and 180; the tilt does not, so dragging up keeps
+    turning the vector the same way, over the top and down the far side.
+    """
 
-    **Snap lock (6.5).** `locks` are the normals of the planes a snapped
-    vector lies in: one for a plane, two for an axis, which lies in two.
-    Each replaces the screen axis nearest to it, so the hand direction that
-    used it turns the vector *within* that plane, whichever way the view is
-    turned. Without this, a sideways push in a view looking down at the floor
-    turns the vector about a tilted axis, and it dips out of the XY plane as
-    it goes - found with real hands at G5.6. On a plane, the other hand
-    direction still tilts the vector out, which is how it leaves; on an axis,
-    each hand direction leaves along one of its two planes.
+    tilt: float
+    phi: float
 
-    Which screen axis a normal replaces: for a plane, the one it lies closer
-    to - sideways spins the floor seen from above, up/down spins the YZ
-    plane seen edge-on from the front. For an axis, the normal closer to the
-    screen's up takes sideways and the other takes up/down.
+    @property
+    def heading(self) -> Heading:
+        if self.tilt >= 0.0:
+            return Heading(self.tilt, self.phi)
+        return Heading(-self.tilt, normalize_phi(self.phi + 180.0))
 
-    Each normal is signed to point the way the screen axis it replaces does,
-    which keeps the globe-style sense. A normal square to that screen axis
-    is taken towards the student instead.
+
+def _wrap(angle: float) -> float:
+    """An angle in °, into -180 to 180."""
+    return (angle + 180.0) % 360.0 - 180.0
+
+
+def meridian_of(heading: Heading) -> Meridian:
+    return Meridian(heading.theta, heading.phi)
+
+
+def drag_meridian(meridian: Meridian, movement: tuple[float, float]) -> Meridian:
+    """Where the hand's movement, in hs, takes the vector (6.4).
+
+    Up turns the head towards +z and down towards -z, by the steering rate
+    per hs, round its vertical circle with no stop: past a pole it carries
+    on down the other side. Sideways turns that circle round z, always the
+    same way: right raises phi, anticlockwise seen from above, so the side
+    of the turntable nearest a viewer above the floor follows the hand -
+    wherever the vector points, and whatever it has done since the grab.
+    """
+    across, upward = movement
+    rate = config.STEER_DEG_PER_HS
+    return Meridian(
+        _wrap(meridian.tilt - upward * rate),
+        normalize_phi(meridian.phi + across * rate),
+    )
+
+
+_POLES = (0.0, 180.0)
+
+
+def at_pole(heading: Heading) -> bool:
+    """Whether a heading is exactly on the z axis, where phi means nothing."""
+    return heading.theta in _POLES
+
+
+def _flat(direction: Triple) -> Triple | None:
+    """A direction's shadow on the floor, as a unit vector, or None."""
+    return unit_vector((direction[0], direction[1], 0.0))
+
+
+def leave_pole(
+    heading: Heading, movement: tuple[float, float], axes: tuple[Triple, Triple]
+) -> Heading:
+    """Dragging at the z axis: the head leaves it the way the hand moves (6.4).
+
+    `heading` is on a pole. The movement is turned into a direction on the
+    floor - the screen's right and up, flattened - and the head is tipped
+    from the pole towards that direction, by the steering rate per hs. The
+    part of the movement pointing further into the pole (up at +z, down at
+    -z) is dropped. The screen's right is always level; its up lies flat
+    only when the view is level, and then the head has nowhere up or down
+    on screen to go but towards or away from the viewer, which is the
+    direction up would take anyway.
     """
     right, screen_up = axes
-    sideways, upward = screen_up, tuple(-value for value in right)
-    towards_student = _cross(right, screen_up)
-
-    def signed(normal: Triple, like: Triple) -> Triple:
-        lean = _dot(normal, like) or _dot(normal, towards_student)
-        return tuple(value if lean >= 0 else -value for value in normal)
-
-    if len(locks) == 1:
-        (normal,) = locks
-        if abs(_dot(normal, screen_up)) >= abs(_dot(normal, right)):
-            return signed(normal, sideways), upward
-        return sideways, signed(normal, upward)
-    if len(locks) == 2:
-        first, second = sorted(locks, key=lambda n: -abs(_dot(n, screen_up)))
-        return signed(first, sideways), signed(second, upward)
-    return sideways, upward
-
-
-def steer_components(
-    current: Triple,
-    length: float,
-    push: tuple[float, float],
-    seconds: float,
-    axes: tuple[Triple, Triple],
-    locks: tuple[Triple, ...] = (),
-) -> Triple:
-    """The vector after `seconds` of steering with the joystick at `push` (6.4).
-
-    Horizontal deflection turns it about the screen's up, vertical about the
-    screen's right, combined into one turn for a diagonal push. The sense is
-    **globe-style**: the side of the vector nearest the viewer moves the way
-    the hand moves, the usual convention for turning things in 3D. A vector
-    pointing at the student swings with the hand; one pointing into the
-    screen swings the other way; one lying flat on the screen tips into or
-    out of it - which is how steering adds the depth a created vector lacks.
-
-    The turn is exact for the time step (Rodrigues' rotation formula), and
-    the result is scaled back to `length` - the magnitude it had when the
-    steering began - so rounding cannot make the vector creep longer or
-    shorter over thousands of frames (6.4 step 6).
-    """
-    across, upward = push
-    speed = steer_speed(math.hypot(across, upward))
-    if speed == 0.0 or seconds <= 0.0:
-        return current
-
-    # The near side of the vector points along -view. Turning about the
-    # screen's up moves -view towards right (up x -view = right), and about
-    # -right moves it towards up (-right x -view = up), so turning about
-    # (across * up - upward * right) moves the near side by (across, upward).
-    # `turn_axes` swaps them for plane normals while the vector is snapped.
-    sideways, vertical = turn_axes(axes, locks)
-    axis = unit_vector(
-        tuple(across * s + upward * v for s, v in zip(sideways, vertical))
+    across, upward = movement
+    north = heading.theta < 90.0
+    if (upward > 0.0) == north:
+        upward = 0.0
+    floor_right, floor_up = _flat(right), _flat(screen_up)
+    if floor_right is None:
+        return heading
+    floor_up = floor_up or _cross((0.0, 0.0, 1.0), floor_right)
+    toward = unit_vector(
+        tuple(across * r + upward * u for r, u in zip(floor_right, floor_up))
     )
-    if axis is None:
-        return current
-
-    angle = math.radians(speed * seconds)
+    if toward is None:
+        return heading
+    angle = math.radians(config.STEER_DEG_PER_HS * math.hypot(across, upward))
+    pole = (0.0, 0.0, 1.0 if north else -1.0)
+    # Rodrigues' rotation about the axis square to the pole and the target
+    # direction, which turns the head from the pole straight towards it.
+    axis = unit_vector(_cross(pole, toward))
+    current = to_components(1.0, heading.theta, heading.phi)
     cos, sin = math.cos(angle), math.sin(angle)
     along = sum(k * v for k, v in zip(axis, current))
     turned = tuple(
         v * cos + c * sin + k * along * (1.0 - cos)
         for v, c, k in zip(current, _cross(axis, current), axis)
     )
-    direction = unit_vector(turned)
-    if direction is None:
-        return current
-    return tuple(length * value for value in direction)
+    return heading_of(turned) or heading
 
 
-_AXIS_NAMES = ("x", "y", "z")
-# A coordinate plane is named by the two axes in it; its normal is the third.
-_PLANE_NAMES = ("YZ", "XZ", "XY")
+THETA_SNAPS = (0.0, 90.0, 180.0)
+PHI_SNAPS = (0.0, 90.0, 180.0, 270.0)
+_PHI_AXES = {0.0: "+x", 90.0: "+y", 180.0: "-x", 270.0: "-y"}
+
+
+def _near(value: float, stops: tuple[float, ...], turn: float | None) -> float | None:
+    """The snap value an angle is within reach of, or None.
+
+    Round the circle for phi, so 356° is in reach of 0°. The snap values
+    are 90° apart, so at most one can be in reach.
+    """
+    for stop in stops:
+        gap = abs(value - stop)
+        if turn is not None:
+            gap = min(gap, turn - gap)
+        if gap <= config.SNAP_DEG:
+            return stop
+    return None
 
 
 @dataclass(frozen=True)
-class SnapTarget:
-    """An axis or coordinate plane a steered vector can snap onto (6.5).
+class Snap:
+    """The angles a release would snap to, each None if free (6.5).
 
-    `index` is the axis (0, 1, 2 for x, y, z), or for a plane the axis
-    square to it. `sign` is +1 or -1 along an axis, and 0 for a plane, which
-    has no direction along it.
+    Never both None: no snap at all is None rather than an empty Snap.
     """
 
-    index: int
-    sign: int = 0
-
-    @property
-    def is_plane(self) -> bool:
-        return self.sign == 0
-
-    @property
-    def locks(self) -> tuple[Triple, ...]:
-        """The normals of the planes a vector snapped here lies in.
-
-        One for a plane; two for an axis, which lies in the two planes
-        square to the other axes. Steering turns it within these.
-        """
-        others = (self.index,) if self.is_plane else tuple(
-            index for index in range(3) if index != self.index
-        )
-        return tuple(
-            tuple(1.0 if axis == other else 0.0 for axis in range(3)) for other in others
-        )
+    theta: float | None
+    phi: float | None
 
     @property
     def label(self) -> str:
-        if self.is_plane:
-            return f"{_PLANE_NAMES[self.index]} plane"
-        return f"{'+' if self.sign > 0 else '-'}{_AXIS_NAMES[self.index]} axis"
+        """What the vector would lie on, for the camera strip."""
+        if self.theta in _POLES:
+            return "+z axis" if self.theta == 0.0 else "-z axis"
+        if self.theta is not None and self.phi is not None:
+            return f"{_PHI_AXES[self.phi]} axis"
+        if self.theta is not None:
+            return "XY plane"
+        return "XZ plane" if self.phi in (0.0, 180.0) else "YZ plane"
 
 
-def angle_from(direction: Triple, target: SnapTarget) -> float:
-    """How far a direction is from an axis or from lying in a plane, in °.
-
-    The cosine or sine is clamped, since a component over its own magnitude
-    can land one step past 1 and `math.acos` would raise (see G2.1).
-    """
-    along = unit_vector(direction)
-    if along is None:
-        return 90.0
-    share = along[target.index]
-    if target.is_plane:
-        return math.degrees(math.asin(min(1.0, abs(share))))
-    return math.degrees(math.acos(max(-1.0, min(1.0, target.sign * share))))
+def snap_near(heading: Heading) -> Snap | None:
+    """What releasing at this heading would snap to (6.5), or None."""
+    theta = _near(heading.theta, THETA_SNAPS, None)
+    # On the z axis phi means nothing, so it is never snapped there.
+    phi = None if theta in _POLES else _near(heading.phi, PHI_SNAPS, FULL_TURN)
+    return None if theta is None and phi is None else Snap(theta, phi)
 
 
-def exact_target(components: Triple) -> SnapTarget | None:
-    """The axis, or failing that the plane, a vector lies exactly on.
-
-    A vector already on one when steering begins counts as snapped to it
-    from the start, so it needs the full release angle to leave and does not
-    flash as if it had just arrived.
-    """
-    zeros = [index for index, value in enumerate(components) if value == 0.0]
-    if len(zeros) == 2:
-        index = 3 - sum(zeros)
-        return SnapTarget(index, 1 if components[index] > 0 else -1)
-    if len(zeros) == 1:
-        return SnapTarget(zeros[0])
-    return None
-
-
-def snap_target(steered: Triple, current: SnapTarget | None) -> SnapTarget | None:
-    """What a steered direction snaps onto this frame (6.5).
-
-    An axis within the snap-in angle always wins, even over a plane the
-    vector is sliding along. Otherwise the current target holds until the
-    steering is past the release angle from it, so the vector does not
-    flicker at the edge. Failing both, the nearest plane within the snap-in
-    angle, or nothing.
-
-    Only one axis can be within 5° of any direction, and the nearest is along
-    the largest component; the nearest plane is square to the smallest.
-    """
-    sizes = [abs(value) for value in steered]
-    widest = sizes.index(max(sizes))
-    axis = SnapTarget(widest, 1 if steered[widest] > 0 else -1)
-    if angle_from(steered, axis) <= config.SNAP_IN_DEG:
-        return axis
-    if current is not None and angle_from(steered, current) <= config.SNAP_RELEASE_DEG:
-        return current
-    plane = SnapTarget(sizes.index(min(sizes)))
-    if angle_from(steered, plane) <= config.SNAP_IN_DEG:
-        return plane
-    return None
-
-
-def snapped_components(steered: Triple, length: float, target: SnapTarget | None) -> Triple:
-    """The vector as shown: `steered` moved exactly onto `target`, at `length`.
-
-    Onto an axis it is that axis at full length. Into a plane, the part
-    sticking out of it is dropped and the rest scaled back up, so it keeps
-    its heading within the plane. With no target it is `steered` unchanged.
-    """
-    if target is None:
-        return steered
-    if not target.is_plane:
-        return tuple(
-            float(target.sign) * length if index == target.index else 0.0
-            for index in range(3)
-        )
-    flat = unit_vector(
-        tuple(0.0 if index == target.index else value for index, value in enumerate(steered))
+def snapped(heading: Heading, snap: Snap | None) -> Heading:
+    """The heading with each snapped angle replaced by its snap value."""
+    if snap is None:
+        return heading
+    return Heading(
+        heading.theta if snap.theta is None else snap.theta,
+        heading.phi if snap.phi is None else snap.phi,
     )
-    if flat is None:
-        return steered
-    return tuple(length * value for value in flat)
+
+
+def heading_components(heading: Heading, length: float) -> Triple:
+    """The vector for a heading, at `length`, exact on axes and planes.
+
+    `sin` and `cos` of a right angle are not exact in floating point -
+    cos 90° is 6e-17 - so a vector snapped into the floor would keep a
+    z of 6e-17. Each component an angle on a snap value makes zero is set
+    to zero.
+    """
+    x, y, z = to_components(length, heading.theta, heading.phi)
+    if heading.theta in _POLES:
+        x = y = 0.0
+    elif heading.theta == 90.0:
+        z = 0.0
+    if heading.phi in (0.0, 180.0):
+        y = 0.0
+    elif heading.phi in (90.0, 270.0):
+        x = 0.0
+    return (x, y, z)
 
 
 def is_long_enough(components: Triple) -> bool:

@@ -20,7 +20,7 @@ Every topic is written in layers, so you can pick the depth that fits your audie
 | [04-software-design.md](04-software-design.md) | Why these libraries, how the code is organized, threads, testing, packaging |
 
 ## The one-minute explanation
-Vectra3D turns 3D vectors into something students can hold. A webcam watches the student's hands; a machine-learning model finds 21 points on each hand, many times per second, entirely on the laptop. The app turns simple hand shapes, mostly pinches, into actions: pull two pinched hands apart to create a vector, pinch and nudge one hand like a joystick to steer it. Every vector is drawn in a 3D scene the student can rotate, and every number (components, magnitude, angles) updates live as the vector moves. Anything done by hand can also be done precisely by typing, so the app works as both an exploration tool and an exact calculator.
+Vectra3D turns 3D vectors into something students can hold. A webcam watches the student's hands; a machine-learning model finds 21 points on each hand, many times per second, entirely on the laptop. The app turns simple hand shapes, mostly pinches, into actions: pull two pinched hands apart to create a vector, pinch one hand and drag to steer it. Every vector is drawn in a 3D scene the student can rotate, and every number (components, magnitude, angles) updates live as the vector moves. Anything done by hand can also be done precisely by typing, so the app works as both an exploration tool and an exact calculator.
 
 ## Keeping these documents accurate
 - Concept sections were written during planning, before any code existed.

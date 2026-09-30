@@ -40,7 +40,7 @@ A single webcam sees the world flat, like a photo. It's good at telling left fro
 
 ### Technically
 - MediaPipe's per-landmark depth is relative to the wrist, not a true distance from the camera, and it is noisy.
-- All gestures therefore use only the image plane (x and y). A newly created vector starts parallel to the screen; the steering joystick rotates it to point toward or away from the viewer.
+- All gestures therefore use only the image plane (x and y). A newly created vector starts parallel to the screen; steering then tilts it to point toward or away from the viewer.
 - This is a deliberate design choice, recorded as a non-goal in the project overview.
 
 ### How it's implemented
@@ -61,7 +61,7 @@ Your hand looks bigger when you lean toward the camera and smaller when you sit 
 
 ### Technically
 - **1 hand-scale unit (hs)** = the distance from the wrist (landmark 0) to the base of the middle finger (landmark 9) in the image.
-- Every gesture distance (pinch threshold, dead zone, stretch) is divided by this, making them **scale-invariant**: if you move closer, both the measured distance and the hand scale grow by the same factor, so their ratio stays the same.
+- Every gesture distance (pinch threshold, steering movement, stretch) is divided by this, making them **scale-invariant**: if you move closer, both the measured distance and the hand scale grow by the same factor, so their ratio stays the same.
 - For two-hand gestures, the average of both hands' scales is used.
 
 ### How it's implemented

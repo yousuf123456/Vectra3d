@@ -53,18 +53,13 @@ MIN_MAGNITUDE: float = 0.1  # scene units
 EQUAL_MOVEMENT_MARGIN: float = 0.10  # fraction (10%)
 
 # --- Steering (spec section 6.4) ---
-# Hand movement inside the dead zone does not rotate the vector, so a small
-# shake while holding a pinch leaves the vector where it is.
-STEER_DEAD_ZONE_HS: float = 0.3  # hand-scale units
-STEER_MAX_SPEED_DEG_PER_S: float = 90.0  # degrees per second
-# Deflection at which the maximum rotation speed is reached.
-STEER_MAX_SPEED_HS: float = 1.5  # hand-scale units
+# Grab and drag: how far the vector turns for each hand-scale unit the
+# pinching hand moves.
+STEER_DEG_PER_HS: float = 90.0  # degrees per hand-scale unit
 
 # --- Snapping (spec section 6.5) ---
-# The vector snaps onto an axis or plane within the first angle, and only
-# breaks free past the second, so it does not flicker at the boundary.
-SNAP_IN_DEG: float = 5.0  # degrees
-SNAP_RELEASE_DEG: float = 8.0  # degrees
+# On release, an angle within this of an axis or plane lands exactly on it.
+SNAP_DEG: float = 5.0  # degrees
 
 # --- Hold gestures (spec section 7) ---
 # A hold gesture must be recognized continuously for this long, at this

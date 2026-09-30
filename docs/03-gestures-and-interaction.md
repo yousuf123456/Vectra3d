@@ -122,35 +122,34 @@ Built in G5.4, on top of what G5.3 built for creating.
 
 ---
 
-## 5. Steering: the joystick
+## 5. Steering: grab and drag
 
 ### In plain words
-Pinch with one hand and hold. The spot where you pinched becomes the center of an invisible joystick, drawn as a yellow ring on the camera picture. Move your hand out of the ring and the arrow turns, like spinning a globe by the side nearest you: nudge right and the near side of the arrow moves right; nudge up and it tilts up. The farther you move from the center, the faster it turns. Small shakes inside the ring are ignored. Open your other hand flat to cancel and put the arrow back.
+Pinch with one hand to grab the highlighted arrow, then move your hand: the arrow turns by as much as your hand moves, and stops when your hand stops. Move up and the head rises towards the top (+z); keep going and it goes over the top and down the far side, all the way round. Move right and the arrow spins round the vertical axis like a turntable, always the same way. A yellow dot on the camera picture marks where you grabbed, with a line to your hand. To turn further than your arm reaches, let go and grab again. Open your other hand flat to cancel and put the arrow back.
 
 ### Technically
-- **Rate control, not position control:** hand offset from the anchor sets angular *speed*, not the angle itself. This hides jitter and avoids tiring, large arm movements.
-- Offset d (in hs) → speed ω = ω_max × clamp((d − d₀) / (d_max − d₀), 0, 1), with dead zone d₀ = 0.3 hs, d_max = 1.5 hs, ω_max = 90°/s.
-- **Screen-relative:** the rotation axes come from the 3D camera's current orientation. Horizontal offset rotates around the camera's *up* direction; vertical offset rotates around its *right* direction. So "right" means the same on screen from any viewpoint, even when viewing the scene from behind.
-- **Globe-style:** the side of the arrow nearest you follows your hand. An arrow pointing at you swings right when you move right; one pointing into the screen swings left; one lying flat on the screen and pointing right tips *into* the screen. That last case is the point of steering: a created vector lies flat on the screen, and this is how it gets depth.
-- Each frame rotates the vector by angle Δ = ω·Δt around unit axis **u** using **Rodrigues' rotation formula**:
+- **Position control:** each frame, the hand's movement since the last frame, in hand-scale units (hs), turns the arrow by 90° per hs. A still hand is a still arrow.
+- **Up and down** turn the head round its **vertical circle** - the circle through the arrow and the z axis - with no stop. The app keeps the arrow as a *tilt* round that circle, from −180° to 180°, rather than as θ, because θ stops at 0° and 180° and a tilt does not: past a pole the tilt goes negative, which is θ = |tilt| on the far side, φ + 180°.
+- **Left and right** change φ, always the same way: right raises φ, anticlockwise seen from above, so the side of the turntable nearest a student looking down at the floor follows the hand. It does not depend on where the arrow points or on the view.
+- **Grabbed exactly on the z axis**, φ means nothing, so there is no vertical circle yet. The first movement tips the head off the axis the way the hand moves on screen, by Rodrigues' rotation formula about the axis square to the pole and that direction:
   **v**′ = **v** cos Δ + (**u** × **v**) sin Δ + **u**(**u** · **v**)(1 − cos Δ)
-- Rotations preserve length, so magnitude never changes while steering.
+  The part of the movement pointing further into the axis is dropped.
+- Magnitude never changes while steering.
 
 ### How it's implemented
-Built in G5.5.
+Built in G5.5 as a joystick; rebuilt as grab and drag on 2026-09-29/30.
 
-- **The maths** is in `gestures/hand_to_vector.py`. `deflection` measures the hand's offset from the anchor in the hand scale *at the anchor*, so the joystick keeps one size for the whole gesture; picture y is flipped so up is positive. `steer_speed` is the formula above. `steer_components` turns the vector about `across * up - upward * right` - one axis for a diagonal push, not two turns one after the other - by Rodrigues' formula, then scales the result back to the length the vector had when steering began. Rotations keep length in exact arithmetic but not in floating point; rescaling to the stored length means thousands of frames cannot make the arrow creep longer or shorter.
-- **Timed by the camera frames.** Each turn is the speed times the time since the last steering frame, from the frames' own timestamps. So the arrow turns at the same rate whatever the frame rate: when the redraw slows the updates down, each step is just bigger.
-- **It acts on the active vector,** through `ui/gesture_controller.py` and the same gesture session as creating and resizing: one undo step per steer, refused with a reason for a locked vector, no vector, or the zero vector (which has no direction to turn). A hand held inside the dead zone changes nothing at all - not even a redraw.
-- **Cancelling** is the one hand-driven cancel in the app. An open palm from the *free* hand calls `actions.cancel_gesture`, which puts the whole scene back as it was when steering began and records nothing. Only the free hand counts: the steering hand itself reads as an open palm the moment it lets go.
-- **The joystick in the camera picture** is drawn by `ui/camera_preview.py` over the hand: the anchor dot, the dead-zone ring (0.3 hs at the anchor's hand scale) and a line to the current pinch point, in yellow so it is not mistaken for the hand's own lines.
-- **Speed.** About 65 ms per update with ten vectors and a result showing, so about 15 updates a second; the camera itself kept 21 frames a second while steering, against 32 when idle, and frames never backed up. With the vector's components and shadows on it is about 130 ms, which belongs with G5.8.
+- **The maths** is in `gestures/hand_to_vector.py`. `hand_movement` measures how far the pinch point moved between two frames, in the newer frame's hand scale, with picture y flipped so up is positive. `Meridian` holds the arrow as a tilt round its vertical circle and the circle's φ; its `heading` gives θ and φ back. `drag_meridian` applies one frame's movement. `leave_pole` handles an arrow grabbed on the z axis. `heading_components` turns θ and φ into x, y, z, setting exactly to zero any component an axis-aligned angle makes zero - `cos 90°` is 6e-17 in floating point, not 0.
+- **It acts on the active vector,** through `ui/gesture_controller.py` and the same gesture session as creating and resizing: one undo step per grab, refused with a reason for a locked vector, no vector, or the zero vector. The first update is measured from where the pinch began, so movement during the 0.5 s two-hand window counts. A still hand changes nothing - not even a redraw.
+- **Cancelling** is the one hand-driven cancel in the app. An open palm from the *free* hand calls `actions.cancel_gesture`, which puts the scene back as it was when the grab began and records nothing. Only the free hand counts: the steering hand itself reads as an open palm the moment it lets go.
+- **The grab mark** in the camera picture is drawn by `ui/camera_preview.py`: a dot at the grab point and a line to the current pinch point, in yellow (`theme.GESTURE_MARK`) so it is not mistaken for the hand's own lines.
+- **Why it changed.** The joystick turned the arrow at a speed set by how far the hand was held from the anchor. With snapping that held on until 8°, it stuck at axes and could not turn smoothly through a full turn; the user found it janky. Then, with real hands: θ stopping at 0° made a dragged arrow stop at the top until the hand came back down, so the vertical circle replaced it; and choosing the sideways direction from where the arrow pointed made the same hand movement turn it different ways, so it was fixed.
 
 ### Likely questions
-- **Why a joystick instead of pointing where I want?** Pointing needs accurate depth, which one webcam can't give. The joystick only needs left/right/up/down.
-- **Why does it rotate relative to the screen?** If rotation followed fixed world axes, moving your hand right could move the arrow left on screen when the view is rotated, which feels broken.
-- **Why does the arrow sometimes swing the opposite way to my hand?** It turns like a globe you spin by its near side. If the arrow points into the screen, its head is on the far side, which moves the other way. Moving right always turns it the same way - it is only the head's position that decides which way the head itself goes.
-- **Why does moving my hand right sometimes push the arrow into the screen?** That is how depth is added. An arrow lying flat on the screen can only leave it by tipping into or out of it.
+- **Why not point where I want the arrow to go?** Pointing needs accurate depth, which one webcam can't give. Grab and drag only needs left/right/up/down.
+- **Why does the arrow sometimes move left on screen when I move right?** Right always spins it the same way round, like a turntable. A turntable's near side moves right when its far side moves left, so an arrow pointing away from you goes left.
+- **How do I give a flat arrow depth?** Move up or down: that tilts it towards +z or −z. Moving sideways spins it round without leaving the floor.
+- **Why does the arrow keep going over the top instead of stopping at +z?** So a steady hand movement is a steady turn, with no point where the hand has to reverse. Move back and it retraces the way it came.
 
 ---
 
@@ -176,28 +175,27 @@ Built in G5.5, in `AngleArcs` in `render/overlays.py`.
 ## 6. Snapping
 
 ### In plain words
-While steering, the arrow gently "clicks" onto an axis or a flat plane when it gets close, making it easy to point exactly along x or lie exactly flat.
+When you let go of a steered arrow close to an axis or a flat plane, it clicks exactly onto it. While you are still holding it, the camera strip tells you what it would click onto, so you know before you let go.
 
 ### Technically
-- Angle to an axis **a**: arccos(|**v** · **a**| / |**v**|). Angle to a plane with normal **n**: arcsin(|**v** · **n**| / |**v**|).
-- Snaps in below 5°, releases above 8°: hysteresis again, so it doesn't flicker at the boundary.
-- Axis snaps take priority over plane snaps. Snapping can be turned off in settings.
-- **Snap lock:** while snapped, steering turns the arrow *within* the plane it lies in (on an axis, within one of the two planes that contain it) instead of about the screen's axes. Added at G5.6 after real testing; see below.
+- Snapping works on the arrow's two angles, each on its own: θ snaps to 0°, 90° or 180°, and φ to 0°, 90°, 180° or 270°, when within 5° of one of them **at the moment of release**. Nothing snaps while the hand is moving the arrow.
+- θ at 0° or 180° is the z axis; θ at 90° is the XY plane; φ at 0° or 180° is the XZ plane, at 90° or 270° the YZ plane; θ and φ both snapped is the x or y axis. On the z axis φ means nothing and does not snap.
+- The snap values are 90° apart, so an angle can be within reach of at most one.
+- Snapping can be turned off in settings.
 
 ### How it's implemented
-Built in G5.6.
+Built in G5.6 as snapping while steering; rebuilt as snapping on release on 2026-09-29.
 
-- **The rules** are pure functions in `gestures/hand_to_vector.py`. A `SnapTarget` is an axis (with a sign, so +x and -x are different targets) or a plane (named by its normal). `angle_from` measures the two angles above; `snap_target` decides each frame: an axis within 5° always wins, even over a plane the arrow is held in; otherwise the current target holds until 8°; otherwise the nearest plane within 5°; otherwise nothing. Only one axis can be within 5° of any direction, and it is the one along the largest component; the nearest plane is square to the smallest. `snapped_components` puts the arrow exactly on the target at its full length - on an axis the other two components are exactly zero, in a plane the part sticking out is dropped and the rest scaled back up.
-- **Two directions, not one.** The joystick turns a hidden *steered* direction, kept in `ui/gesture_controller.py`, and the store is given that direction snapped. Turning the snapped arrow itself would not work: each frame it would move a couple of degrees off the axis, snap straight back, and never get 8° away. When a snap takes hold, the steered direction is reset onto it once, so drift absorbed on the way in does not carry into the next move - but only on arriving; reset every frame, the arrow could never leave.
-- **The snap lock**, `turn_axes`. The default view looks down at the floor from above, so the screen's up is tilted from z, and a purely sideways push turned the arrow about that tilted axis and dropped it out of the XY plane after about 24° - found by the user with real hands. While snapped, each plane the arrow lies in replaces the screen axis nearest to its normal: for the floor seen from above, sideways now spins the arrow round inside it, while up/down still tilts it out, which is how it leaves. For the YZ plane seen edge-on from the front it is the other way round. On an axis, which lies in two planes, sideways takes the plane whose normal is closer to the screen's up and up/down takes the other. The normals are signed to point the way the screen axis they replace does, so the globe-style sense of steering is unchanged.
-- **Where it starts.** An arrow that already lies exactly on an axis or plane when the pinch begins counts as snapped from the start (`exact_target`): it needs the full 8° to leave, and does not flash, since nothing arrived.
-- **The cue.** When a snap moves the arrow onto something new, its halo flashes brighter for 0.3 s (`SNAP_FLASH_OPACITY`, `SNAP_FLASH_MS` in `render/vector_actor.py`, timed by one `QTimer` in the window so a second snap restarts it). The halo rather than the axis, because a plane has no single line to flash. Leaving an axis along one of its planes is not a new arrival and does not flash. While snapped, the camera strip says "Steering, snapped to +x axis" or "... XY plane"; it keeps the word "Steering", whose place it takes.
-- Snapping can be switched off from the Gesture settings box (section 6a). Switched off in the middle of a snap, the arrow goes to where the hand has steered it on the next frame.
+- **The rules** are pure functions in `gestures/hand_to_vector.py`. `snap_near` says what a release would land on: a `Snap` with a θ, a φ, or both. Its `label` names it for the camera strip, such as "+x axis" or "XY plane". `snapped` puts the snapped angles in place of the real ones.
+- **On release,** `_landing` in `ui/gesture_controller.py` works out where the arrow lands, if anywhere, and `_commit` edits it there *before* recording the gesture, so the snap is part of the same undo step. A release that would not move the arrow - out of reach, or already exactly on the axis - snaps nothing. A cancelled steer never snaps.
+- **The hint.** While within reach, the camera strip says "Steering: release to snap to -y axis"; it keeps the word "Steering", whose place it takes.
+- **The cue.** A release that moves the arrow onto an axis or plane flashes its halo brighter for 0.3 s (`SNAP_FLASH_OPACITY`, `SNAP_FLASH_MS` in `render/vector_actor.py`). The release ends the gesture, so the window's full redraw has already drawn the arrow where it landed; `_flash_snapped` in `ui/main_window.py` then redraws only its halo, brighter, and one `QTimer` puts it back.
+- **Why it changed.** Snapping while steering held a snapped arrow still until the hand had pushed 8° away, then let it jump. With an arrow that follows the hand, a snap mid-drag would stop it while the hand kept moving. Snapping on release keeps the drag smooth and still lands the arrow exactly.
+- Snapping can be switched off from the Gesture settings box (section 6a). It is read at the moment of release, so switching it off mid-drag takes effect.
 
 ### Likely questions
-- **Can I avoid snapping for an angle like 3° off the axis?** Turn snapping off in settings, or type the exact value in the panel.
-- **Why does the arrow sometimes jump a few degrees when it lets go of an axis?** While held, your hand keeps turning the hidden direction; at 8° the arrow lets go and jumps to where your hand has been steering it. That gap is what stops it flickering on and off at the edge.
-- **Why does moving my hand sideways keep the arrow on the floor, but up and down lifts it off?** That is the snap lock. Once the arrow is in a plane, one hand direction slides it round inside the plane and the other tilts it out, so you can sweep round the floor without it drifting off. A hand that also drifts up a little will still, slowly, tilt it out.
+- **Can I leave an arrow 3° off an axis?** Turn snapping off in settings, or type the exact value in the panel.
+- **The strip says "release to snap to XY plane" the whole time I move sideways - why?** Sideways movement never changes θ, so an arrow lying on the floor stays exactly on it; letting go keeps it there.
 
 ---
 
@@ -243,7 +241,7 @@ Built in G5.8. The timing - 0.5 s at 0.6 confidence, firing once, re-arming on a
 - **Locked vectors.** "A locked vector ignores all gestures" is read as the gestures that would change it - resizing and steering, both refused since G5.4 and G5.5 - and being skipped when cycling. `Thumb_Up` still works on a locked vector, because it is how one is unlocked, and `Victory` still shows its components, because that changes nothing about it and the panel allows the same.
 - **Undo.** Locking by hand is one undo step, like the panel's Lock button. Moving the highlight and showing components are not, the same as clicking a card or a toggle.
 - **With no vectors** any of the three says "Create a vector first." and does nothing.
-- **The progress ring** is drawn by `ui/camera_preview.py` around the hand making the shape: the machine's `HoldStatus` says which hand, `hold_ring` centres the ring on the middle of that hand's 21 points and sizes it from its hand scale (1.4 hs), and it fills clockwise from twelve o'clock over a faint full circle. Yellow, like the steering joystick.
+- **The progress ring** is drawn by `ui/camera_preview.py` around the hand making the shape: the machine's `HoldStatus` says which hand, `hold_ring` centres the ring on the middle of that hand's 21 points and sizes it from its hand scale (1.4 hs), and it fills clockwise from twelve o'clock over a faint full circle. Yellow, like the steering grab mark.
 - **Components follow the hand.** While a hand moves a vector showing its components or shadows, both are redrawn each frame without rendering themselves, and the window renders once. Measured on screen with ten vectors and both on, while steering: 85 ms per update before, 77 ms after. The rest is rebuilding the geometry each frame, spread evenly across components, shadows, angle arcs and the arrow.
 
 ### Likely questions

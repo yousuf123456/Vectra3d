@@ -69,7 +69,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 **Group:** G4 · **Depends on:** F-01
 - [x] Shows the mirrored webcam feed with detected hand landmarks drawn on it.
 - [x] Shows the currently recognized gesture by name, or "No hand detected."
-- [x] Shows gesture feedback defined in `interaction-spec.md` (e.g. joystick center and dead zone while steering). **Carried into G5** at the user's decision (G4.1): everything it names comes from the gesture state machine. Ticked at G5.5, when the joystick arrived.
+- [x] Shows gesture feedback defined in `interaction-spec.md` (e.g. the grab point while steering; the joystick centre and dead zone until grab and drag replaced them on 2026-09-29). **Carried into G5** at the user's decision (G4.1): everything it names comes from the gesture state machine. Ticked at G5.5, when the joystick arrived.
 - [x] If no webcam is found, the app still runs fully from the action panel and shows a clear message instead of crashing. (Proven with a fake camera through the real thread and preview; not yet seen with a real camera switched off.)
 - [x] Hand tracking does not freeze or noticeably slow the 3D view or the panels. **Passed at the G5 review (2026-09-26) on the user's verdict, read as the cost of tracking itself.** Re-measured on screen with ten vectors and the view spinning: with the camera watching hands the drop is within this laptop's own run-to-run noise (7.8% in one run, the view faster with the camera on in another), and nothing froze (camera 13-22 frames/s throughout). Steering is slower - 59 to 22 fps of spin frames while steering almost continuously - which is the steered vector's own redraw, not tracking; kept in Known issues. See `progress-tracker.md`.
 
@@ -97,9 +97,9 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-06 Steer direction by hand
 **Group:** G5 · **Depends on:** F-02, F-05a
-- [x] The steering gesture changes the active vector's direction while keeping its magnitude unchanged.
+- [x] The steering gesture changes the active vector's direction while keeping its magnitude unchanged. (Unticked 2026-09-27: steering was changed to turn by θ and φ, and on 2026-09-29 to grab and drag, `interaction-spec.md` section 6.4. Re-checked with real hands and ticked again 2026-09-30: "working fine".)
 - [x] Releasing the gesture freezes the vector exactly where it is.
-- [x] Snapping to axes and planes works as defined in `interaction-spec.md`. (Section 6.5 gained the snap lock at G5.6, at the user's decision.)
+- [x] Snapping to axes and planes works as defined in `interaction-spec.md`. (Section 6.5 rewritten 2026-09-27 to snap θ and φ, and on 2026-09-29 to snap on release; the G5.6 snap lock is gone. Re-checked with real hands and ticked again 2026-09-30.)
 
 ### F-07 Resize by hand
 **Group:** G5 · **Depends on:** F-02, F-05a

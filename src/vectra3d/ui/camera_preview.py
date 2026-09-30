@@ -6,7 +6,7 @@ pinching - or a plain message when there is no camera. It only displays what the
 changes nothing.
 
 The hands are drawn with `QPainter` over the picture, because MediaPipe's own
-drawing helpers went with `mp.solutions`. G5 draws its steering joystick and
+drawing helpers went with `mp.solutions`. G5 draws its steering grab mark and
 hold progress ring the same way, on top of this.
 
 Only the latest picture is kept. If several arrive before the window next
@@ -21,13 +21,12 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from vectra3d import config
 from vectra3d.gestures.hand_frame import NO_GESTURE, HandFrame
 from vectra3d.gestures.hand_metrics import TrackedHand
 from vectra3d.gestures.intents import Cancel, Commit, HoldTriggered
 from vectra3d.gestures.state_machine import GestureState, HoldStatus, MachineOutput
 from vectra3d.ui import theme
-from vectra3d.ui.gesture_controller import Joystick
+from vectra3d.ui.gesture_controller import Grab
 
 # 4:3, the shape of the picture a laptop webcam delivers (640x480), so the
 # picture fills the area without bars.
@@ -81,13 +80,13 @@ HAND_CONNECTIONS = (
 
 LINE_WIDTH = 1.5
 POINT_RADIUS = 2.5
-# The steering joystick drawn over the picture (`interaction-spec.md` 10):
-# the anchor, the dead-zone ring round it, and a line to the pinch point.
-JOYSTICK_WIDTH = 2.0
-ANCHOR_RADIUS = 3.5
+# The steering grab mark drawn over the picture (`interaction-spec.md` 10):
+# the grab point, and a line from it to the pinch point.
+GRAB_WIDTH = 2.0
+GRAB_RADIUS = 3.5
 # The hold progress ring (`interaction-spec.md` section 7): round the hand
 # making the shape, filling clockwise from the top as the hold goes on. In
-# the joystick's colour, so all gesture feedback reads as one family. Its
+# the grab mark's colour, so all gesture feedback reads as one family. Its
 # radius is in hand-scale units, so it fits the hand at any distance.
 HOLD_RING_HS = 1.4
 HOLD_RING_WIDTH = 3.0
@@ -178,7 +177,7 @@ class _Picture(QWidget):
         self.setFixedSize(PICTURE_WIDTH, PICTURE_HEIGHT)
         self._pixels: np.ndarray | None = None
         self._frame: HandFrame | None = None
-        self._joystick: Joystick | None = None
+        self._grab: Grab | None = None
         self._ring: tuple[tuple[float, float], float] | None = None
         self._progress = 0.0
 
@@ -186,13 +185,13 @@ class _Picture(QWidget):
         self,
         pixels: np.ndarray | None,
         frame: HandFrame | None,
-        joystick: Joystick | None = None,
+        grab: Grab | None = None,
         ring: tuple[tuple[float, float], float] | None = None,
         progress: float = 0.0,
     ) -> None:
         self._pixels = pixels
         self._frame = frame
-        self._joystick = joystick
+        self._grab = grab
         self._ring = ring
         self._progress = progress
         self.update()
@@ -221,8 +220,8 @@ class _Picture(QWidget):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             for hand in self._frame.hands:
                 _draw_hand(painter, hand.landmarks, target)
-        if self._joystick is not None:
-            _draw_joystick(painter, self._joystick, target)
+        if self._grab is not None:
+            _draw_grab(painter, self._grab, target)
         if self._ring is not None:
             _draw_hold_ring(painter, self._ring, self._progress, target)
 
@@ -257,27 +256,23 @@ def _draw_hand(
         painter.drawEllipse(point, POINT_RADIUS, POINT_RADIUS)
 
 
-def _draw_joystick(painter: QPainter, joystick: Joystick, target: QRectF) -> None:
-    """The anchor, the dead-zone ring and the line to the pinch point.
+def _draw_grab(painter: QPainter, grab: Grab, target: QRectF) -> None:
+    """The grab point, and a line from it to the pinch point.
 
-    The joystick's points are in picture heights, so on the drawn picture a
-    point is `x * height` across and `y * height` down, and the ring's radius
-    is the dead zone in hs times the hand scale times the height.
+    The points are in picture heights, so on the drawn picture a point is
+    `x * height` across and `y * height` down.
     """
     height = target.height()
 
     def at(point: tuple[float, float]) -> QPointF:
         return QPointF(target.x() + point[0] * height, target.y() + point[1] * height)
 
-    anchor = at(joystick.anchor)
-    ring = config.STEER_DEAD_ZONE_HS * joystick.scale * height
-    color = QColor(theme.JOYSTICK)
-    painter.setPen(QPen(color, JOYSTICK_WIDTH))
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawEllipse(anchor, ring, ring)
-    painter.drawLine(anchor, at(joystick.point))
+    anchor = at(grab.anchor)
+    color = QColor(theme.GESTURE_MARK)
+    painter.setPen(QPen(color, GRAB_WIDTH))
+    painter.drawLine(anchor, at(grab.point))
     painter.setBrush(color)
-    painter.drawEllipse(anchor, ANCHOR_RADIUS, ANCHOR_RADIUS)
+    painter.drawEllipse(anchor, GRAB_RADIUS, GRAB_RADIUS)
 
 
 def _draw_hold_ring(
@@ -296,7 +291,7 @@ def _draw_hold_ring(
     centre = QPointF(target.x() + x * target.width(), target.y() + y * target.height())
     size = radius * target.height()
     box = QRectF(centre.x() - size, centre.y() - size, 2 * size, 2 * size)
-    color = QColor(theme.JOYSTICK)
+    color = QColor(theme.GESTURE_MARK)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     track = QColor(color)
     track.setAlpha(HOLD_TRACK_ALPHA)
@@ -339,7 +334,7 @@ class CameraPreview(QWidget):
         hands: tuple[TrackedHand, ...],
         output: MachineOutput,
         message: str | None = None,
-        joystick: Joystick | None = None,
+        grab: Grab | None = None,
     ) -> None:
         """Show one picture, the raw hands drawn on it, and what they are doing.
 
@@ -348,12 +343,12 @@ class CameraPreview(QWidget):
         not the smoothed ones, so the picture shows exactly what the tracker
         saw. `message`, when given, takes the gesture line's place: something
         a gesture could not do, such as creating an eleventh vector.
-        `joystick`, while steering, is drawn over the picture, and so is the
+        `grab`, while steering, is drawn over the picture, and so is the
         progress ring round the hand making a hold gesture.
         """
         progress = output.hold.progress if output.hold is not None else 0.0
         self._picture.show_frame(
-            pixels, frame, joystick, hold_ring(frame, hands, output.hold), progress
+            pixels, frame, grab, hold_ring(frame, hands, output.hold), progress
         )
         self._last_outcome = outcome_text(output) or self._last_outcome
         text = status_text(hands)

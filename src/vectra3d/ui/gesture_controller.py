@@ -7,11 +7,12 @@ which vector it is moving, and where the hands began - and nothing else.
 
 No Qt here, so it is tested by feeding it intents. The window hands it the
 camera's direction and up each frame, since which way is "right" depends on
-how the student has turned the view (`interaction-spec.md` section 6.1), and
-the frame's timestamp, since steering turns the vector at a rate per second.
+how the student has turned the view (`interaction-spec.md` section 6.1) -
+for creating, and for which way a steer grabbed on the z axis leaves it.
 
-Built so far: creating (G5.3), resizing (G5.4), steering (G5.5), snapping
-while steering (G5.6), gesture settings (G5.7) and the hold gestures (G5.8).
+Built so far: creating (G5.3), resizing (G5.4), steering by grab and drag
+with snapping on release (G5.5 and G5.6, redone 2026-09-29), gesture
+settings (G5.7) and the hold gestures (G5.8).
 """
 
 from __future__ import annotations
@@ -24,18 +25,22 @@ from vectra3d.core.formatting import format_number
 from vectra3d.core.vector_math import magnitude
 from vectra3d.gestures.hand_metrics import Point as PicturePoint
 from vectra3d.gestures.hand_to_vector import (
-    SnapTarget,
+    Heading,
+    Meridian,
     Triple,
-    angle_from,
+    at_pole,
     create_components,
-    deflection,
-    exact_target,
+    drag_meridian,
+    hand_movement,
+    heading_components,
+    heading_of,
     is_long_enough,
+    leave_pole,
+    meridian_of,
     resize_components,
     screen_axes,
-    snap_target,
-    snapped_components,
-    steer_components,
+    snap_near,
+    snapped,
 )
 from vectra3d.gestures.intents import (
     BeginSteer,
@@ -61,9 +66,10 @@ LOCKED_TEXT = "Vector {name} is locked."
 NO_DIRECTION_TEXT = "Vector {name} has no direction to {verb}."
 # Why a hold gesture did nothing (section 7).
 ALL_LOCKED_TEXT = "All vectors are locked."
-# What a steered vector is snapped to (section 6.5), shown while it holds.
-# It keeps the word "Steering", which it takes the place of in the strip.
-SNAPPED_TEXT = "Steering, snapped to {target}"
+# What letting go would snap the steered vector to (section 6.5), shown
+# while it is within reach. It keeps the word "Steering", which it takes
+# the place of in the strip.
+RELEASE_TEXT = "Steering: release to snap to {target}"
 
 
 class _Kind(Enum):
@@ -73,16 +79,15 @@ class _Kind(Enum):
 
 
 @dataclass(frozen=True)
-class Joystick:
+class Grab:
     """What the camera preview draws while steering (section 10).
 
-    Points are in picture-height units; `scale` is the hand scale at the
-    anchor, which sets the size of the dead-zone ring.
+    `anchor` is where the pinch began and `point` where it is now, both in
+    picture-height units.
     """
 
     anchor: PicturePoint
     point: PicturePoint
-    scale: float
 
 
 class GestureController:
@@ -97,14 +102,14 @@ class GestureController:
         # the vector as it was when they began.
         self._begin: BeginTwoHand | None = None
         self._original: Vector | None = None
-        # Steer: the joystick, and when it was last applied.
-        self._joystick: Joystick | None = None
-        self._last_ms: int | None = None
-        # Steer: the direction the joystick has turned the vector to, before
-        # snapping, and what it is snapped to (6.5).
-        self._steered: Triple | None = None
-        self._snap: SnapTarget | None = None
-        self._snap_engaged = False
+        # Steer: where the pinch began and is now, the angles the hand has
+        # dragged the vector to, and where that is on its vertical circle
+        # (None while it is still on the z axis it was grabbed on) (6.4).
+        self._grab: Grab | None = None
+        self._heading: Heading | None = None
+        self._meridian: Meridian | None = None
+        # The vector a release has just snapped, until the window asks.
+        self._snapped_name: str | None = None
         # Why the last gesture did nothing, kept until the next one begins.
         self._notice: str | None = None
 
@@ -113,22 +118,25 @@ class GestureController:
         """What the camera preview should say instead of the gesture's name.
 
         Why the last gesture did nothing, if it did nothing; otherwise, while
-        steering, what the vector is snapped to.
+        steering, what letting go would snap the vector to.
         """
         if self._notice is not None:
             return self._notice
-        if self._snap is not None:
-            return SNAPPED_TEXT.format(target=self._snap.label)
+        if self._heading is not None and self._store.settings.snapping:
+            snap = snap_near(self._heading)
+            if snap is not None:
+                return RELEASE_TEXT.format(target=snap.label)
         return None
 
-    def take_snap_engaged(self) -> bool:
-        """Whether a snap engaged since this was last asked, for the flash.
+    def take_snapped(self) -> str | None:
+        """The vector a release has snapped since this was last asked, for
+        the flash, or None.
 
-        A vector already on an axis or plane when steering begins does not
-        count: nothing arrived there.
+        A release that snaps nothing - already exactly on the axis or plane,
+        or out of reach of one - does not count.
         """
-        engaged, self._snap_engaged = self._snap_engaged, False
-        return engaged
+        name, self._snapped_name = self._snapped_name, None
+        return name
 
     @property
     def live_name(self) -> str | None:
@@ -136,9 +144,9 @@ class GestureController:
         return self._moving
 
     @property
-    def joystick(self) -> Joystick | None:
-        """The joystick while steering, or None."""
-        return self._joystick
+    def grab(self) -> Grab | None:
+        """Where the steering pinch began and is now, or None."""
+        return self._grab
 
     def labels(self) -> dict[str, str]:
         """What to write at a vector's head instead of its letter.
@@ -156,11 +164,7 @@ class GestureController:
         return {vector.name: f"|{vector.name}| = {size}"}
 
     def apply(
-        self,
-        intents: Iterable[Intent],
-        camera_direction: Triple,
-        camera_up: Triple,
-        now_ms: int,
+        self, intents: Iterable[Intent], camera_direction: Triple, camera_up: Triple
     ) -> None:
         for intent in intents:
             if isinstance(intent, BeginTwoHand):
@@ -172,18 +176,11 @@ class GestureController:
             elif isinstance(intent, BeginSteer):
                 self._notice = None
                 if self._begin_on_active(_Kind.STEER, "steer"):
-                    self._joystick = Joystick(intent.anchor, intent.anchor, intent.scale)
-                    self._last_ms = now_ms
-                    self._steered = self._original.components
-                    self._snap = (
-                        exact_target(self._steered)
-                        if self._store.settings.snapping
-                        else None
-                    )
+                    self._begin_steer(intent.anchor)
             elif isinstance(intent, UpdateTwoHand):
                 self._update_two_hand(intent, camera_direction, camera_up)
             elif isinstance(intent, UpdateSteer):
-                self._update_steer(intent, camera_direction, camera_up, now_ms)
+                self._update_steer(intent, camera_direction, camera_up)
             elif isinstance(intent, Commit):
                 self._commit()
             elif isinstance(intent, Cancel):
@@ -282,85 +279,75 @@ class GestureController:
         if components is not None:
             actions.edit_vector(self._store, self._moving, components)
 
-    def _update_steer(
-        self,
-        intent: UpdateSteer,
-        camera_direction: Triple,
-        camera_up: Triple,
-        now_ms: int,
-    ) -> None:
-        """Turn the vector for the time since the last steering frame (6.4).
 
-        Timed from the frames' own timestamps, so the vector turns at the
-        same rate whatever the frame rate. Nothing is changed while the
-        joystick sits in its dead zone, or while a snap holds the vector
-        where it is, so a still hand costs no redraw.
+    def _begin_steer(self, anchor: PicturePoint) -> None:
+        """Take the vector's angles (6.4).
 
-        The joystick turns the steered direction; the store is given that
-        direction snapped (6.5). See `hand_to_vector` for why the two differ.
+        Movement is counted from where the pinch began, so any made during
+        the two-hand window turns the vector on the first update. A vector
+        grabbed exactly on the z axis has no vertical circle yet: the first
+        movement picks one (`leave_pole`).
         """
-        if self._kind != _Kind.STEER or self._joystick is None:
-            return
-        self._joystick = Joystick(
-            self._joystick.anchor, intent.pinch_point, self._joystick.scale
-        )
-        seconds = (now_ms - self._last_ms) / 1000.0
-        self._last_ms = now_ms
+        self._grab = Grab(anchor, anchor)
+        self._heading = heading_of(self._original.components)
+        self._meridian = None if at_pole(self._heading) else meridian_of(self._heading)
 
-        push = deflection(self._joystick.anchor, intent.pinch_point, self._joystick.scale)
+    def _update_steer(
+        self, intent: UpdateSteer, camera_direction: Triple, camera_up: Triple
+    ) -> None:
+        """Turn the vector by as much as the hand moved since the last frame.
+
+        A still hand changes nothing, so it costs no redraw. Up and down turn
+        it round its vertical circle with no stop, over the top or under the
+        bottom, and sideways always turns it the same way round z (6.4).
+        Nothing snaps here: that waits for the release (6.5).
+        """
+        if self._kind != _Kind.STEER or self._grab is None:
+            return
+        movement = hand_movement(self._grab.point, intent.pinch_point, intent.scale)
+        self._grab = Grab(self._grab.anchor, intent.pinch_point)
         axes = screen_axes(camera_direction, camera_up)
         vector = self._store.get(self._moving)
-        if push is None or axes is None or vector is None:
+        if movement is None or axes is None or vector is None:
             return
-        length = magnitude(self._original.components)
-        # Snapping can be switched off mid-steer (F-20): the vector then goes
-        # to wherever the hand has steered it, on this frame.
-        if not self._store.settings.snapping:
-            self._snap = None
-        # Snapped, the joystick turns it within the plane or planes it lies in.
-        locks = self._snap.locks if self._snap is not None else ()
-        self._steered = steer_components(
-            self._steered, length, push, seconds, axes, locks
-        )
-
-        target = (
-            snap_target(self._steered, self._snap)
-            if self._store.settings.snapping
-            else None
-        )
-        shown = snapped_components(self._steered, length, target)
-        if target is not None and target != self._snap:
-            # A snap engages - and flashes - when the vector arrives on
-            # something new. Leaving an axis along one of its planes is not
-            # arriving anywhere, even if the plane takes up a little drift.
-            leaving = (
-                self._snap is not None
-                and not self._snap.is_plane
-                and target.is_plane
-                and target.index != self._snap.index
-            )
-            if not leaving and angle_from(self._steered, target) > 0.0:
-                self._snap_engaged = True
-            # From here the steering starts again from where the vector is
-            # shown, so a drift the snap absorbed on the way in does not
-            # carry into the next move. Only on arriving: reset every frame,
-            # the steering could never get far enough away to let go.
-            self._steered = shown
-        self._snap = target
+        if self._meridian is None:
+            self._heading = leave_pole(self._heading, movement, axes)
+            if at_pole(self._heading):
+                return
+            self._meridian = meridian_of(self._heading)
+        else:
+            self._meridian = drag_meridian(self._meridian, movement)
+            self._heading = self._meridian.heading
+        shown = heading_components(self._heading, magnitude(self._original.components))
         if shown != vector.components:
             actions.edit_vector(self._store, self._moving, shown)
+
+    def _landing(self) -> tuple[float, float, float] | None:
+        """Where releasing the steer snaps the vector to, or None (6.5).
+
+        None with snapping off, out of reach of every axis and plane, or
+        already exactly on the one in reach, where snapping moves nothing.
+        """
+        if self._kind != _Kind.STEER or not self._store.settings.snapping:
+            return None
+        landed = snapped(self._heading, snap_near(self._heading))
+        if landed == self._heading:
+            return None
+        return heading_components(landed, magnitude(self._original.components))
 
     def _commit(self) -> None:
         """Keep what the gesture did, as one undo step.
 
         A vector being created is dropped instead if it is too short to mean
         anything (6.2 step 4). A resized or steered one never is: neither can
-        leave it shorter than the minimum magnitude.
+        leave it shorter than the minimum magnitude. A steered one is snapped
+        first, if it is within reach of an axis or plane, so the snap is part
+        of the same undo step (6.5).
 
         The gesture is forgotten *before* the store is told, so the redraw
         that follows shows the vector's letter rather than its magnitude.
         """
-        kind, name = self._kind, self._moving
+        kind, name, landing = self._kind, self._moving, self._landing()
         self._forget()
         if name is None:
             return
@@ -369,14 +356,17 @@ class GestureController:
             vector is None or not is_long_enough(vector.components)
         ):
             actions.cancel_gesture(self._store)
-        else:
-            actions.commit_gesture(self._store)
+            return
+        if landing is not None and vector is not None:
+            actions.edit_vector(self._store, name, landing)
+            self._snapped_name = name
+        actions.commit_gesture(self._store)
 
     def _cancel(self) -> None:
         """Put the vector back exactly as it was, recording nothing (section 5).
 
         Only steering can be cancelled; the state machine never cancels a
-        create or a resize.
+        create or a resize. A cancelled steer does not snap.
         """
         name = self._moving
         self._forget()
@@ -385,6 +375,4 @@ class GestureController:
 
     def _forget(self) -> None:
         self._kind = self._moving = self._begin = self._original = None
-        self._joystick = self._last_ms = None
-        self._steered = self._snap = None
-        self._snap_engaged = False
+        self._grab = self._heading = self._meridian = None

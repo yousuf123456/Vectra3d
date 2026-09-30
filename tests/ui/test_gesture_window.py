@@ -13,6 +13,7 @@ import math
 import numpy as np
 import pytest
 
+from vectra3d import config
 from vectra3d.gestures.hand_frame import NO_GESTURE, Hand, HandFrame
 from vectra3d.gestures.intents import (
     BeginSteer,
@@ -59,9 +60,9 @@ def window(app: QApplication):
     window.close()
 
 
-def apply(window: VectraMainWindow, *intents, now_ms: int = 0) -> None:
+def apply(window: VectraMainWindow, *intents) -> None:
     camera = window.plotter.camera
-    window._gesture_controller.apply(intents, camera.direction, camera.up, now_ms)
+    window._gesture_controller.apply(intents, camera.direction, camera.up)
 
 
 def pinching_hand_at(x: float) -> Hand:
@@ -230,7 +231,8 @@ def test_a_refused_resize_is_explained_in_the_camera_strip(window) -> None:
 # --- Steering (F-06) and the angle arcs ---
 
 STEER = BeginSteer(1, (0.5, 0.5), 0.25)
-FULL_RIGHT = UpdateSteer((0.875, 0.5), 0.25)
+# The hand dragged 45 degrees' worth to the right of the grab point.
+RIGHT_45 = UpdateSteer((0.5 + 45.0 / config.STEER_DEG_PER_HS * 0.25, 0.5), 0.25)
 
 
 def arcs_shown(window) -> bool:
@@ -253,8 +255,8 @@ def test_the_arcs_follow_the_vector_while_it_is_steered(app, window) -> None:
     original = window.angle_arcs.draw
     window.angle_arcs.draw = lambda vector: (drawn.append(vector), original(vector))
 
-    apply(window, STEER, now_ms=0)
-    apply(window, FULL_RIGHT, now_ms=500)
+    apply(window, STEER)
+    apply(window, RIGHT_45)
     app.processEvents()
 
     assert drawn[-1] == window._store.get("A")
@@ -275,10 +277,10 @@ def test_the_arcs_move_to_whichever_vector_is_active(app, window) -> None:
 
 def test_a_cancelled_steer_puts_the_vector_and_its_arcs_back(app, window) -> None:
     actions.create_vector(window._store, (0.0, -5.0, 3.0))
-    apply(window, STEER, now_ms=0)
-    apply(window, FULL_RIGHT, now_ms=500)
+    apply(window, STEER)
+    apply(window, RIGHT_45)
     app.processEvents()
-    apply(window, Cancel(), now_ms=533)
+    apply(window, Cancel())
     assert window._store.get("A").components == (0.0, -5.0, 3.0)
     assert arcs_shown(window)
 
@@ -305,12 +307,12 @@ def test_steering_rescales_the_scene_only_on_release(app, window) -> None:
     window.scene.set_view("Front")
     assert window.scene.extent == 20
 
-    apply(window, STEER, now_ms=0)
-    apply(window, FULL_RIGHT, now_ms=500)
+    apply(window, STEER)
+    apply(window, RIGHT_45)
     app.processEvents()
     assert window.scene.extent == 20
 
-    apply(window, Commit(), now_ms=533)
+    apply(window, Commit())
     assert window.scene.extent == 10
 
 
@@ -318,13 +320,16 @@ def test_steering_rescales_the_scene_only_on_release(app, window) -> None:
 #
 # The flash is started in the window's frame slot, so frames go through it
 # with the state machine's output stood in for: the intents are what matter.
+# A snap happens on release, so the flash is drawn after the full redraw the
+# release causes.
 
-FULL_LEFT = UpdateSteer((0.125, 0.5), 0.25)
+# 15.3 degrees' worth to the left of the grab point at (0.5, 0.5).
+LEFT_15 = UpdateSteer((0.5 - 15.3 / config.STEER_DEG_PER_HS * 0.25, 0.5), 0.25)
 
 
-def feed(window, intent, now_ms: int) -> None:
+def feed(window, intent, now_ms: int, state=GestureState.STEERING) -> None:
     window._gestures.update = lambda hands, timestamp_ms: MachineOutput(
-        GestureState.STEERING, (intent,), None
+        state, (intent,), None
     )
     window._on_hand_frame(PIXELS, HandFrame(hands=(), timestamp_ms=now_ms, aspect=ASPECT))
 
@@ -333,22 +338,23 @@ def halo_opacity(window) -> float:
     return window.plotter.actors["halo-A"].prop.opacity
 
 
-def test_a_snap_flashes_the_halo_and_names_the_axis(app, window) -> None:
-    # 20 degrees off -y, steered back 15.3 degrees in 170 ms: onto the axis.
+def test_a_snapping_release_flashes_the_halo_after_the_hint(app, window) -> None:
+    # 20 degrees off -y, dragged back 15.3: 4.7 off, within reach of the axis.
     t = math.radians(20.0)
     actions.create_vector(window._store, (5 * math.sin(t), -5 * math.cos(t), 0.0))
     window.scene.set_view("Front")
     feed(window, STEER, 0)
-    feed(window, FULL_LEFT, 100)
+    feed(window, LEFT_15, 33)
     app.processEvents()
+    assert window._store.get("A").components[0] != 0.0
     assert halo_opacity(window) == pytest.approx(HALO_OPACITY)
+    assert window.camera_preview.status.endswith("Steering: release to snap to -y axis")
 
-    feed(window, FULL_LEFT, 170)
+    feed(window, Commit(), 66, GestureState.IDLE)
     app.processEvents()
     assert window._store.get("A").components[0] == 0.0
     assert halo_opacity(window) == pytest.approx(SNAP_FLASH_OPACITY)
     assert window._snap_flash_timer.isActive()
-    assert window.camera_preview.status.endswith("Steering, snapped to -y axis")
 
     # The timer's end, without waiting 300 ms for it.
     window._snap_flash_timer.stop()
@@ -367,7 +373,7 @@ def test_a_steered_vectors_components_and_shadows_follow_it_in_one_render(
     actions.create_vector(store, (0.0, -5.0, 3.0))
     actions.toggle_components(store, "A")
     actions.toggle_projections(store, "A")
-    apply(window, STEER, now_ms=0)
+    apply(window, STEER)
     renders, drawn = [], []
     original_render = window.plotter.render
     window.plotter.render = lambda *a, **k: (renders.append(1), original_render(*a, **k))
@@ -377,7 +383,7 @@ def test_a_steered_vectors_components_and_shadows_follow_it_in_one_render(
         original_draw(vectors, shown, **k),
     )
 
-    apply(window, FULL_RIGHT, now_ms=500)
+    apply(window, RIGHT_45)
     app.processEvents()
 
     # Drawn for where the vector is now, not where it was, in one render.

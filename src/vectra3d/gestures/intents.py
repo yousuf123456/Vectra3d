@@ -7,8 +7,8 @@ actions the panel uses.
 
 Intents carry hand geometry, not vector maths. Points are in picture-height
 units (see `hand_metrics`), and `scale` is the hand scale to measure them
-against. Working out a magnitude, which hand is the head, or how far the
-joystick is pushed belongs to the steps that build each gesture (G5.3-G5.5).
+against. Working out a magnitude, which hand is the head, or how far a
+steer turns belongs to the steps that build each gesture (G5.3-G5.5).
 """
 
 from __future__ import annotations

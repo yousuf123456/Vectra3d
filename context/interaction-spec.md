@@ -95,7 +95,7 @@ Only one gesture is active at a time.
 | HOLDING | A hold gesture (section 7) is recognized while IDLE | It triggers, or the hand shape changes |
 
 **Priority rules**
-- Two-hand pinch beats one-hand pinch. If a second hand pinches within **0.5 s** (tunable; started at 0.3) of the first, it is a two-hand gesture; otherwise the first hand starts STEERING once the window has passed, and a later second pinch is ignored until STEERING ends. The steering anchor is still the pinch point at the moment the first pinch began.
+- Two-hand pinch beats one-hand pinch. If a second hand pinches within **0.5 s** (tunable; started at 0.3) of the first, it is a two-hand gesture; otherwise the first hand starts STEERING once the window has passed, and a later second pinch is ignored until STEERING ends. The steering grab point is still the pinch point at the moment the first pinch began.
 - A gesture starts only when a pinch **begins**. A pinch still held when a gesture ends, or a second pinch that was ignored, starts nothing until that hand lets go and pinches again.
 - Hold gestures are only recognized in IDLE. They are ignored during any pinch gesture, and a pinch beginning during HOLDING abandons the hold.
 
@@ -127,6 +127,8 @@ All hand directions are relative to the screen as the student currently sees it,
 
 These camera directions are read from the 3D view's camera at the moment they are needed.
 
+They are used to create a vector (6.2). Steering does not turn the vector about them: it changes the vector's own angles (6.4), and uses the screen's directions only for a vector grabbed on the z axis, to choose which way the head leaves it.
+
 ### 6.2 Create a vector
 1. Both hands pinch (within the two-hand window, section 5) with the pinch points closer than **1.0 hs** (tunable). This enters CREATING.
 2. As the hands pull apart, a new vector is drawn live:
@@ -143,26 +145,40 @@ These camera directions are read from the 3D view's camera at the moment they ar
 3. Magnitude never drops below **0.1** (tunable) while resizing.
 4. Releasing either pinch confirms. Scene rescaling then applies.
 
-### 6.4 Steer the active vector (joystick)
-1. One hand pinches, the other does not. The pinch point at that moment becomes the **anchor**.
-2. The offset from the anchor, in hs, is the joystick deflection.
-3. Inside the **dead zone** of **0.3 hs** (tunable), nothing moves.
-4. Beyond it, the vector rotates at a speed that grows with distance, up to a **maximum of 90° per second** (tunable) at **1.5 hs** (tunable) or more.
-5. Rotation is screen-relative:
-   - Horizontal deflection rotates the vector around the camera's **up** direction (the head swings left or right on screen).
-   - Vertical deflection rotates the vector around the camera's **right** direction (the head tilts up or down on screen).
-   - The sense is **globe-style**: the side of the vector nearest the viewer moves the way the hand moves. A vector lying flat on the screen therefore tips into or out of it, which is how steering adds depth (section 6.2). (Settled at G5.5, 2026-09-25.)
-   - The speed rises in a straight line from 0 at the dead zone's edge to the maximum at the full-speed deflection, and is timed from the frames' own timestamps.
-6. Magnitude never changes while steering.
-7. Releasing the pinch freezes the vector.
+### 6.4 Steer the active vector (grab and drag)
+1. One hand pinches, the other does not. This **grabs** the active vector. The pinch point at the moment the pinch began is the **grab point**.
+2. While the pinch is held, the vector turns **by as much as the hand moves**: each frame, the pinch point's movement since the previous frame, in hs (in that frame's hand scale), turns it by **90° per hs** (tunable). Movement from the moment the pinch began counts, including the two-hand window (section 5). A still hand leaves the vector still; there is no dead zone and no speed. To turn further than one reach of the hand, let go and grab again.
+3. Steering changes the vector's two angles, θ and φ (section 2.3) - the same two the 3D view draws as arcs on the active vector:
+   - **Up and down change θ.** Hand up lowers θ, so the head rises towards **+z**; hand down raises it, so the head drops towards **−z**. This is the same whatever the view's rotation and wherever the vector points. The head turns round the **vertical circle** through it and the z axis, with **no stop**: keep moving up and it passes over the top (+z) and comes down the far side, keep moving down and it passes under the bottom (−z) - a full turn either way, for as long as the hand keeps moving. Moving back retraces the way it came. (Added 2026-09-30, found with real hands: θ used to stop at 0° and 180°, so a vector dragged up stopped at +z and only moved again once the hand came back down.)
+   - **Left and right change φ**, turning the vector around the z axis like a turntable, and **always the same way**: moving right raises φ (anticlockwise seen from above), moving left lowers it - wherever the vector points, whatever the view, across grabs, and after going over the top. So the side of the turntable nearest the student follows the hand: a vector pointing towards the student moves right on screen as the hand moves right, and one pointing away moves left, like the far side of a turntable. (Changed 2026-09-30 at the user's request: the way was chosen at each grab, and again on crossing a pole, from where the vector pointed, so the same hand movement turned it different ways at different times.)
+   - A diagonal movement changes both angles, each by its own part of the movement.
+   - Near the z axis a change of φ moves the head only a little, as on a turntable.
+   - **Grabbed on the z axis** - straight up or straight down, as a release there snaps it; a drag passes through without stopping - φ means nothing, so neither rule above can move the head. There, the head leaves the axis **the way the hand moves on screen**, by the same 90° per hs: from straight up, moving down tips it towards the viewer (down on screen) and moving right tips it right; from straight down, the same with up. The part of a movement that points further into the axis (up at straight up, down at straight down) does nothing. Once the vector has left the axis, the rules above take over. (Added 2026-09-27, found with real hands: pushing sideways at the z axis did nothing, and pushing away from it often tipped the head along the line of sight, so it seemed not to move.)
+4. Magnitude never changes while steering.
+5. Releasing the pinch leaves the vector where the hand put it - exactly on an axis or plane if it is within reach of one (6.5).
 
-### 6.5 Snapping (while steering)
-- When the vector comes within **5°** (tunable) of an axis (±x, ±y, ±z) or within **5°** of lying in a coordinate plane (XY, YZ, XZ), it snaps exactly onto it.
-- It stays snapped until the steering pushes it more than **8°** (tunable) away, so it doesn't flicker at the boundary.
-- Axis snaps take priority over plane snaps.
-- **Snap lock.** While snapped, steering turns the vector *within* the plane it lies in (or, on an axis, within one of the two planes containing it), whatever the view's rotation, instead of about the screen's axes. For a plane, the hand direction whose screen axis is closer to the plane's normal spins the vector inside it (sideways for the floor seen from above; up/down for the YZ plane seen edge-on from the front), and the other direction tilts it out until it releases. On an axis, the normal closer to the screen's up takes sideways and the other takes up/down. The globe-style sense of 6.4 is kept. (Added 2026-09-25, G5.6, at the user's decision: in the raised default view a purely sideways push turned the vector about a tilted axis and dropped it out of the XY plane.)
-- On arriving at a snap, steering continues from the snapped direction, so the full release angle is needed to leave it. Leaving an axis along one of its planes does not count as a snap engaging (no flash).
-- Snapping is **on by default** and can be turned off in settings (section 8).
+(Changed 2026-09-29 at the user's decision: grab and drag replaces the joystick. The joystick turned the vector at a speed set by how far the hand was held from its anchor, which with sticky snapping stuck at axes and could not turn smoothly through a full turn; the user found it janky. Changed 2026-09-27 before that, also at the user's decision, from the globe-style rule settled at G5.5, which turned the vector about the screen's axes so the same hand movement did opposite things depending on where the vector pointed.)
+
+### 6.5 Snapping (on release)
+Nothing snaps while the hand is moving the vector: it follows the hand freely. Snapping happens when the pinch is **released**, on the two angles of 6.4, each on its own:
+- **θ snaps to 0°, 90° or 180°**, and **φ snaps to 0°, 90°, 180° or 270°**, if the angle is within **5°** (tunable) of one of them on release. The angle is then set exactly to that value.
+- While the vector is within reach of a snap, the camera strip says **"Release to snap to"** the axis or plane, so the student knows before letting go.
+- Between them this covers every axis and plane:
+
+  | Snapped | The vector lies |
+  |---|---|
+  | θ at 0° or 180° | on the +z or −z axis (φ is then meaningless and does not snap) |
+  | θ at 90° | in the XY plane |
+  | φ at 0° or 180° | in the XZ plane |
+  | φ at 90° or 270° | in the YZ plane |
+  | θ at 90° and φ too | on the ±x or ±y axis |
+
+  An axis is both angles snapped at once, so axes need no priority rule over planes. And since sideways movement changes only φ, a vector in the XY plane stays in it while the hand moves sideways; a little up-and-down wobble on the way is taken out again on release, as long as it stays within 5°.
+- A release that moves the vector onto a snap shows the snap cue (section 10). One already exactly there - grabbed on an axis and let go without moving - changes nothing and shows no cue.
+- The snap belongs to the gesture: it is part of the same undo step (section 5). A cancelled steer restores the vector and does not snap.
+- Snapping is **on by default** and can be turned off in settings (section 8). With it off there is no hint, and a release leaves the vector exactly where the hand put it.
+
+(Rewritten 2026-09-29 with grab and drag. The 2026-09-27 version snapped while steering, held a snapped angle until the steering pushed it 8° away, and carried rules for pushing on and reversing; with a vector that follows the hand, a snap mid-drag would stop the vector while the hand kept moving. It in turn replaced the snap lock added at G5.6.)
 
 ---
 
@@ -207,11 +223,8 @@ Starting values. Change only after real testing, and record every change in `pro
 | Full stretch | 8 hs | 6.2 |
 | Minimum magnitude | 0.1 | 6.2, 6.3 |
 | Equal-movement margin for head choice | 10% | 6.2 |
-| Steering dead zone | 0.3 hs | 6.4 |
-| Steering max speed | 90°/s | 6.4 |
-| Deflection for max speed | 1.5 hs | 6.4 |
-| Snap-in angle | 5° | 6.5 |
-| Snap-release angle | 8° | 6.5 |
+| Steering rate | 90° per hs | 6.4 |
+| Snap angle | 5° | 6.5 |
 | Hold duration | 0.5 s | 7 |
 | Hold confidence | 0.6 | 7 |
 | Live result transition | 150 ms | 10 |
@@ -223,9 +236,9 @@ Starting values. Change only after real testing, and record every change in `pro
 ## 10. Visual feedback and animation
 - **Active vector:** highlighted (thicker, with a glow or outline) in the 3D view and in the info panel.
 - **During CREATING / RESIZING:** the live magnitude is shown next to the vector's head.
-- **During STEERING:** the camera preview shows the anchor point, the dead zone ring, and a line to the current pinch point.
+- **During STEERING:** the camera preview shows the grab point and a line from it to the current pinch point. (Was the joystick's anchor and dead-zone ring, until grab and drag on 2026-09-29.)
 - **Angles of the active vector:** the 3D view always shows the active vector's θ and φ as arcs from their axes - θ from +z to the vector, φ in the XY plane from +x round to the vector's shadow - each arc tagged with its own letter (θ, φ), and their values shown as one line beside the vector's head, under its letter, changing live while a hand moves it. The arcs are thin and half transparent so they never outweigh the vector. (Changed 2026-09-25, G5.5, at the user's request: first built for steering only, as this line used to say. Changed again at G5.6, at the user's request: the values were boxes at each arc, which covered a short vector entirely.)
-- **Snap:** a brief visual cue (the vector or target axis flashes) when a snap engages.
+- **Snap:** a brief visual cue (the vector's halo flashes) when a release moves the vector onto an axis or plane (section 6.5).
 - **Live result updates:** when an input vector changes, the result moves to its new value with a short smooth transition (150 ms), not a jump.
 - **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (1.5 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.
 
@@ -236,9 +249,9 @@ Test each at a normal laptop distance, then leaning in, then sitting back.
 - [x] Pinch is detected reliably with each hand, and does not flicker when held.
 - [x] Hands together + pull apart creates a vector; it follows the line between the hands.
 - [x] Hands apart + pinch resizes the active vector without changing its direction.
-- [x] Steering: small hand shake inside the dead zone does not move the vector.
-- [x] Steering: moving right turns the vector the same way on screen whatever the view is turned to, even after rotating the 3D view to look from behind. (Globe-style, section 6.4: the side nearest you follows the hand, so a vector pointing at you swings right, one pointing into the screen swings left, and one lying flat pointing right tips into the screen. Reworded 2026-09-25, G5.5: "always moves the head right" cannot hold for every vector if steering is to add depth.)
-- [x] Snapping engages near each axis and plane and releases cleanly; turning it off in settings works.
+- [x] Steering: holding the pinching hand still keeps the vector still, and a small shake barely moves it. (Was "inside the dead zone"; rewritten 2026-09-29 for grab and drag, which has no dead zone.)
+- [x] Steering: dragging the hand up always raises the head towards +z and dragging it down always lowers it, whatever the view and wherever the vector points - including pointing away from you, and after rotating the view to look from behind. Keeping on up carries it over the top and down the far side without stopping, all the way round; the same downwards. Dragging right always turns the vector the same way round the z axis (anticlockwise seen from above), wherever it points and after going over the top; by letting go and grabbing again it can be turned all the way round. At the z axis, dragging tips the head off it the way the hand moves. (Rewritten 2026-09-29 for grab and drag, section 6.4.)
+- [x] Snapping: released within 5° of an axis or plane, the vector lands exactly on it - the strip says "Release to snap to ..." beforehand and the halo flashes; released further away, it stays where it was left; turning snapping off in settings stops both. (Rewritten 2026-09-29 for snapping on release, section 6.5.)
 - [x] Each hold gesture triggers once after 0.5 s and not again until the hand changes shape.
 - [x] Open palm with the free hand cancels steering and restores the vector exactly; releasing a create, resize or steer never cancels it.
 - [x] Locked vectors ignore resize and steer, with the message shown.

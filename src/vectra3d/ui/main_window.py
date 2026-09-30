@@ -123,10 +123,11 @@ class VectraMainWindow(MainWindow):
         # Whether a redraw of the vector being moved by hand is already asked
         # for; see `_on_store_changed`.
         self._live_redraw_pending = False
-        # A steered vector's halo flashes when it snaps (`interaction-spec.md`
-        # section 10). One timer, so a second snap within the flash restarts
-        # it rather than being cut short by the first one's end.
-        self._snap_flash = False
+        # A steered vector's halo flashes when a release snaps it
+        # (`interaction-spec.md` section 10): the name of the vector
+        # flashing, or None. One timer, so a second snap within the flash
+        # restarts it rather than being cut short by the first one's end.
+        self._snap_flash: str | None = None
         self._snap_flash_timer = QTimer(self)
         self._snap_flash_timer.setSingleShot(True)
         self._snap_flash_timer.setInterval(SNAP_FLASH_MS)
@@ -256,7 +257,8 @@ class VectraMainWindow(MainWindow):
         """
         output = self._gestures.camera_lost()
         camera = self.plotter.camera
-        self._gesture_controller.apply(output.intents, camera.direction, camera.up, 0)
+        self._gesture_controller.apply(output.intents, camera.direction, camera.up)
+        self._flash_snapped()
         self.camera_preview.show_camera_lost()
 
     def _on_hand_frame(self, pixels: np.ndarray, frame: HandFrame) -> None:
@@ -265,22 +267,32 @@ class VectraMainWindow(MainWindow):
         # The camera is read now, every frame: "right" is the screen's right
         # as the student sees it at this moment (`interaction-spec.md` 6.1).
         camera = self.plotter.camera
-        self._gesture_controller.apply(
-            output.intents, camera.direction, camera.up, frame.timestamp_ms
-        )
-        # A snap always moves the vector, so the live redraw it asked for
-        # has not run yet and will draw the flash.
-        if self._gesture_controller.take_snap_engaged():
-            self._snap_flash = True
-            self._snap_flash_timer.start()
+        self._gesture_controller.apply(output.intents, camera.direction, camera.up)
+        self._flash_snapped()
         self.camera_preview.show_frame(
             pixels,
             frame,
             hands,
             output,
             self._gesture_controller.message,
-            self._gesture_controller.joystick,
+            self._gesture_controller.grab,
         )
+
+    def _flash_snapped(self) -> None:
+        """Flash the halo of a vector a release has just snapped (section 10).
+
+        The release ended the gesture, so the full redraw has already drawn
+        the vector where it landed, with its ordinary halo; only the halo is
+        drawn again, brighter, until the timer puts it back.
+        """
+        name = self._gesture_controller.take_snapped()
+        vector = self._store.get(name) if name is not None else None
+        if vector is None:
+            return
+        self._snap_flash = name
+        self._snap_flash_timer.start()
+        self.vectors.redraw(vector, name == self._store.active_name, name, flash=True)
+        self.plotter.render()
 
     def _build_toolbar(self) -> None:
         """The view controls, and undo.
@@ -441,7 +453,10 @@ class VectraMainWindow(MainWindow):
         vectors = self._store.vectors
         label = self._gesture_controller.labels().get(name, name)
         self.vectors.redraw(
-            vector, name == self._store.active_name, label, flash=self._snap_flash
+            vector,
+            name == self._store.active_name,
+            label,
+            flash=self._snap_flash == name,
         )
         # Components and shadows follow the hand live (F-13b). Neither renders
         # itself here: the one render below does the whole frame, where each
@@ -466,14 +481,19 @@ class VectraMainWindow(MainWindow):
         self.action_panel.refresh()
 
     def _end_snap_flash(self) -> None:
-        """Put the halo back to normal, if the vector is still in a hand.
+        """Put the flashed vector's halo back to normal.
 
-        If the steer has ended, the full redraw that ended it already drew
-        the ordinary halo.
+        If a hand has grabbed it again within the flash, the live redraw
+        does it; otherwise it is redrawn here, as it now is in the store.
         """
-        self._snap_flash = False
+        name, self._snap_flash = self._snap_flash, None
         if self._live_name() is not None:
             self._redraw_live()
+            return
+        vector = self._store.get(name) if name is not None else None
+        if vector is not None:
+            self.vectors.redraw(vector, name == self._store.active_name, name)
+            self.plotter.render()
 
     def _on_undo(self) -> None:
         """Undo, unless the student is typing.

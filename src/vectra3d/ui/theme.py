@@ -52,9 +52,10 @@ ERROR_TEXT = "#C2185B"
 PREVIEW_BACKGROUND = "#2B3138"
 HAND_LINE = "#FFFFFF"
 HAND_POINT = ACTIVE_BORDER
-# The steering joystick drawn over the hand: a warm yellow, so the ring and
-# its anchor are not mistaken for the hand's own white lines and blue points.
-JOYSTICK = "#FFC83D"
+# Gesture marks drawn over the hand - the steering grab point and the hold
+# ring: a warm yellow, so they are not mistaken for the hand's own white
+# lines and blue points.
+GESTURE_MARK = "#FFC83D"
 
 # Spacing, so padding is consistent across the panels instead of each widget
 # inventing its own.

@@ -21,11 +21,8 @@ SECTION_9_VALUES = [
     "FULL_STRETCH_HS",
     "MIN_MAGNITUDE",
     "EQUAL_MOVEMENT_MARGIN",
-    "STEER_DEAD_ZONE_HS",
-    "STEER_MAX_SPEED_DEG_PER_S",
-    "STEER_MAX_SPEED_HS",
-    "SNAP_IN_DEG",
-    "SNAP_RELEASE_DEG",
+    "STEER_DEG_PER_HS",
+    "SNAP_DEG",
     "HOLD_DURATION_S",
     "HOLD_CONFIDENCE",
     "RESULT_TRANSITION_MS",
@@ -55,8 +52,10 @@ def test_smoothing_beta_is_not_negative() -> None:
     assert config.SMOOTHING_BETA >= 0
 
 
-def test_snap_releases_wider_than_it_engages() -> None:
-    assert config.SNAP_RELEASE_DEG > config.SNAP_IN_DEG
+def test_snap_values_are_never_in_reach_of_each_other() -> None:
+    # Snap values are 90 degrees apart, so an angle can be in reach of at
+    # most one of them only while the reach is under half that.
+    assert config.SNAP_DEG < 45.0
 
 
 def test_magnitude_sensitivity_default_is_within_its_range() -> None:

@@ -1,4 +1,4 @@
-"""Hand positions into vectors (`interaction-spec.md` sections 6.1 and 6.2).
+"""Hand positions into vectors (`interaction-spec.md` sections 6.1 to 6.5).
 
 Every expected value is worked out by hand. Points are in picture-height
 units, as the metrics give them; distances are chosen to be exact in binary
@@ -13,21 +13,23 @@ import pytest
 
 from vectra3d import config
 from vectra3d.gestures.hand_to_vector import (
-    SnapTarget,
-    angle_from,
+    Heading,
+    Snap,
+    at_pole,
     create_components,
-    exact_target,
+    drag_meridian,
+    hand_movement,
     head_index,
+    heading_components,
+    heading_of,
     is_long_enough,
-    deflection,
+    leave_pole,
+    meridian_of,
     resize_components,
     screen_axes,
-    snap_target,
-    snapped_components,
-    steer_components,
-    steer_speed,
+    snap_near,
+    snapped,
     stretch,
-    turn_axes,
 )
 
 SENSITIVITY = 25
@@ -250,280 +252,292 @@ def test_a_resize_with_nothing_to_measure_gives_none() -> None:
     assert resize(START, scale=0.0) is None
 
 
-# --- Steering (6.4) ---
+# --- Steering: grab and drag (6.4) ---
 #
-# The camera looks along +y (FRONT), so the viewer is at -y: a vector pointing
-# at the student is (0, -5, 0). Full deflection turns at 90 degrees a second,
-# so half a second of it is exactly 45 degrees. 5 * cos 45 = 5 * sin 45 = H.
+# The angles change by the steering rate for every hs the hand moves.
+# Movements are written as `turn(degrees)`, the hs that turn that far, so
+# the expected angles stay hand-calculated whatever the rate is tuned to.
 
-H = 5 * math.sqrt(0.5)
-FULL = config.STEER_MAX_SPEED_HS
-
-
-def turn(current, push, seconds=0.5, axes=FRONT):
-    return steer_components(current, 5.0, push, seconds, axes)
+RATE = config.STEER_DEG_PER_HS
+# Pointing at a student who looks along +y: (0, -5, 0).
+AT_YOU = Heading(90.0, 270.0)
 
 
-def test_deflection_is_measured_from_the_anchor_in_hs_with_up_positive() -> None:
+def turn(degrees: float) -> float:
+    """The hand movement, in hs, that turns a vector this many degrees."""
+    return degrees / RATE
+
+
+def drag(heading: Heading, movement: tuple[float, float]) -> Heading:
+    """A heading dragged by `movement`, starting on its own side of z."""
+    return drag_meridian(meridian_of(heading), movement).heading
+
+
+def test_hand_movement_is_in_hs_with_up_positive() -> None:
     # 0.25 right and 0.125 up the picture (smaller y) at scale 0.25.
-    assert deflection((0.5, 0.5), (0.75, 0.375), 0.25) == (1.0, 0.5)
-    assert deflection((0.5, 0.5), (0.75, 0.375), 0.0) is None
+    assert hand_movement((0.5, 0.5), (0.75, 0.375), 0.25) == (1.0, 0.5)
+    assert hand_movement((0.5, 0.5), (0.75, 0.375), 0.0) is None
 
 
-def test_nothing_moves_inside_the_dead_zone() -> None:
-    assert steer_speed(0.0) == 0.0
-    assert steer_speed(config.STEER_DEAD_ZONE_HS) == 0.0
-    assert turn((0.0, -5.0, 0.0), (config.STEER_DEAD_ZONE_HS, 0.0)) == (0.0, -5.0, 0.0)
+def test_a_still_hand_leaves_the_vector_still() -> None:
+    assert hand_movement((0.5, 0.5), (0.5, 0.5), 0.25) == (0.0, 0.0)
+    assert drag(AT_YOU, (0.0, 0.0)) == AT_YOU
 
 
-def test_speed_rises_in_a_straight_line_to_the_maximum_and_stays() -> None:
-    # Halfway between 0.3 and 1.5 hs is 0.9 hs: half of 90 degrees a second.
-    halfway = (config.STEER_DEAD_ZONE_HS + FULL) / 2
-    assert steer_speed(halfway) == pytest.approx(config.STEER_MAX_SPEED_DEG_PER_S / 2)
-    assert steer_speed(FULL) == config.STEER_MAX_SPEED_DEG_PER_S
-    assert steer_speed(3 * FULL) == config.STEER_MAX_SPEED_DEG_PER_S
+def test_dragging_up_raises_the_head_towards_z() -> None:
+    raised = drag(AT_YOU, (0.0, turn(45.0)))
+    assert (raised.theta, raised.phi) == pytest.approx((45.0, 270.0))
 
 
-def test_pushing_right_swings_a_vector_pointing_at_you_to_the_right() -> None:
-    # Turned 45 degrees about +z: (5 sin 45, -5 cos 45, 0). +x is screen right.
-    assert turn((0.0, -5.0, 0.0), (FULL, 0.0)) == pytest.approx((H, -H, 0.0))
+def test_dragging_down_lowers_the_head_towards_minus_z() -> None:
+    lowered = drag(AT_YOU, (0.0, -turn(45.0)))
+    assert (lowered.theta, lowered.phi) == pytest.approx((135.0, 270.0))
 
 
-def test_pushing_up_tilts_a_vector_pointing_at_you_upwards() -> None:
-    assert turn((0.0, -5.0, 0.0), (0.0, FULL)) == pytest.approx((0.0, -H, H))
+def test_the_turn_is_the_movement_times_the_rate() -> None:
+    # Half an hs up at 90 degrees per hs is 45 degrees; a tenth is 9.
+    assert drag(AT_YOU, (0.0, 0.5)).theta == pytest.approx(90.0 - 0.5 * RATE)
+    assert drag(AT_YOU, (0.0, 0.1)).theta == pytest.approx(90.0 - 0.1 * RATE)
 
 
-def test_a_vector_pointing_into_the_screen_swings_the_other_way() -> None:
-    # Globe-style: the far side moves against the hand.
-    assert turn((0.0, 5.0, 0.0), (FULL, 0.0)) == pytest.approx((-H, H, 0.0))
+@pytest.mark.parametrize("phi", [0.0, 90.0, 180.0, 270.0, 123.0])
+def test_up_raises_the_head_wherever_it_points(phi: float) -> None:
+    # The fault angle steering replaced: under globe-style steering, a vector
+    # pointing away from the viewer rose when the hand went down.
+    after = heading_components(drag(Heading(90.0, phi), (0.0, turn(45.0))), 5.0)
+    # theta 45: z = 5 cos 45.
+    assert after[2] == pytest.approx(5 * math.sqrt(0.5))
 
 
-def test_pushing_right_tips_a_flat_vector_pointing_right_into_the_screen() -> None:
-    # This is how steering adds depth to a vector created flat on the screen.
-    assert turn((5.0, 0.0, 0.0), (FULL, 0.0)) == pytest.approx((H, H, 0.0))
+def test_dragging_up_carries_on_over_the_top() -> None:
+    # The user's report: at the top the vector stopped, and the hand had to
+    # go back down before it moved again. Now 50 up from theta 20 goes 20 to
+    # the top and 30 down the far side: theta 30 at phi 30 + 180.
+    over = drag_meridian(meridian_of(Heading(20.0, 30.0)), (0.0, turn(50.0)))
+    assert (over.heading.theta, over.heading.phi) == pytest.approx((30.0, 210.0))
+    # And 10 back down retraces the way it came.
+    back = drag_meridian(over, (0.0, -turn(10.0))).heading
+    assert (back.theta, back.phi) == pytest.approx((20.0, 210.0))
 
 
-def test_the_same_push_turns_the_other_way_in_the_world_seen_from_behind() -> None:
-    # From behind, the student's right is -x: the vector at them, (0, 5, 0),
-    # swings to -x - which is still their right.
-    assert turn((0.0, 5.0, 0.0), (FULL, 0.0), axes=BEHIND) == pytest.approx(
-        (-H, H, 0.0)
+def test_dragging_down_carries_on_under_the_bottom() -> None:
+    under = drag_meridian(meridian_of(Heading(160.0, 30.0)), (0.0, -turn(50.0)))
+    assert (under.heading.theta, under.heading.phi) == pytest.approx((150.0, 210.0))
+
+
+@pytest.mark.parametrize("upward", [1.0, -1.0])
+def test_a_full_vertical_turn_comes_all_the_way_round(upward: float) -> None:
+    # 360 one-degree drags up (or down) from pointing at the student: every
+    # step turns the head exactly one degree, through both poles, and it
+    # ends where it began.
+    meridian = meridian_of(AT_YOU)
+    head = heading_components(meridian.heading, 1.0)
+    for _ in range(360):
+        meridian = drag_meridian(meridian, (0.0, upward * turn(1.0)))
+        after = heading_components(meridian.heading, 1.0)
+        step = math.degrees(math.acos(min(1.0, sum(a * b for a, b in zip(head, after)))))
+        assert step == pytest.approx(1.0, abs=1e-6)
+        head = after
+    assert head == pytest.approx(heading_components(AT_YOU, 1.0), abs=1e-9)
+
+
+def test_right_always_raises_phi_and_left_lowers_it() -> None:
+    assert drag(Heading(90.0, 0.0), (turn(45.0), 0.0)).phi == pytest.approx(45.0)
+    assert drag(Heading(90.0, 0.0), (-turn(45.0), 0.0)).phi == pytest.approx(315.0)
+
+
+@pytest.mark.parametrize("phi", [0.0, 90.0, 180.0, 270.0, 123.0])
+@pytest.mark.parametrize("theta", [10.0, 90.0, 170.0])
+def test_right_turns_the_same_way_round_wherever_the_vector_points(
+    theta: float, phi: float
+) -> None:
+    # The user's request: the way a hand movement turns the vector is fixed,
+    # not chosen from where the vector points.
+    assert drag(Heading(theta, phi), (turn(10.0), 0.0)).phi == pytest.approx(
+        (phi + 10.0) % 360.0
     )
 
 
-def test_a_diagonal_push_turns_once_by_its_full_amount() -> None:
-    # Right and up equally, at full speed: one 45 degree turn, not two.
-    push = (FULL, FULL)
-    turned = turn((0.0, -5.0, 0.0), push)
-    cosine = -turned[1] / 5.0
-    assert math.degrees(math.acos(cosine)) == pytest.approx(45.0)
-    assert turned[0] == pytest.approx(turned[2])
+def test_over_the_top_right_still_turns_the_same_way_round() -> None:
+    # Gone over the top, the head is at phi + 180, and right still raises it.
+    over = drag_meridian(meridian_of(Heading(20.0, 30.0)), (0.0, turn(50.0)))
+    turned = drag_meridian(over, (turn(10.0), 0.0))
+    assert turned.heading.phi == pytest.approx(over.heading.phi + 10.0)
 
 
-def test_the_turn_follows_the_time_step() -> None:
-    # A tenth of a second at full speed: 9 degrees.
-    turned = turn((0.0, -5.0, 0.0), (FULL, 0.0), seconds=0.1)
-    assert math.degrees(math.atan2(turned[0], -turned[1])) == pytest.approx(9.0)
-    assert turn((0.0, -5.0, 0.0), (FULL, 0.0), seconds=0.0) == (0.0, -5.0, 0.0)
+def test_phi_keeps_going_round_past_360() -> None:
+    assert drag(Heading(90.0, 350.0), (turn(45.0), 0.0)).phi == pytest.approx(35.0)
+
+
+def test_a_full_turn_of_small_drags_comes_all_the_way_round() -> None:
+    # What the joystick with sticky snaps could not do: 360 one-degree
+    # drags pass every axis and plane and end where they began.
+    heading = Heading(90.0, 10.0)
+    phis = []
+    for _ in range(360):
+        heading = drag(heading, (turn(1.0), 0.0))
+        phis.append(heading.phi)
+    assert heading.theta == 90.0
+    assert heading.phi == pytest.approx(10.0)
+    # Every step was one degree: nothing stuck on the way round.
+    steps = [(b - a) % 360.0 for a, b in zip([10.0] + phis, phis)]
+    assert steps == pytest.approx([1.0] * 360)
+
+
+def test_a_diagonal_changes_each_angle_by_its_own_part() -> None:
+    turned = drag(Heading(90.0, 0.0), (turn(20.0), turn(30.0)))
+    assert turned.theta == pytest.approx(60.0)
+    assert turned.phi == pytest.approx(20.0)
 
 
 def test_the_magnitude_does_not_creep_over_many_frames() -> None:
-    vector = (3.0, -4.0, 0.0)
+    heading = Heading(60.0, 10.0)
     for step in range(1000):
-        push = (FULL * math.cos(step), FULL * math.sin(step))
-        vector = steer_components(vector, 5.0, push, 0.033, FRONT)
-    assert math.hypot(*vector) == pytest.approx(5.0, abs=1e-12)
+        movement = (0.05 * math.cos(step), 0.05 * math.sin(step))
+        heading = drag(heading, movement)
+        vector = heading_components(heading, 5.0)
+        assert math.hypot(*vector) == pytest.approx(5.0, abs=1e-12)
 
 
-# --- Snapping (6.5) ---
+def test_a_vector_has_its_angles_and_the_zero_vector_none() -> None:
+    assert heading_of((0.0, -5.0, 0.0)) == AT_YOU
+    assert heading_of((0.0, 0.0, 2.0)) == Heading(0.0, 0.0)
+    assert heading_of((0.0, 0.0, 0.0)) is None
+
+
+# --- Snapping on release (6.5) ---
 #
-# Directions are built from angles, so each test states its own angle in
-# degrees and the expected answer follows from the 5 degree snap-in and 8
-# degree release. `tilted(a, e)` points at azimuth a from +x towards +y and
-# elevation e above the XY plane.
+# Theta snaps to 0, 90 or 180 and phi to 0, 90, 180 or 270, each within
+# 5 degrees. `snap_near` says what a release here would land on.
 
 
-def tilted(azimuth: float, elevation: float) -> tuple[float, float, float]:
-    a, e = math.radians(azimuth), math.radians(elevation)
-    return (math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e))
+def test_theta_snaps_into_the_floor_within_5_degrees_and_not_beyond() -> None:
+    assert snap_near(Heading(94.9, 45.0)) == Snap(90.0, None)
+    assert snap_near(Heading(85.1, 45.0)) == Snap(90.0, None)
+    assert snap_near(Heading(95.1, 45.0)) is None
 
 
-def off_x(angle: float) -> tuple[float, float, float]:
-    """`angle` degrees from +x, leaning equally towards +y and +z.
-
-    Its angle to the XY and XZ planes is asin(sin(angle) / sqrt 2): 5.58
-    degrees at 7.9 and 5.72 at 8.1, so neither plane can catch it.
-    """
-    t = math.radians(angle)
-    side = math.sin(t) * math.sqrt(0.5)
-    return (math.cos(t), side, side)
+def test_phi_snaps_into_the_upright_planes() -> None:
+    assert snap_near(Heading(60.0, 4.9)) == Snap(None, 0.0)
+    assert snap_near(Heading(60.0, 94.0)) == Snap(None, 90.0)
+    assert snap_near(Heading(60.0, 184.0)) == Snap(None, 180.0)
+    assert snap_near(Heading(60.0, 5.1)) is None
 
 
-PLUS_X = SnapTarget(0, 1)
-XY = SnapTarget(2)
+def test_phi_snaps_across_360() -> None:
+    assert snap_near(Heading(60.0, 356.0)) == Snap(None, 0.0)
 
 
-def test_targets_are_named_for_the_camera_strip() -> None:
-    assert SnapTarget(0, 1).label == "+x axis"
-    assert SnapTarget(2, -1).label == "-z axis"
-    assert SnapTarget(2).label == "XY plane"
-    assert SnapTarget(0).label == "YZ plane"
-    assert SnapTarget(1).label == "XZ plane"
+def test_both_angles_snapped_is_an_axis() -> None:
+    assert snap_near(Heading(93.0, 184.0)) == Snap(90.0, 180.0)
 
 
-def test_angles_from_an_axis_and_from_a_plane() -> None:
-    assert angle_from(tilted(30.0, 0.0), PLUS_X) == pytest.approx(30.0)
-    assert angle_from(tilted(30.0, 0.0), SnapTarget(0, -1)) == pytest.approx(150.0)
-    assert angle_from(tilted(0.0, 20.0), XY) == pytest.approx(20.0)
-    assert angle_from((0.0, 0.0, -3.0), XY) == 90.0
-    assert angle_from((5.0, 0.0, 0.0), PLUS_X) == 0.0
+def test_on_the_z_axis_phi_does_not_snap() -> None:
+    assert snap_near(Heading(4.0, 30.0)) == Snap(0.0, None)
+    assert snap_near(Heading(4.0, 0.0)) == Snap(0.0, None)
+    assert snap_near(Heading(177.0, 90.0)) == Snap(180.0, None)
 
 
-def test_an_axis_snaps_in_at_5_degrees_and_not_beyond() -> None:
-    assert snap_target(off_x(4.9), None) == PLUS_X
-    # 5.1 degrees from x is out of the axis's reach, but only 3.6 from the
-    # XZ and XY planes, so it goes into a plane instead.
-    assert snap_target(off_x(5.1), None).is_plane
+def test_a_vector_exactly_on_an_axis_or_plane_is_in_reach_of_it() -> None:
+    # So a release there snaps to where it already is, which changes nothing.
+    assert snap_near(heading_of((0.0, 0.0, 5.0))) == Snap(0.0, None)
+    assert snap_near(heading_of((0.0, -5.0, 0.0))) == Snap(90.0, 270.0)
+    assert snap_near(heading_of((3.0, 0.0, 4.0))) == Snap(None, 0.0)
+    assert snap_near(heading_of((3.0, 4.0, 0.0))) == Snap(90.0, None)
+    assert snap_near(heading_of((1.0, 2.0, 3.0))) is None
 
 
-def test_every_axis_in_either_direction() -> None:
-    assert snap_target(tilted(180.0 + 4.0, 0.0), None) == SnapTarget(0, -1)
-    assert snap_target(tilted(90.0, 4.0), None) == SnapTarget(1, 1)
-    assert snap_target(tilted(-90.0, -4.0), None) == SnapTarget(1, -1)
-    assert snap_target(tilted(30.0, 86.0), None) == SnapTarget(2, 1)
-    assert snap_target(tilted(30.0, -86.0), None) == SnapTarget(2, -1)
+def test_snaps_are_named_for_the_camera_strip() -> None:
+    assert Snap(0.0, None).label == "+z axis"
+    assert Snap(180.0, None).label == "-z axis"
+    assert Snap(90.0, 0.0).label == "+x axis"
+    assert Snap(90.0, 90.0).label == "+y axis"
+    assert Snap(90.0, 180.0).label == "-x axis"
+    assert Snap(90.0, 270.0).label == "-y axis"
+    assert Snap(90.0, None).label == "XY plane"
+    assert Snap(None, 0.0).label == "XZ plane"
+    assert Snap(None, 180.0).label == "XZ plane"
+    assert Snap(None, 90.0).label == "YZ plane"
+    assert Snap(None, 270.0).label == "YZ plane"
 
 
-def test_a_plane_snaps_in_at_5_degrees_and_not_beyond() -> None:
-    assert snap_target(tilted(45.0, 4.9), None) == XY
-    assert snap_target(tilted(45.0, 5.1), None) is None
-    # Each of the other two planes: 4 degrees off XZ, then off YZ.
-    assert snap_target((0.6, math.sin(math.radians(4.0)), 0.8), None) == SnapTarget(1)
-    assert snap_target((math.sin(math.radians(4.0)), 0.6, 0.8), None) == SnapTarget(0)
+def test_the_landed_heading_takes_each_snapped_angle() -> None:
+    assert snapped(Heading(93.0, 37.0), Snap(90.0, None)) == Heading(90.0, 37.0)
+    assert snapped(Heading(93.0, 3.0), Snap(90.0, 0.0)) == Heading(90.0, 0.0)
+    assert snapped(Heading(93.0, 37.0), None) == Heading(93.0, 37.0)
 
 
-def test_an_axis_holds_until_8_degrees() -> None:
-    assert snap_target(off_x(7.9), PLUS_X) == PLUS_X
-    assert snap_target(off_x(8.1), PLUS_X) is None
+def test_a_vector_on_an_axis_or_plane_is_exactly_there() -> None:
+    # cos 90 degrees is 6e-17 in floating point; it is set to zero.
+    flat = heading_components(Heading(90.0, 37.0), 5.0)
+    assert flat[2] == 0.0
+    assert math.hypot(*flat) == pytest.approx(5.0)
+    assert heading_components(Heading(90.0, 180.0), 5.0) == (-5.0, 0.0, 0.0)
+    assert heading_components(Heading(90.0, 90.0), 5.0) == (0.0, 5.0, 0.0)
+    assert heading_components(Heading(180.0, 0.0), 5.0) == (0.0, 0.0, -5.0)
+    upright = heading_components(Heading(50.0, 270.0), 5.0)
+    assert upright[0] == 0.0
+    assert upright[1] < 0.0
 
 
-def test_a_plane_holds_until_8_degrees() -> None:
-    assert snap_target(tilted(45.0, 7.9), XY) == XY
-    assert snap_target(tilted(45.0, 8.1), XY) is None
-
-
-def test_an_axis_wins_over_the_plane_the_vector_is_held_in() -> None:
-    # Sliding along XY, 4.9 degrees short of +y.
-    assert snap_target(tilted(90.0 - 4.9, 0.0), XY) == SnapTarget(1, 1)
-
-
-def test_near_two_planes_the_nearer_one_wins() -> None:
-    # 4.5 degrees off XZ and 4 off XY: about 6 from +x, so no axis.
-    direction = (1.0, math.sin(math.radians(4.5)), math.sin(math.radians(4.0)))
-    assert angle_from(direction, PLUS_X) > config.SNAP_IN_DEG
-    assert snap_target(direction, None) == XY
-
-
-def test_snapping_onto_an_axis_keeps_the_length_exactly() -> None:
-    assert snapped_components(tilted(-90.0, 3.0), 5.0, SnapTarget(1, -1)) == (
-        0.0,
-        -5.0,
-        0.0,
-    )
-
-
-def test_snapping_into_a_plane_drops_the_part_sticking_out() -> None:
-    # (3, 4, 0.5) flattened is (3, 4, 0), already 5 long.
-    assert snapped_components((3.0, 4.0, 0.5), 5.0, XY) == pytest.approx((3.0, 4.0, 0.0))
-    assert snapped_components((3.0, 4.0, 0.5), 5.0, XY)[2] == 0.0
-
-
-def test_with_nothing_to_snap_to_the_steered_direction_is_shown() -> None:
-    assert snapped_components((1.0, 2.0, 3.0), 5.0, None) == (1.0, 2.0, 3.0)
-
-
-def test_a_vector_exactly_on_an_axis_or_plane_starts_snapped() -> None:
-    assert exact_target((0.0, 0.0, 5.0)) == SnapTarget(2, 1)
-    assert exact_target((0.0, -5.0, 0.0)) == SnapTarget(1, -1)
-    assert exact_target((3.0, 0.0, 4.0)) == SnapTarget(1)
-    assert exact_target((1.0, 2.0, 3.0)) is None
-
-
-# --- Snap lock (6.5) ---
+# --- Leaving the z axis (6.4) ---
 #
-# A camera about 27 degrees above the floor, looking along (-4, 3, -2.5): its screen up
-# leans away from z, which is what tipped a sideways push out of the floor.
-
-RAISED_AXES = screen_axes((-4.0, 3.0, -2.5), (0.0, 0.0, 1.0))
-Z = (0.0, 0.0, 1.0)
+# Seen along +y (FRONT) the screen's up is z, which has no floor shadow, so up
+# and down on screen go away from and towards the student: +y and -y.
 
 
-def test_a_snapped_target_lies_in_one_plane_or_two() -> None:
-    assert XY.locks == ((0.0, 0.0, 1.0),)
-    assert SnapTarget(1).locks == ((0.0, 1.0, 0.0),)
-    assert PLUS_X.locks == ((0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+def test_at_the_top_right_tips_the_head_right() -> None:
+    left = leave_pole(Heading(0.0, 0.0), (turn(45.0), 0.0), FRONT)
+    assert left.theta == pytest.approx(45.0)
+    assert left.phi == pytest.approx(0.0, abs=1e-9)
 
 
-def test_unlocked_a_sideways_push_in_a_raised_view_leaves_the_floor() -> None:
-    # The fault the lock exists for.
-    turned = steer_components((5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, RAISED_AXES)
-    assert abs(turned[2]) > 0.5
+def test_at_the_top_down_tips_the_head_towards_the_student() -> None:
+    left = leave_pole(Heading(0.0, 0.0), (0.0, -turn(45.0)), FRONT)
+    assert left.theta == pytest.approx(45.0)
+    assert left.phi == pytest.approx(270.0)
 
 
-def test_locked_in_the_floor_a_sideways_push_spins_within_it() -> None:
-    turned = steer_components(
-        (5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, RAISED_AXES, XY.locks
+def test_at_the_top_up_does_nothing() -> None:
+    assert leave_pole(Heading(0.0, 0.0), (0.0, turn(45.0)), FRONT) == Heading(0.0, 0.0)
+
+
+def test_at_the_bottom_up_tips_the_head_away_and_down_does_nothing() -> None:
+    left = leave_pole(Heading(180.0, 0.0), (0.0, turn(45.0)), FRONT)
+    assert left.theta == pytest.approx(135.0)
+    assert left.phi == pytest.approx(90.0)
+    assert leave_pole(Heading(180.0, 0.0), (0.0, -turn(45.0)), FRONT) == Heading(
+        180.0, 0.0
     )
-    # 45 degrees about z, exactly in the plane.
-    assert turned == pytest.approx((H, H, 0.0))
-    assert turned[2] == 0.0
 
 
-def test_locked_in_the_floor_up_and_down_still_tilt_it_out() -> None:
-    turned = steer_components(
-        (5.0, 0.0, 0.0), 5.0, (0.0, FULL), 0.5, RAISED_AXES, XY.locks
-    )
-    assert turned[2] > 1.0
+def test_a_diagonal_keeps_only_the_part_that_leaves_the_axis() -> None:
+    # 30 up and 20 right at the top: the up part is dropped, 20 right stays.
+    left = leave_pole(Heading(0.0, 0.0), (turn(20.0), turn(30.0)), FRONT)
+    assert left.theta == pytest.approx(20.0)
+    assert left.phi == pytest.approx(0.0, abs=1e-9)
 
 
-def test_the_lock_keeps_the_globe_style_sense() -> None:
-    # From the front, the floor lock turns about z exactly as unlocked did.
-    assert turn((0.0, -5.0, 0.0), (FULL, 0.0)) == pytest.approx((H, -H, 0.0))
-    assert steer_components(
-        (0.0, -5.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, XY.locks
-    ) == pytest.approx((H, -H, 0.0))
+def test_a_still_hand_at_the_axis_leaves_it_there() -> None:
+    assert leave_pole(Heading(0.0, 0.0), (0.0, 0.0), FRONT) == Heading(0.0, 0.0)
 
 
-def test_a_plane_seen_edge_on_spins_with_up_and_down() -> None:
-    # From the front the YZ plane is a vertical line: up/down turns within it
-    # (about x), and sideways is what leaves it.
-    yz = SnapTarget(0).locks
-    up = steer_components((0.0, -5.0, 0.0), 5.0, (0.0, FULL), 0.5, FRONT, yz)
-    assert up == pytest.approx((0.0, -H, H))
-    assert up[0] == 0.0
-    across = steer_components((0.0, -5.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, yz)
-    assert across[0] > 1.0
+def test_in_a_raised_view_right_still_moves_the_head_right_on_screen() -> None:
+    raised = screen_axes((-4.0, 3.0, -2.5), (0.0, 0.0, 1.0))
+    right, screen_up = raised
+    # How far the head moved from straight up, along the screen's right for
+    # a drag right, and along its up for a drag down (expected negative).
+    for movement, along, sign in (
+        ((turn(9.0), 0.0), right, 1),
+        ((0.0, -turn(9.0)), screen_up, -1),
+    ):
+        head = heading_components(leave_pole(Heading(0.0, 0.0), movement, raised), 1.0)
+        moved = sum((h - s) * a for h, s, a in zip(head, (0.0, 0.0, 1.0), along))
+        # 9 degrees: 0.16 across; about 0.08 down, since the view looks down.
+        assert sign * moved > 0.05
 
 
-def test_on_an_axis_each_hand_direction_turns_within_one_of_its_planes() -> None:
-    # +x seen from the front lies across the screen. Unlocked, pushing up
-    # turns it about the screen's right - its own line - and it cannot move.
-    assert turn((5.0, 0.0, 0.0), (0.0, FULL)) == pytest.approx((5.0, 0.0, 0.0))
-    # Locked on the axis, up/down turns it within XZ, so the head rises...
-    up = steer_components((5.0, 0.0, 0.0), 5.0, (0.0, FULL), 0.5, FRONT, PLUS_X.locks)
-    assert up == pytest.approx((H, 0.0, H))
-    # ... and sideways within XY, tipping into the screen as before.
-    across = steer_components(
-        (5.0, 0.0, 0.0), 5.0, (FULL, 0.0), 0.5, FRONT, PLUS_X.locks
-    )
-    assert across == pytest.approx((H, H, 0.0))
-
-
-def test_looking_straight_down_the_floor_still_spins_one_way() -> None:
-    # From above, z points at the student and is square to both screen axes,
-    # so neither can give it a sign. It is taken towards the student, and
-    # the answer depends only on the view, so it cannot flip between frames.
-    top = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
-    first = turn_axes(top, XY.locks)
-    assert first == turn_axes(top, XY.locks)
-    assert first[0] in ((0.0, 0.0, 1.0), (0.0, 0.0, -1.0))
+def test_the_z_axis_is_a_pole_and_nothing_else_is() -> None:
+    assert at_pole(Heading(0.0, 30.0))
+    assert at_pole(Heading(180.0, 0.0))
+    assert not at_pole(Heading(0.5, 0.0))
