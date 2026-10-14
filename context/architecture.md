@@ -16,7 +16,8 @@ How the code is organized, which libraries are used and why, and how data flows.
 | Window and panels | **PySide6** | Main window, info panel, action panel, dialogs. |
 | Math | **NumPy** | All vector math. |
 | Tests | **pytest** | Automated tests for math and gesture logic. |
-| Packaging | **PyInstaller** | One-folder Windows build, shared as a zip. |
+| Packaging | **PyInstaller** | One-folder Windows build. |
+| Installer | **Inno Setup** 6 | Build-time only, on the development machine: turns the one-folder build into a per-user `setup.exe` with shortcuts and an uninstaller. Never shipped inside the app. Added at G6.1b. |
 
 Version rules and known library pitfalls: see `library-docs.md`.
 
@@ -98,7 +99,10 @@ vectra3d/
 │   ├── state/                          ← actions, naming, undo tests
 │   └── gestures/                       ← gesture tests with synthetic hand data
 └── packaging/
-    └── vectra3d.spec                   ← PyInstaller build file
+    ├── vectra3d.spec                   ← PyInstaller build file
+    ├── vectra3d.iss                    ← Inno Setup installer script
+    ├── Read me first.txt               ← students' note, shipped beside the .exe
+    └── verification-checklist.md       ← F-18 check for every build given out
 ```
 
 ---
@@ -153,7 +157,8 @@ Webcam frame
 | Run the app | `uv run python -m vectra3d` |
 | Run tests | `uv run pytest` |
 | Build the `.exe` | `uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean` |
-| Zip it for sharing | `uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D` |
+| Zip it (fallback download) | `uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D` |
+| Build the installer (after the `.exe`) | `& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\vectra3d.iss` (PowerShell) |
 | Check the packaged model | `.\dist\Vectra3D\Vectra3D.exe --check-model \| Out-String` (PowerShell; the pipe is what shows a windowed program's output) |
 
 **Smoke test** (build-plan step G0.4, before any feature work): the app opens a window with an empty 3D view that can be rotated with the mouse, and closes cleanly. If this fails, fix it before anything else.

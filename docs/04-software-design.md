@@ -179,15 +179,17 @@ The state tests need no window and no camera, which is the point of keeping Qt o
 ## 5. Packaging and distribution
 
 ### In plain words
-Students download a zip, unzip it, and double-click the program. They don't need to install Python or anything else, and it works without internet.
+Students download one setup file and run it. It puts Vectra3D in their Start menu, without asking for an administrator password. They don't need to install Python or anything else, and it works without internet. A zip of the same app is kept as a fallback for computers that block installers.
 
 ### Technically
 - **PyInstaller** bundles Python, the libraries, and the MediaPipe model into a one-folder build, shared as a zip. One-folder builds start faster and trigger fewer antivirus false alarms than single-file builds.
 - The model file is located at runtime through a helper that checks PyInstaller's bundle folder, since PyInstaller doesn't include MediaPipe's model files automatically.
+- **Inno Setup** turns that folder into a per-user installer with Start menu and desktop shortcuts and an uninstaller.
+- A small loading window appears about two seconds after launch, because loading the 3D engine and hand tracking takes far longer and nothing else is on screen meanwhile.
 - The final build is tested on a Windows machine without Python, with the internet disconnected.
 
 ### How it's implemented
-Packaging was set up and proven in step G0.5, before any feature existed, so that packaging problems would surface while the app was still small enough to debug easily. The final build was made in step G6.1.
+Packaging was set up and proven in step G0.5, before any feature existed, so that packaging problems would surface while the app was still small enough to debug easily. The final build was made in step G6.1; the loading window and the installer were added in G6.1b, after testing on a second laptop.
 
 The build is described by `packaging/vectra3d.spec`, run and zipped with:
 
@@ -264,8 +266,57 @@ font cache in the user's own folder the first time it runs on a computer. It
 happens once per computer, and has nothing to do with the camera: no picture is
 ever saved.
 
+**The loading window** (G6.1b). On the second laptop the app looked dead
+for its first half-minute: importing the libraries takes about 25 seconds on
+the development laptop (`python -X importtime`: hand tracking - MediaPipe and
+OpenCV - about 11 s, the 3D engine about 11 s), and the window could not
+appear before all of them had loaded. `app.py` now imports only Qt and light
+modules at the top, shows `LoadingSplash` (`ui/splash.py`, a `QSplashScreen`
+drawn on a pixmap: icon, name, and a status line), and only then imports the
+slow modules one stage at a time, in `LOADING_STAGES`, saying which is loading.
+The splash closes when the main window is shown. Measured from the installed
+app, warm: splash at 2.2 s, main window at 6.3 s. A test starts a fresh Python
+and checks that importing `vectra3d.app` loads none of PyVista, VTK, MediaPipe
+or OpenCV, which is the property everything else depends on. PyInstaller's own
+splash screen was considered and not used: it is marked experimental, its docs
+warn of problems in one-folder builds, and it would bundle Tcl/Tk, a second GUI
+toolkit.
+
+**The installer** (G6.1b). `packaging/vectra3d.iss` is an Inno Setup script,
+compiled on the development machine only (Inno Setup is never shipped):
+
+```
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\vectra3d.iss
+```
+
+It packs the whole `dist/Vectra3D` folder into `dist/Vectra3D-0.1.0-setup.exe`,
+155 MB against 236 MB for the zip. `PrivilegesRequired=lowest` makes it a
+per-user install with no administrator prompt - students on lab or university
+laptops usually cannot approve one - so the default folder is the student's own
+`%LOCALAPPDATA%\Programs\Vectra3D`, which they can change. It adds Start menu
+entries for the app and the note, an optional desktop shortcut, an uninstaller
+under Settings > Apps, and offers to launch the app at the end. Checked on the
+development laptop (install, launch, clean close, uninstall leaving nothing
+behind) and on the second laptop. Its fixed `AppId` must never change: Windows
+uses it to recognise an upgrade and find the uninstaller.
+
+**Read me first.** `packaging/Read me first.txt` goes beside `Vectra3D.exe`,
+copied there by the spec after the build (PyInstaller 6 puts `datas` in
+`_internal`). It tells students what would otherwise look like faults: the
+SmartScreen warning on the unsigned installer ("More info", then "Run anyway"),
+that starting takes a while, allowing the camera, and that everything works
+from the panels without one. Tests check its wording, that the build still
+copies it, and that the installer's version matches `pyproject.toml`.
+
+**Verifying a build.** `packaging/verification-checklist.md` is the guided
+session for every build given out: install on a laptop that has never had
+Python, internet off, then recheck every G1-G5 criterion, once with the camera
+and once with it disabled in Device Manager.
+
 ### Likely questions
+- **Windows says "Windows protected your PC". Is the app unsafe?** No. The installer is not code-signed, so Windows does not recognise it yet. Click "More info", then "Run anyway".
+- **Why a loading window instead of a faster start?** Most of the wait is loading the 3D engine and the hand-tracking model, which the app needs before it can show anything. The loading window makes the wait visible; it does not make it shorter.
 - **Why is the download fairly large?** It contains a complete Python runtime, the 3D graphics library, and the machine-learning model.
 - **Does it run on Mac?** Not in this version; it was built and tested for Windows only.
 - **Why does the app take longer to open the very first time?** A plotting library that the 3D view depends on prepares its list of fonts once per computer. Later launches skip it.
-- **Can I move `Vectra3D.exe` onto the desktop on its own?** No. It needs the `_internal` folder next to it. Keep the whole `Vectra3D` folder together; put a shortcut on the desktop instead.
+- **Can I move `Vectra3D.exe` onto the desktop on its own?** No. It needs the `_internal` folder next to it. The installer puts a shortcut on the desktop if you tick the box; with the zip, keep the whole `Vectra3D` folder together and make a shortcut.

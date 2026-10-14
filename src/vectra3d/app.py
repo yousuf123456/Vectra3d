@@ -4,6 +4,10 @@
 qtpy, which decides at import time which Qt binding to use based on this
 variable and on what happens to be installed. Setting it explicitly is what
 guarantees PySide6 is used, rather than whichever binding qtpy finds first.
+
+Only Qt and light modules are imported here at the top. The 3D engine and
+hand tracking take about 25 seconds to load, so they are imported inside
+`start()`, after the loading window is on screen (G6.1b).
 """
 
 from __future__ import annotations
@@ -12,19 +16,32 @@ import os
 
 os.environ.setdefault("QT_API", "pyside6")
 
+import importlib  # noqa: E402
 import sys  # noqa: E402
+from typing import TYPE_CHECKING  # noqa: E402
 
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vectra3d.paths import APP_ICON, GESTURE_MODEL, resource_path  # noqa: E402
 from vectra3d.state.store import VectorStore  # noqa: E402
-from vectra3d.tracking.tracker_thread import create_recognizer  # noqa: E402
 from vectra3d.ui import theme  # noqa: E402
-from vectra3d.ui.main_window import VectraMainWindow  # noqa: E402
+from vectra3d.ui.splash import LoadingSplash  # noqa: E402
 
+if TYPE_CHECKING:
+    from vectra3d.ui.main_window import VectraMainWindow
 
 USAGE = "usage: vectra3d [--check-model]"
+
+# What the loading window says while each slow part loads, in the order they
+# load. Measured on the development laptop with `python -X importtime`: hand
+# tracking (MediaPipe and OpenCV) about 11 s, the 3D engine (PyVista, VTK and
+# the window built on them) about 11 s.
+LOADING_STAGES = (
+    ("Loading hand tracking...", "vectra3d.tracking.tracker_thread"),
+    ("Loading the 3D view...", "vectra3d.ui.main_window"),
+)
+OPENING_TEXT = "Opening the window..."
 
 
 def check_model() -> int:
@@ -38,6 +55,8 @@ def check_model() -> int:
 
     Returns 0 if the model loaded, 1 if it did not.
     """
+    from vectra3d.tracking.tracker_thread import create_recognizer
+
     model = resource_path(GESTURE_MODEL)
     print(f"model path: {model}")
 
@@ -58,6 +77,29 @@ def check_model() -> int:
         print(f"FAILED: the model file is there but could not be loaded: {exc}")
         return 1
     return 0
+
+
+def start(splash: LoadingSplash) -> VectraMainWindow:
+    """Load the slow parts with the loading window up, then show the window.
+
+    Returns the main window, shown, with the loading window closed. The
+    camera is not started: that is the caller's, so tests can build the app
+    without opening one.
+    """
+    splash.show()
+    for text, module in LOADING_STAGES:
+        splash.say(text)
+        importlib.import_module(module)
+    splash.say(OPENING_TEXT)
+
+    from vectra3d.ui.main_window import VectraMainWindow
+
+    # One store for the whole app: the single source of truth every panel and
+    # the 3D view read from (`architecture.md` section 2).
+    window = VectraMainWindow(VectorStore())
+    window.show_on_screen()
+    splash.finish(window)
+    return window
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,14 +130,10 @@ def main(argv: list[str] | None = None) -> int:
     # the final palette rather than being restyled after it is on screen.
     theme.apply(app)
     # Every window the app opens, and its taskbar button, takes this icon.
-    app.setWindowIcon(QIcon(str(resource_path(APP_ICON))))
+    icon = QIcon(str(resource_path(APP_ICON)))
+    app.setWindowIcon(icon)
 
-    # One store for the whole app: the single source of truth every panel and
-    # the 3D view read from (`architecture.md` section 2).
-    store = VectorStore()
-
-    window = VectraMainWindow(store)
-    window.show_on_screen()
+    window = start(LoadingSplash(icon))
     # Started only once the window is up, so the student sees the app at
     # once and the camera catches up. A separate call rather than part of
     # building the window, so tests can build one without opening a camera.

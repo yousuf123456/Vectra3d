@@ -2,7 +2,8 @@
 #
 # Build with:  uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean
 # Zip with:    uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D
-# Output:      dist/Vectra3D/Vectra3D.exe  (one folder, shared as the zip)
+# Output:      dist/Vectra3D/Vectra3D.exe  (one folder, shared as the zip),
+#              with "Read me first.txt" beside it
 #
 # Three things here are easy to get wrong and all are deliberate:
 #
@@ -18,7 +19,14 @@
 #    their checkbox ticks and dropdown arrows in the packaged build only,
 #    which is the kind of difference that is only noticed after shipping.
 
+import os
+import shutil
+
 from PyInstaller.utils.hooks import collect_all
+
+# Shipped next to Vectra3D.exe: SmartScreen, the slow first launch, the
+# camera. See the end of this file.
+README_NAME = "Read me first.txt"
 
 mediapipe_datas, mediapipe_binaries, mediapipe_hiddenimports = collect_all("mediapipe")
 qdarktheme_datas, _, qdarktheme_hiddenimports = collect_all("qdarktheme")
@@ -79,4 +87,12 @@ coll = COLLECT(
     upx=False,
     upx_exclude=[],
     name="Vectra3D",
+)
+
+# The students' note goes beside the .exe, where they look first - not in
+# `datas`, which PyInstaller 6 puts in the `_internal` folder. A spec file is
+# plain Python, and COLLECT has built the folder by this line.
+shutil.copy(
+    os.path.join(SPECPATH, README_NAME),
+    os.path.join(DISTPATH, "Vectra3D", README_NAME),
 )

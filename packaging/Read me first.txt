@@ -1,0 +1,25 @@
+Vectra3D - read me first
+========================
+
+1. Installing. Run Vectra3D-0.1.0-setup.exe and follow the steps; no
+   administrator password is needed. Vectra3D is then in the Start menu.
+   (If you have the zip instead: right-click it, choose "Extract All...",
+   then open the Vectra3D folder and double-click Vectra3D.exe. Keep all
+   the other files in the folder next to it.)
+
+2. Windows may say "Windows protected your PC". The app is not signed, so
+   Windows does not recognise it yet. Click "More info", then "Run anyway".
+
+3. Starting takes a while. A small Vectra3D window shows what is loading;
+   the first launch can take a minute, later ones are quicker.
+
+4. Allow camera access if Windows asks. For hand tracking, hold your hands
+   up with your palms facing the camera, in reasonable light.
+
+5. No camera? Everything still works from the panels on the right: type
+   vectors, edit them, and run every operation there.
+
+6. No internet is needed. Pictures from the camera are used only while the
+   app is open; they are never saved or sent anywhere.
+
+To remove Vectra3D: Settings > Apps, find Vectra3D, and choose Uninstall.

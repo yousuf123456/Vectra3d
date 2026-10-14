@@ -87,4 +87,5 @@ problems. Assume the same of anything not covered in `context/library-docs.md`.
 - Test: `uv run pytest`
 - Build: `uv run pyinstaller packaging/vectra3d.spec --noconfirm --clean`
 - Zip: `uv run python -m zipfile -c dist/Vectra3D-0.1.0-windows.zip dist/Vectra3D`
+- Installer (after Build): `& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\vectra3d.iss` (PowerShell)
 - Check the packaged model (PowerShell): `.\dist\Vectra3D\Vectra3D.exe --check-model | Out-String`
