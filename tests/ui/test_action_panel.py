@@ -20,7 +20,6 @@ from vectra3d.ui.action_panel import (
     parse_angles,
     parse_components,
     parse_number,
-    phi_is_undefined,
     should_refill,
 )
 
@@ -79,49 +78,73 @@ def test_one_bad_field_stops_the_whole_form() -> None:
     assert parsed.error.startswith("y")
 
 
-# --- The magnitude and angles form ---
+# --- The magnitude and direction angles form ---
+#
+# |v|, alpha, beta, gamma, the textbook way (`interaction-spec.md` 2.3).
 
 
 def test_valid_angles_are_converted() -> None:
-    parsed = parse_angles("2", "60", "30")
-    assert parsed.components == pytest.approx((1.5, math.sqrt(3) / 2, 1.0))
+    # |A| = 10, alpha 60, beta 45, gamma 120: A = 10 (1/2, 1/sqrt 2, -1/2).
+    parsed = parse_angles("10", "60", "45", "120")
+    assert parsed.error is None
+    assert parsed.components == pytest.approx((5.0, 10 / math.sqrt(2), -5.0))
+
+
+def test_a_vector_along_an_axis_is_exact() -> None:
+    assert parse_angles("3", "90", "180", "90").components == (0.0, -3.0, 0.0)
 
 
 def test_a_magnitude_of_zero_is_refused() -> None:
-    # A zero magnitude is the zero vector by another name, and section 2.3
-    # requires r greater than 0.
-    parsed = parse_angles("0", "60", "30")
+    # A zero magnitude is the zero vector by another name.
+    parsed = parse_angles("0", "60", "45", "120")
     assert parsed.components is None
     assert "greater than 0" in parsed.error
 
 
 def test_a_negative_magnitude_is_refused() -> None:
-    parsed = parse_angles("-3", "60", "30")
+    parsed = parse_angles("-3", "60", "45", "120")
     assert parsed.components is None
     assert "greater than 0" in parsed.error
 
 
-@pytest.mark.parametrize("theta", ["-1", "181", "360"])
-def test_theta_outside_its_range_is_refused(theta: str) -> None:
-    parsed = parse_angles("2", theta, "30")
+@pytest.mark.parametrize(
+    ("angles", "name"),
+    [(("-1", "90", "90"), "α"), (("90", "181", "90"), "β"), (("90", "90", "360"), "γ")],
+)
+def test_an_angle_outside_0_to_180_is_refused_by_name(angles, name: str) -> None:
+    parsed = parse_angles("2", *angles)
     assert parsed.components is None
-    assert "between 0° and 180°" in parsed.error
+    assert parsed.error == f"{name} must be between 0° and 180°."
 
 
-@pytest.mark.parametrize("theta", ["0", "90", "180"])
-def test_theta_at_the_ends_of_its_range_is_allowed(theta: str) -> None:
-    assert parse_angles("2", theta, "30").components is not None
-
-
-def test_phi_outside_one_turn_is_accepted_and_normalized() -> None:
-    # Unlike theta, phi is defined for any value once brought into range.
-    assert parse_angles("2", "60", "390").components == pytest.approx(
-        parse_angles("2", "60", "30").components
+def test_angles_that_do_not_fit_together_are_refused_with_their_sum() -> None:
+    # 60 degrees from every axis: cos squared is a quarter each, 0.75 in all.
+    parsed = parse_angles("2", "60", "60", "60")
+    assert parsed.components is None
+    assert parsed.error == (
+        "These angles do not fit together: cos²α + cos²β + cos²γ = 0.750, "
+        "but it must be 1."
     )
 
 
+def test_rounded_textbook_angles_are_accepted() -> None:
+    # The diagonal (1, 1, 1) is 54.7356 degrees from each axis; rounded to a
+    # tenth the sum is 1.0026, within the 0.01 allowed, and the length is
+    # still exactly what was typed.
+    parsed = parse_angles("6", "54.7", "54.7", "54.7")
+    assert parsed.error is None
+    assert math.hypot(*parsed.components) == pytest.approx(6.0, abs=1e-12)
+
+
+def test_just_outside_the_tolerance_is_refused() -> None:
+    # alpha 0 alone sums to 1; beta 84 adds cos^2 84 = 0.0109.
+    assert parse_angles("1", "0", "84", "90").components is None
+    # beta 85 adds 0.0076, inside.
+    assert parse_angles("1", "0", "85", "90").components is not None
+
+
 def test_an_empty_angle_field_says_which_one() -> None:
-    assert parse_angles("2", "", "30").error == "Enter a value for θ."
+    assert parse_angles("2", "60", "", "120").error == "Enter a value for β."
 
 
 # --- Numbers that float() accepts but a vector cannot have ---
@@ -153,7 +176,7 @@ def test_a_component_form_with_infinity_creates_nothing() -> None:
 
 
 def test_an_angle_form_with_nan_creates_nothing() -> None:
-    parsed = parse_angles("nan", "60", "30")
+    parsed = parse_angles("nan", "60", "45", "120")
     assert parsed.components is None
     assert parsed.error is not None
 
@@ -190,23 +213,27 @@ def test_a_field_never_shows_negative_zero() -> None:
 
 
 def test_angles_fill_the_fields_at_two_decimals() -> None:
-    # (0, 4, 3): r = 5, theta = arccos(3/5) = 53.13 degrees, phi = 90.
-    assert angle_fields((0.0, 4.0, 3.0)) == ("5.00", "53.13", "90.00")
+    # (0, 4, 3): |v| = 5, alpha 90, beta = arccos(4/5) = 36.87,
+    # gamma = arccos(3/5) = 53.13.
+    assert angle_fields((0.0, 4.0, 3.0)) == ("5.00", "90.00", "36.87", "53.13")
 
 
-def test_a_vector_on_the_z_axis_fills_phi_with_zero() -> None:
-    # Undefined there, but the field has to hold something Apply can read.
-    assert angle_fields((0.0, 0.0, 6.0)) == ("6.00", "0.00", "0.00")
+def test_a_vector_on_the_z_axis_has_every_angle_defined() -> None:
+    # The old phi had no value here; direction angles always do.
+    assert angle_fields((0.0, 0.0, 6.0)) == ("6.00", "90.00", "90.00", "0.00")
 
 
 def test_the_zero_vector_fills_every_angle_field_with_zero() -> None:
-    assert angle_fields((0.0, 0.0, 0.0)) == ("0.00", "0.00", "0.00")
+    assert angle_fields((0.0, 0.0, 0.0)) == ("0.00",) * 4
 
 
-def test_the_angle_fields_can_be_read_back_by_the_parser() -> None:
+@pytest.mark.parametrize(
+    "components", [(1.0, -2.0, 2.0), (0.0, 0.0, 6.0), (-7.5, 0.25, 11.0), (1.0, 1.0, 1.0)]
+)
+def test_the_angle_fields_can_be_read_back_by_the_parser(components) -> None:
     # The round trip the student makes without noticing: the fields are
-    # filled from a vector, and Apply parses that same text back.
-    components = (1.0, -2.0, 2.0)
+    # filled from a vector, and Apply parses that same text back. Rounded to
+    # two decimals, the angles must still fit together.
     parsed = parse_angles(*angle_fields(components))
     assert parsed.error is None
     assert parsed.components == pytest.approx(components, abs=5e-3)
@@ -215,22 +242,6 @@ def test_the_angle_fields_can_be_read_back_by_the_parser() -> None:
 def test_the_component_fields_can_be_read_back_by_the_parser() -> None:
     parsed = parse_components(*component_fields((3.0, 0.0, -4.0)))
     assert parsed.components == (3.0, 0.0, -4.0)
-
-
-@pytest.mark.parametrize(
-    ("components", "undefined"),
-    [
-        ((0.0, 0.0, 5.0), True),  # up the z axis
-        ((0.0, 0.0, -5.0), True),  # down it
-        ((1.0, 0.0, 5.0), False),  # leaning, so phi means something
-        ((0.0, 1.0, 5.0), False),
-        ((1.0, 1.0, 0.0), False),  # flat in the XY plane
-    ],
-)
-def test_phi_is_undefined_only_along_the_z_axis(
-    components: tuple[float, float, float], undefined: bool
-) -> None:
-    assert phi_is_undefined(components) is undefined
 
 
 # --- When the edit fields are rewritten (F-08) ---

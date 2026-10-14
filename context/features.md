@@ -81,7 +81,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-04 Create a vector by typing
 **Group:** G1 · **Depends on:** F-01
-- [x] The action panel has an input form with a **toggle** between two modes: components `(x, y, z)` and magnitude + angles.
+- [x] The action panel has an input form with a **toggle** between two modes: components `(x, y, z)` and magnitude + angles. (Since 2026-10-15 the angles are the direction angles α, β, γ, not θ and φ: `interaction-spec.md` section 2.3. Re-checked by the user.)
 - [x] Invalid input (empty fields, non-numbers, zero vector) shows an error and creates nothing.
 - [x] A valid entry creates a vector exactly matching the typed values, which becomes the active vector.
 - [x] If 10 vectors already exist, creation is blocked with a message explaining the limit.
@@ -108,7 +108,7 @@ Built and tested in G3. Applies to resultant, subtraction, and scalar multiplica
 
 ### F-08 Edit exact values
 **Group:** G2 · **Depends on:** F-04, F-05a
-- [x] The action panel can edit the active vector using the same two-mode toggle as F-04.
+- [x] The action panel can edit the active vector using the same two-mode toggle as F-04. (Magnitude + α, β, γ since 2026-10-15, as F-04.)
 - [x] Changes apply immediately and update the 3D view and info panel.
 - [x] Locked vectors cannot be edited; the form is disabled for them.
 

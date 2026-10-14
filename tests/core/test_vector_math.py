@@ -13,7 +13,14 @@ import math
 
 import pytest
 
-from vectra3d.core.vector_math import direction_angles, magnitude, unit_vector
+from vectra3d.core.vector_math import (
+    Triple,
+    direction_angles,
+    direction_cosine_sum,
+    from_direction_angles,
+    magnitude,
+    unit_vector,
+)
 
 # Angles are compared to eight decimal places. The values below are the
 # textbook ones, and nothing in the app displays more than two decimals.
@@ -217,3 +224,48 @@ class TestFullPrecisionIsKept:
         direction_angles(components)
         unit_vector(components)
         assert components == (3.0, 4.0, 0.0)
+
+
+class TestFromDirectionAngles:
+    """|v| (cos alpha, cos beta, cos gamma): the form's "Magnitude + angles"."""
+
+    def test_a_textbook_example(self) -> None:
+        # |A| = 10, alpha 60, beta 45, gamma 120: cosines 1/2, 1/sqrt 2, -1/2,
+        # whose squares add up to exactly 1. So A = (5, 7.07, -5).
+        assert direction_cosine_sum(60.0, 45.0, 120.0) == pytest.approx(1.0)
+        assert from_direction_angles(10.0, 60.0, 45.0, 120.0) == pytest.approx(
+            (5.0, 10.0 / math.sqrt(2.0), -5.0)
+        )
+
+    @pytest.mark.parametrize(
+        ("angles", "want"),
+        [
+            ((0.0, 90.0, 90.0), (4.0, 0.0, 0.0)),
+            ((90.0, 0.0, 90.0), (0.0, 4.0, 0.0)),
+            ((90.0, 90.0, 0.0), (0.0, 0.0, 4.0)),
+            ((180.0, 90.0, 90.0), (-4.0, 0.0, 0.0)),
+            ((90.0, 180.0, 90.0), (0.0, -4.0, 0.0)),
+            ((90.0, 90.0, 180.0), (0.0, 0.0, -4.0)),
+        ],
+    )
+    def test_along_each_axis_the_other_components_are_exactly_zero(
+        self, angles: Triple, want: Triple
+    ) -> None:
+        # cos 90 is 6e-17 in floating point; typed 90 means exactly square.
+        assert from_direction_angles(4.0, *angles) == want
+
+    def test_three_angles_that_do_not_fit_together_show_in_the_sum(self) -> None:
+        # 60 degrees from every axis: three quarters, not 1.
+        assert direction_cosine_sum(60.0, 60.0, 60.0) == pytest.approx(0.75)
+
+    def test_rounded_angles_still_give_exactly_the_typed_length(self) -> None:
+        # The diagonal's angles are 54.7356...; typed as 54.7 they miss the
+        # identity by about 0.003, and the cosines are scaled to fit.
+        assert abs(direction_cosine_sum(54.7, 54.7, 54.7) - 1.0) < 0.01
+        assert magnitude(from_direction_angles(6.0, 54.7, 54.7, 54.7)) == pytest.approx(
+            6.0, abs=1e-12
+        )
+
+    def test_the_angles_come_back_out(self) -> None:
+        angles = direction_angles(from_direction_angles(10.0, 60.0, 45.0, 120.0))
+        assert angles == pytest.approx((60.0, 45.0, 120.0))

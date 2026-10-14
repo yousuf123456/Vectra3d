@@ -236,7 +236,10 @@ RIGHT_45 = UpdateSteer((0.5 + 45.0 / config.STEER_DEG_PER_HS * 0.25, 0.5), 0.25)
 
 
 def arcs_shown(window) -> bool:
-    return "arc-theta" in window.plotter.actors and "arc-phi" in window.plotter.actors
+    # A vector along an axis has no arc for that axis (its angle is 0), so
+    # the values line and at least one arc are what "shown" means.
+    actors = window.plotter.actors
+    return "arc-values" in actors and any(f"arc-{axis}" in actors for axis in "xyz")
 
 
 def test_the_active_vector_always_shows_its_angles(app, window) -> None:

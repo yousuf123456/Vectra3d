@@ -162,38 +162,30 @@ The same applies to `direction_angles()`, and both functions decide it the same 
 
 ---
 
-## 6. Spherical angles (r, θ, φ)
+## 6. Typing a vector by magnitude and angles
 
 ### In plain words
-Another way to describe a vector: how long it is (r), how far it tips away from straight up (θ), and which compass direction it faces on the floor (φ). This is the "magnitude + angles" option when typing a vector.
+Instead of x, y and z, a vector can be typed as its length and its three direction angles from section 4: |v|, α, β and γ. This is the "Magnitude + angles" option in the create and edit forms, and it matches the textbook form **A** = |A|(cos α, cos β, cos γ).
 
 ### Technically
-Physics convention:
-- **r** = |**v**|
-- **θ** = angle from the +z axis, 0° to 180°: θ = arccos(z / r)
-- **φ** = angle in the XY plane from +x toward +y, 0° to 360°: φ = atan2(y, x)
-
-Converting back:
-x = r sin θ cos φ,  y = r sin θ sin φ,  z = r cos θ
-
-When the vector lies on the z axis (θ = 0° or 180°), φ is undefined and shown as "—".
+- **v** = |v| (cos α, cos β, cos γ), with each angle from 0° to 180°.
+- Three angles typed separately need not belong to one direction. They do only if cos²α + cos²β + cos²γ = 1, so the form checks that. It accepts a sum within 0.01 of 1, which allows for rounding, and otherwise refuses and shows the sum: *"These angles do not fit together: cos²α + cos²β + cos²γ = 0.750, but it must be 1."*
+- Accepted cosines are scaled so their squares add up to exactly 1, so the vector comes out exactly as long as typed.
 
 ### How it's implemented
-*The conversion into components was built in step G1.3; the inverse, reading an existing vector's r, θ and φ, in step G2.4.*
+*Changed on 2026-10-15 from r, θ, φ (spherical angles), at the user's decision: first-year students know direction angles and have not studied spherical coordinates.*
 
-`src/vectra3d/core/spherical.py` holds `to_components(r, θ, φ)`, which is the three formulas above and nothing else. `normalize_phi()` brings any φ into 0–360° first, so typing 370 gives the same vector as 10, and −90 the same as 270.
+`core/vector_math.py` holds `direction_cosine_sum(α, β, γ)`, which the form checks against the 0.01 tolerance, and `from_direction_angles(|v|, α, β, γ)`, which builds the vector. Both treat an angle of exactly 90° as a cosine of exactly 0, because `cos 90°` is 6e-17 in floating point and a vector typed as α 0°, β 90°, γ 90° should lie exactly on +x. The rules for reading the form are plain functions in `ui/action_panel.py` (`parse_angles`, `angle_fields`), apart from the widgets, which is how they are tested without opening a window. The tolerance is wide enough for textbook angles rounded to a tenth of a degree (54.7° three times misses by about 0.003) and for the edit form's own two-decimal values, so pressing **Apply** on an unchanged vector never fails.
 
-The two angles are treated differently on purpose. **φ is normalized silently**, because every value of it means something once wrapped into a turn. **θ is rejected outside 0–180°**, because outside that range it is not defined at all — the form says so rather than quietly wrapping it and creating a vector pointing somewhere the student did not ask for.
+Typing is checked when **Create** or **Apply** is pressed rather than keystroke by keystroke, so a student who writes `3,5` is told to use a dot instead of having the comma silently refused.
 
-Typing is checked when **Create** is pressed rather than keystroke by keystroke, so a student who writes `3,5` is told to use a dot instead of having the comma silently refused. Those checks are plain functions in `ui/action_panel.py`, separate from the widgets, which is how they are tested without opening a window.
+The edit form fills |v|, α, β and γ from the active vector, at two decimals like the info panel. Direction angles are defined for every vector except the zero vector, so the old note that "φ has no effect along z" is gone with φ.
 
-`to_spherical(x, y, z)` (G2.4) goes the other way, and is what fills the **Edit vector** form when it shows an existing vector in "magnitude + angles" mode. It does not compute θ itself: the angle from the +z axis *is* the direction angle γ from section 4, so it asks `vector_math.direction_angles` for it. That is not only tidiness — that function already clamps the ratio before `arccos` sees it, and without the clamp a vector lying exactly on the z axis can crash the app (section 4 explains why).
-
-φ raises a small problem the info panel does not have. On the z axis it is undefined, and a card can simply print "—"; an input box cannot, because whatever it holds has to be read back when **Apply** is pressed. So the box shows `0.00` and a line underneath says *"φ has no effect while the vector points along z."* That is honest: section 2.3 of the spec treats a typed φ as irrelevant there, so any value would do, and zero is the least surprising one.
+Spherical angles have not left the app entirely: steering by hand turns a vector by θ and φ inside `gestures/hand_to_vector.py` and `core/spherical.py`, because "up and down" and "round the turntable" are exactly those two angles. Students never see them.
 
 ### Likely questions
-- **Why does my textbook use different symbols?** Mathematics courses often swap θ and φ. The app uses the physics convention, which is also the international standard (ISO 80000-2).
-- **Why atan2 and not arctan(y/x)?** arctan alone can't tell opposite directions apart (for example, (1, 1) and (−1, −1) give the same ratio). atan2 looks at the signs of both x and y to get the correct quadrant.
+- **Why was my vector refused when I typed three angles?** Three angles can only describe one direction if cos²α + cos²β + cos²γ = 1. The message shows what your angles add up to; usually one of them was mistyped, or it is the obtuse angle (over 90°) where an acute one was meant.
+- **Do I have to type all three angles?** Yes. Two angles leave two possible directions for the third (one acute, one obtuse), so the app asks for all three rather than choosing for you.
 
 ---
 
@@ -334,9 +326,9 @@ The app calculates with full precision and only rounds the numbers when showing 
 ### How it's implemented
 *Built across steps G1.3, G1.4 and G2.3.*
 
-Nothing is rounded or snapped when a vector is stored. A vector typed as r = 1, θ = 90°, φ = 90° keeps an x of 6.1e-17 rather than a tidy zero, because that genuinely is cos(90°) in floating point. Rounding it at the point of storage would be a small lie that later calculations would inherit; rounding it only when it is shown gives "0.00" on screen with the true value still underneath.
+Nothing is rounded when a vector is stored. A vector typed as |v| = 10, α = 60°, β = 45°, γ = 120° keeps an x of 5.000000000000001 rather than a tidy 5, because cos 60° is not exactly a half in floating point. Rounding it at the point of storage would be a small lie that later calculations would inherit; rounding it only when it is shown gives "5.00" on screen with the true value still underneath. (A typed angle of exactly 90° is the one deliberate exception: it means "square to that axis", so its component is stored as exactly 0 - see section 6.)
 
-`core/formatting.py` is where that rounding happens, and it is the only place it happens. `format_number()` gives two decimals and turns anything that rounds to zero into "0.00", so a component like that 6.1e-17, or a −0.001, never appears as "−0.00". Values that survive rounding keep their sign as normal: −0.006 still shows as −0.01.
+`core/formatting.py` is where that rounding happens, and it is the only place it happens. `format_number()` gives two decimals and turns anything that rounds to zero into "0.00", so a component like 6.1e-17, or a −0.001, never appears as "−0.00". Values that survive rounding keep their sign as normal: −0.006 still shows as −0.01.
 
 `format_angle()` does the same for angles, adding the degree sign, and `format_triple()` writes the unit vector as one bracketed value. Both take the *absence* of a value as well as a value: the maths hands back nothing at all for a zero vector's direction, and these turn that into the em dash. Doing it here rather than in the panel means the rule lives in one place and no display code has to ask whether a vector happens to be zero.
 

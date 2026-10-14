@@ -77,6 +77,42 @@ def unit_vector(components: Triple) -> Triple | None:
     )
 
 
+def _cosine(degrees: float) -> float:
+    """cos of an angle in degrees, exactly 0 at 90.
+
+    `cos 90°` is 6e-17 in floating point. Typed as a direction angle, 90 means
+    "square to that axis", and the component should be exactly 0 - a vector
+    typed as alpha 0, beta 90, gamma 90 then lies exactly on +x.
+    """
+    return 0.0 if degrees == 90.0 else math.cos(math.radians(degrees))
+
+
+def direction_cosine_sum(alpha: float, beta: float, gamma: float) -> float:
+    """cos^2 alpha + cos^2 beta + cos^2 gamma, in degrees.
+
+    It is 1 for any three angles that belong to one direction. Three typed
+    independently need not, so the input form checks this before building a
+    vector from them (`interaction-spec.md` section 2.3).
+    """
+    return sum(_cosine(angle) ** 2 for angle in (alpha, beta, gamma))
+
+
+def from_direction_angles(
+    length: float, alpha: float, beta: float, gamma: float
+) -> Triple:
+    """The vector |v| (cos alpha, cos beta, cos gamma), from angles in degrees.
+
+    The cosines are scaled so their squares add up to exactly 1 before they
+    are used, so the vector is exactly `length` long even when the angles were
+    rounded - 54.7° three times is within 0.003 of fitting. Whether they fit
+    closely enough to accept is the caller's rule; this needs them not all to
+    be 90°, which no direction is.
+    """
+    cosines = tuple(_cosine(angle) for angle in (alpha, beta, gamma))
+    scale = length / math.hypot(*cosines)
+    return (cosines[0] * scale, cosines[1] * scale, cosines[2] * scale)
+
+
 def _angle_with_axis(component: float, length: float) -> float:
     """One direction angle in degrees, from a component and the magnitude.
 

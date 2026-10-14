@@ -51,7 +51,12 @@ from PySide6.QtWidgets import (
 
 from vectra3d import config
 from vectra3d.core.formatting import format_number
-from vectra3d.core.spherical import THETA_MAX, THETA_MIN, to_components, to_spherical
+from vectra3d.core.vector_math import (
+    direction_angles,
+    direction_cosine_sum,
+    from_direction_angles,
+    magnitude as vector_magnitude,
+)
 from vectra3d.state import actions, naming
 from vectra3d.state.models import Point, Vector
 from vectra3d.state.store import VectorStore
@@ -75,7 +80,6 @@ SUBTRACT_HINT = "Create a vector to subtract."
 COMPONENTS_MODE = 0
 ANGLES_MODE = 1
 
-PHI_NOTE = "φ has no effect while the vector points along z."
 NO_VECTOR_HINT = "Create a vector first, or click one to edit it."
 # What a student is told when an eleventh vector is asked for, by typing or by
 # hand (F-04, F-03).
@@ -85,14 +89,22 @@ LIMIT_TEXT = (
 )
 LOCKED_HINT = "Vector {name} is locked. Unlock it to edit."
 
-# What the short field labels leave out. The angle fields used to be labelled
-# "θ (from +z)" and "φ (from +x)", which will not fit three to a row, so the
-# reference axes are said once underneath instead.
-ANGLE_HINT = "θ from +z · φ from +x toward +y"
+# What the short field labels leave out: which axis each angle is measured
+# from, said once beside the magnitude rather than in labels too wide for
+# the row.
+ANGLE_HINT = "α, β, γ from +x, +y, +z"
+
+# The direction angles are typed as three numbers, but they belong to one
+# direction only if cos²α + cos²β + cos²γ = 1 (`interaction-spec.md` 2.3).
+# This much off is accepted, as rounding: textbook angles to a tenth of a
+# degree, and the form's own two-decimal refill, stay well within it.
+DIRECTION_COSINE_TOLERANCE = 0.01
+ANGLE_NAMES = ("α", "β", "γ")
 
 # Enough for a typed value like -123.45 without the three fields in a row
 # squeezing each other out.
 FIELD_MIN_WIDTH = 56
+
 
 
 @dataclass(frozen=True)
@@ -151,28 +163,39 @@ def parse_components(x: str, y: str, z: str) -> Parsed:
     return Parsed(components=(values[0], values[1], values[2]))
 
 
-def parse_angles(r: str, theta: str, phi: str) -> Parsed:
-    """Read the magnitude and angles form.
+def parse_angles(length: str, alpha: str, beta: str, gamma: str) -> Parsed:
+    """Read the magnitude and direction angles form.
 
-    Phi is normalized rather than rejected, because
-    `interaction-spec.md` section 2.3 defines any value as meaningful once
-    brought into 0 to 360 degrees. Theta is rejected outside 0 to 180,
-    because outside that range it is not defined at all.
+    Each angle must be between 0° and 180°, and the three must fit together:
+    cos²α + cos²β + cos²γ within `DIRECTION_COSINE_TOLERANCE` of 1. If they
+    do not, the student is shown the sum their angles make, which says what
+    is wrong and how far off it is.
     """
     values: list[float] = []
-    for text, name in ((r, "the magnitude"), (theta, "θ"), (phi, "φ")):
+    names = ("the magnitude", *ANGLE_NAMES)
+    for text, name in zip((length, alpha, beta, gamma), names):
         value, error = parse_number(text, name)
         if error is not None:
             return Parsed(error=error)
         values.append(value)
 
-    magnitude, theta_deg, phi_deg = values
+    magnitude, *angles = values
     if magnitude <= 0:
         return Parsed(error="The magnitude must be greater than 0.")
-    if not THETA_MIN <= theta_deg <= THETA_MAX:
-        return Parsed(error="θ must be between 0° and 180°.")
+    for angle, name in zip(angles, ANGLE_NAMES):
+        if not 0.0 <= angle <= 180.0:
+            return Parsed(error=f"{name} must be between 0° and 180°.")
 
-    return Parsed(components=to_components(magnitude, theta_deg, phi_deg))
+    total = direction_cosine_sum(*angles)
+    if abs(total - 1.0) > DIRECTION_COSINE_TOLERANCE:
+        return Parsed(
+            error=(
+                "These angles do not fit together: cos²α + cos²β + cos²γ = "
+                f"{format_number(total, decimals=3)}, but it must be 1."
+            )
+        )
+
+    return Parsed(components=from_direction_angles(magnitude, *angles))
 
 
 def component_fields(components: Point) -> tuple[str, str, str]:
@@ -194,34 +217,18 @@ def component_fields(components: Point) -> tuple[str, str, str]:
     )
 
 
-def angle_fields(components: Point) -> tuple[str, str, str]:
-    """The r, θ, φ boxes' text for a vector, at the same two decimals.
+def angle_fields(components: Point) -> tuple[str, str, str, str]:
+    """The |v|, α, β, γ boxes' text for a vector, at the same two decimals.
 
-    The zero vector has no angles at all, so every box reads 0.00 and Apply
-    then refuses it with the usual "the magnitude must be greater than 0".
-    Nothing can put a zero vector in the scene today; G3 can, by saving an
-    operation result that cancels out, and this is the form it would land in.
+    The zero vector has no direction, so every box reads 0.00 and Apply then
+    refuses it with the usual "the magnitude must be greater than 0". A saved
+    result that cancels out, `A - A`, is such a vector.
     """
-    spherical = to_spherical(components)
-    if spherical is None:
-        return (format_number(0.0),) * 3
+    angles = direction_angles(components)
+    if angles is None:
+        return (format_number(0.0),) * 4
 
-    return (
-        format_number(spherical[0]),
-        format_number(spherical[1]),
-        format_number(spherical[2]),
-    )
-
-
-def phi_is_undefined(components: Point) -> bool:
-    """Whether φ means anything for this vector.
-
-    It does not when the vector lies along the z axis, because there is no
-    direction left in the XY plane to measure (`interaction-spec.md` section
-    2.3). The info panel shows an em dash in that case; a field that has to
-    be read back cannot, so it holds 0.00 and the panel says why beside it.
-    """
-    return components[0] == 0.0 and components[1] == 0.0
+    return (format_number(vector_magnitude(components)), *map(format_number, angles))
 
 
 def should_refill(shown: tuple[str, Point] | None, active: Vector | None) -> bool:
@@ -273,15 +280,12 @@ class VectorForm(QWidget):
 
         self._fields = QStackedWidget()
         self._x, self._y, self._z = QLineEdit(), QLineEdit(), QLineEdit()
-        self._r, self._theta, self._phi = QLineEdit(), QLineEdit(), QLineEdit()
-        self._theta.setToolTip("θ: the angle from the +z axis, 0° to 180°")
-        self._phi.setToolTip("φ: the angle in the XY plane, from +x toward +y")
+        self._length = QLineEdit()
+        self._angles = (QLineEdit(), QLineEdit(), QLineEdit())
+        for field, name, axis in zip(self._angles, ANGLE_NAMES, "xyz"):
+            field.setToolTip(f"{name}: the angle with the +{axis} axis, 0° to 180°")
         self._fields.addWidget(_field_row({"x": self._x, "y": self._y, "z": self._z}))
-        self._fields.addWidget(
-            _field_row(
-                {"r": self._r, "θ": self._theta, "φ": self._phi}, hint=ANGLE_HINT
-            )
-        )
+        self._fields.addWidget(_angle_rows(self._length, self._angles))
         self._mode.idToggled.connect(self._on_mode_changed)
         layout.addWidget(self._fields)
 
@@ -291,13 +295,6 @@ class VectorForm(QWidget):
         # submitted, which is what lets it explain a bad value.
         for field in self._all_fields():
             field.returnPressed.connect(on_submit)
-
-        self._note_text: str | None = None
-        self._note = QLabel()
-        self._note.setWordWrap(True)
-        self._note.setStyleSheet(f"color: {theme.MUTED_TEXT};")
-        self._note.hide()
-        layout.addWidget(self._note)
 
         button = QPushButton(button_text)
         button.clicked.connect(on_submit)
@@ -316,7 +313,9 @@ class VectorForm(QWidget):
         """Read whichever set of fields is showing."""
         if self._by_components.isChecked():
             return parse_components(self._x.text(), self._y.text(), self._z.text())
-        return parse_angles(self._r.text(), self._theta.text(), self._phi.text())
+        return parse_angles(
+            self._length.text(), *(field.text() for field in self._angles)
+        )
 
     def fill(self, components: Point) -> None:
         """Write a vector into both sets of fields.
@@ -330,20 +329,15 @@ class VectorForm(QWidget):
         ):
             field.setText(text)
         for field, text in zip(
-            (self._r, self._theta, self._phi), angle_fields(components)
+            (self._length, *self._angles), angle_fields(components)
         ):
             field.setText(text)
-
-        self._note_text = PHI_NOTE if phi_is_undefined(components) else None
-        self._update_note()
         self.clear_message()
 
     def clear(self) -> None:
         """Empty every field, for when there is nothing to show."""
         for field in self._all_fields():
             field.clear()
-        self._note_text = None
-        self._update_note()
         self.clear_message()
 
     def show_message(self, text: str) -> None:
@@ -355,18 +349,11 @@ class VectorForm(QWidget):
         self._message.hide()
 
     def _all_fields(self) -> tuple[QLineEdit, ...]:
-        return (self._x, self._y, self._z, self._r, self._theta, self._phi)
-
-    def _update_note(self) -> None:
-        """Show the φ note only where it applies: the angles fields."""
-        applies = self._note_text is not None and self._by_angles.isChecked()
-        self._note.setText(self._note_text or "")
-        self._note.setVisible(applies)
+        return (self._x, self._y, self._z, self._length, *self._angles)
 
     def _on_mode_changed(self, index: int, checked: bool) -> None:
         if checked:
             self._fields.setCurrentIndex(index)
-            self._update_note()
             self.clear_message()
 
 
@@ -794,4 +781,32 @@ def _field_row(fields: dict[str, QLineEdit], *, hint: str | None = None) -> QWid
         text.setStyleSheet(f"color: {theme.MUTED_TEXT};")
         outer.addWidget(text)
 
+    return widget
+
+
+def _angle_rows(length: QLineEdit, angles: tuple[QLineEdit, ...]) -> QWidget:
+    """The magnitude with the hint beside it, then alpha, beta, gamma.
+
+    Four fields do not fit one row of the 300 px panel: at widths that did,
+    an angle such as 131.81 lost its first digit. Two rows are the same
+    height as the components mode's row plus its hint line, so the form
+    grows no taller than the old r, theta, phi form did.
+    """
+    widget = QWidget()
+    outer = QVBoxLayout(widget)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(2)
+
+    top = QHBoxLayout()
+    top.setContentsMargins(0, 0, 0, 0)
+    top.setSpacing(theme.GAP_SMALL)
+    length.setMinimumWidth(FIELD_MIN_WIDTH)
+    top.addWidget(QLabel("|v|"))
+    top.addWidget(length, 1)
+    hint = QLabel(ANGLE_HINT)
+    hint.setStyleSheet(f"color: {theme.MUTED_TEXT};")
+    top.addWidget(hint)
+    outer.addLayout(top)
+
+    outer.addWidget(_field_row(dict(zip(ANGLE_NAMES, angles))))
     return widget

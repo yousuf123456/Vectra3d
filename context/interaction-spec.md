@@ -25,19 +25,16 @@ This file defines exactly how Vectra3D behaves: coordinate and math conventions,
 - Every vector is a position vector with its tail at the origin (the data model still stores a tail, always `(0, 0, 0)` in the MVP).
 - All math is done in full floating-point precision. Rounding happens **only** when values are displayed.
 
-### 2.3 Spherical angles (for "magnitude + angles" input and display)
-Physics convention:
-- **r**: magnitude, must be greater than 0.
-- **θ (theta)**: angle from the **+z axis**, from 0° to 180°.
-- **φ (phi)**: angle in the **XY plane**, measured from the **+x axis toward +y** (counterclockwise when seen from above). Any typed value is normalized into 0° to 360°.
+### 2.3 Magnitude + angles input
+The "magnitude + angles" input uses the **direction angles** of section 2.4, the ones first-year students know:
+- **|v|**: magnitude, must be greater than 0.
+- **α, β, γ**: the angles with the **+x, +y, +z** axes, each from 0° to 180°.
 
-Conversion:
-```
-x = r · sin θ · cos φ
-y = r · sin θ · sin φ
-z = r · cos θ
-```
-Along the z axis (θ = 0° or 180°), φ is undefined; display it as `—` and treat typed φ as irrelevant.
+Conversion: `v = |v| · (cos α, cos β, cos γ)`.
+
+Three direction angles belong to one direction only if `cos²α + cos²β + cos²γ = 1`. The form accepts them when that sum is within **0.01** of 1, which allows for rounding (textbook angles to a tenth of a degree, and the form's own two-decimal values), and then scales the cosines so the sum is exactly 1, so the vector is exactly |v| long. Otherwise it refuses, showing the student's sum: "These angles do not fit together: cos²α + cos²β + cos²γ = 0.750, but it must be 1." An angle of exactly 90° gives a component of exactly 0.
+
+(Changed 2026-10-15 at the user's decision: this input, and the angles drawn in the 3D view (section 10), used the spherical θ (from +z) and φ (in the XY plane from +x), which first-year students have not studied. θ and φ remain the internal language of steering (sections 6.4, 6.5), where students never see them: θ = γ, and φ is the angle of the vector's floor shadow from +x towards +y.)
 
 ### 2.4 Direction angles and unit vector
 - α, β, γ are the angles between the vector and the +x, +y, +z axes:
@@ -148,7 +145,7 @@ They are used to create a vector (6.2). Steering does not turn the vector about 
 ### 6.4 Steer the active vector (grab and drag)
 1. One hand pinches, the other does not. This **grabs** the active vector. The pinch point at the moment the pinch began is the **grab point**.
 2. While the pinch is held, the vector turns **by as much as the hand moves**: each frame, the pinch point's movement since the previous frame, in hs (in that frame's hand scale), turns it by **90° per hs** (tunable). Movement from the moment the pinch began counts, including the two-hand window (section 5). A still hand leaves the vector still; there is no dead zone and no speed. To turn further than one reach of the hand, let go and grab again.
-3. Steering changes the vector's two angles, θ and φ (section 2.3) - the same two the 3D view draws as arcs on the active vector:
+3. Steering changes the vector's two spherical angles: θ from +z (the same as γ) and φ, the angle of its floor shadow from +x towards +y. They are steering's internal language and are never shown to students, who see α, β, γ (section 10):
    - **Up and down change θ.** Hand up lowers θ, so the head rises towards **+z**; hand down raises it, so the head drops towards **−z**. This is the same whatever the view's rotation and wherever the vector points. The head turns round the **vertical circle** through it and the z axis, with **no stop**: keep moving up and it passes over the top (+z) and comes down the far side, keep moving down and it passes under the bottom (−z) - a full turn either way, for as long as the hand keeps moving. Moving back retraces the way it came. (Added 2026-09-30, found with real hands: θ used to stop at 0° and 180°, so a vector dragged up stopped at +z and only moved again once the hand came back down.)
    - **Left and right change φ**, turning the vector around the z axis like a turntable, and **always the same way**: moving right raises φ (anticlockwise seen from above), moving left lowers it - wherever the vector points, whatever the view, across grabs, and after going over the top. So the side of the turntable nearest the student follows the hand: a vector pointing towards the student moves right on screen as the hand moves right, and one pointing away moves left, like the far side of a turntable. (Changed 2026-09-30 at the user's request: the way was chosen at each grab, and again on crossing a pole, from where the vector pointed, so the same hand movement turned it different ways at different times.)
    - A diagonal movement changes both angles, each by its own part of the movement.
@@ -237,7 +234,7 @@ Starting values. Change only after real testing, and record every change in `pro
 - **Active vector:** highlighted (thicker, with a glow or outline) in the 3D view and in the info panel.
 - **During CREATING / RESIZING:** the live magnitude is shown next to the vector's head.
 - **During STEERING:** the camera preview shows the grab point and a line from it to the current pinch point. (Was the joystick's anchor and dead-zone ring, until grab and drag on 2026-09-29.)
-- **Angles of the active vector:** the 3D view always shows the active vector's θ and φ as arcs from their axes - θ from +z to the vector, φ in the XY plane from +x round to the vector's shadow - each arc tagged with its own letter (θ, φ), and their values shown as one line beside the vector's head, under its letter, changing live while a hand moves it. The arcs are thin and half transparent so they never outweigh the vector. (Changed 2026-09-25, G5.5, at the user's request: first built for steering only, as this line used to say. Changed again at G5.6, at the user's request: the values were boxes at each arc, which covered a short vector entirely.)
+- **Angles of the active vector:** the 3D view always shows the active vector's direction angles α, β, γ (section 2.4) as arcs, each from its positive axis round to the vector in the plane holding both, in that axis's colour - α red from +x, β green from +y, γ blue from +z - and each tagged with its letter. Their values are one line beside the vector's head, under its letter, changing live while a hand moves it: `α 60.00°   β 45.00°   γ 120.00°`. The arcs are thin and half transparent so they never outweigh the vector. An angle of 0° (the vector along that axis) has no arc. A vector pointing exactly opposite an axis has a 180° arc turned through the diagonal between the other two axes, so it never lies on top of their arcs. (Changed 2026-10-15 at the user's decision, from θ and φ arcs; see section 2.3. Earlier: changed 2026-09-25, G5.5, to show at all times rather than only while steering, and at G5.6 to put the values in one line beside the head, because boxes at each arc covered a short vector.)
 - **Snap:** a brief visual cue (the vector's halo flashes) when a release moves the vector onto an axis or plane (section 6.5).
 - **Live result updates:** when an input vector changes, the result moves to its new value with a short smooth transition (150 ms), not a jump.
 - **Head-to-tail animation:** the selected vectors slide into a head-to-tail chain (1.0 s), the resultant is drawn from the origin to the final head (0.5 s), the chain pauses so students can see it (1.5 s), then the vectors slide back to the origin (0.5 s). The animation never changes any vector's actual values.

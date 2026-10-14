@@ -21,7 +21,7 @@ UNDEFINED_NOTE = "zero vector has no direction"
 DEGREE = "°"
 
 
-def format_number(value: float) -> str:
+def format_number(value: float, decimals: int = DECIMALS) -> str:
     """Format a value for display: two decimals, and never "-0.00".
 
     A tiny negative value such as -0.001 rounds to -0.00, which looks like a
@@ -29,10 +29,14 @@ def format_number(value: float) -> str:
     be negative zero?". Section 2.5 says to show 0.00 instead. Note this
     changes only the text: the stored value keeps its sign and full
     precision.
+
+    `decimals` is for the one value that is not a vector quantity: the
+    direction-cosine sum in the form's refusal message, which is judged to
+    within 0.01, so two decimals could show a refused sum as "1.01".
     """
-    text = f"{value:.{DECIMALS}f}"
+    text = f"{value:.{decimals}f}"
     if float(text) == 0.0:
-        return f"{0.0:.{DECIMALS}f}"
+        return f"{0.0:.{decimals}f}"
     return text
 
 

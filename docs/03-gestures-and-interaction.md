@@ -156,19 +156,20 @@ Built in G5.5 as a joystick; rebuilt as grab and drag on 2026-09-29/30.
 ## 5a. Seeing the angles
 
 ### In plain words
-The highlighted arrow always shows two angles as curved lines drawn from the axes: θ, measured down from the z axis, and φ, measured round the floor from the x axis to the arrow's shadow. Each curve carries its letter, and both values sit in one small line beside the arrow's head, changing as you move it.
+The highlighted arrow always shows its three direction angles as curved lines: α in red from the x axis, β in green from the y axis, γ in blue from the z axis, each ending on the arrow. Each curve carries its letter, and the three values sit in one small line beside the arrow's head - the same numbers as on its card - changing as you move it.
 
 ### How it's implemented
-Built in G5.5, in `AngleArcs` in `render/overlays.py`.
+Built in G5.5 as θ and φ arcs; changed to α, β, γ on 2026-10-15 at the user's decision, because first-year students know direction angles and have not studied spherical coordinates. In `AngleArcs` in `render/overlays.py`.
 
-- `theta_arc` is a circular arc from +z to the vector, in the plane that holds both; `phi_arc` is a circular arc in the XY plane from +x turning counterclockwise, the way section 2.3 of the spec measures φ, so 270° goes three quarters of the way round. A dashed grey guide runs from the origin to the vector's floor shadow and up to its head, so it is visible what φ is measured to. Along the z axis φ is undefined, so no φ arc or value is drawn.
-- The values come from `core/spherical.py`, the same numbers the panel uses, formatted to two decimals.
+- `direction_arc(components, axis, radius)` is one circular arc from a positive axis to the vector, in the plane holding both, sweeping the angle between them; the same function draws all three. An angle of 0° (the arrow along that axis) has no arc. An arrow pointing exactly opposite an axis has no single plane with it, so its 180° arc turns through the diagonal between the other two axes. The first version turned it through the next axis instead, and the off-screen render showed why that was wrong: along −z, γ's half turn lay exactly on top of α's arc, and the two read as one purple line.
+- Each arc and its letter are drawn in their axis's colour, the same red, green and blue as the axes and the component arrows, so each angle is tied to its axis at a glance.
+- The values, `angle_text`, come from `core/vector_math.direction_angles`, the function the info panel uses, formatted to two decimals: `α 60.00°   β 45.00°   γ 120.00°`.
 - **Always on, for the active vector only.** First built for steering only, as the spec then said; the user asked at G5.5 for the angles to show whenever a vector is active. One vector at a time, like components and shadows. They are hidden while the head-to-tail animation plays, because the arrows are drawn away from their real positions then.
-- **Readability fixes, all from looking at the picture.** VTK's built-in font has no Greek letters, so "θ 45.00°" came out as " 45.00°"; the labels use Windows' own Arial, which has them. The values were first drawn in the vector's own colour, which the user found hard to read, so they are dark text on a white box outlined in the vector's colour, which reads on every one of the ten colours, including yellow.
-- **Quieter since G5.6.** At first each arc had its own boxed value, 16 pt bold, and the arcs were 3.5 px and solid. Boxes of a fixed screen size do not shrink with the vector, so on a short vector the two boxes covered the arrow completely, and on any vector the arcs outweighed it - the user's report. Now the arcs are 2 px and half transparent, each carries only its letter (θ or φ, no box) just outside its middle (`arc_tag_position`), and both values are one 12 pt line, `angle_text`, hung under the vector's letter beside its head, where it cannot sit on the arrow however short it is.
+- **Readability, all from looking at the picture.** VTK's built-in font has no Greek letters, so "α 45.00°" would come out as " 45.00°"; the labels use Windows' own Arial, which has them. The values are dark text on a white box outlined in the vector's colour, which reads on every one of the ten colours, including yellow. Since G5.6 the arcs are 2 px and half transparent, each carries only its letter just outside its middle (`arc_tag_position`), and the values are one 12 pt line hung under the vector's letter beside its head - boxes at each arc had covered short vectors entirely.
 
 ### Likely questions
-- **Why θ and φ rather than α, β, γ?** θ and φ are the two numbers the "magnitude + angles" input uses, so the arcs show exactly what a student would type to make this arrow. α, β and γ are on the card.
+- **Why not θ and φ?** They were shown until 2026-10-15. They are spherical coordinates, which first-year students have not met; α, β and γ are what their textbooks use, and what they now type in the "Magnitude + angles" form. Steering still works with θ and φ inside, where nobody sees them.
+- **Why is there no red arc when the arrow points along x?** α is 0° then: there is no angle to draw.
 
 ---
 
