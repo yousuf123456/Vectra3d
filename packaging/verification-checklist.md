@@ -64,7 +64,7 @@ report it rather than carrying on.
 ### A1. The scene — F-01
 - [ ] x, y, z axes drawn and labelled in red, green, blue, with the origin
       and a grid.
-- [ ] Drag to rotate, scroll to zoom, right-drag or Shift-drag to pan.
+- [ ] Drag to rotate, scroll (or right-drag) to zoom, Shift-drag (or middle-drag) to pan.
 - [ ] **Reset view** returns to the default angle.
 
 ### A2. Creating by typing — F-04, global vector rules
